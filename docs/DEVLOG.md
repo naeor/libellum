@@ -117,6 +117,32 @@
 | 约 15:16 | 环境 | 发现并解决 `npm` 无法直接调用的问题 | PowerShell 执行策略禁止运行 `npm.ps1`（本机执行策略全部为默认受限）。**改用 `npm.cmd` 正常**（npm 11.19.0）。已记入 §6 | 实测 |
 | 约 15:16 | 环境 | 探明「免提权安装 pnpm」的路径 | ① `corepack enable` 需写 `C:\Program Files\nodejs` → **会弹 UAC**；② 但 npm 全局目录 `%APPDATA%\npm` 位于用户目录内且**已在 PATH 中** → `npm.cmd i -g pnpm` **无需提权、无弹窗**。结论：后续开发步骤均可标 🟢 | 目录写入测试实测 |
 
+### 1.5 第五阶段：S1 骨架（15:19 – 15:28）
+
+> 本阶段全程 🟢 全自动，未产生任何弹窗，用户无需在旁等待。
+
+| 时间 | 类型 | 变更 / 动作 | 详情与理由 | 验证依据 |
+|---|---|---|---|---|
+| 15:19 | 决策 | 用户批准开工，并要求事后解释 GitHub 授权 | 授权解释见 §10 | 用户消息 |
+| 约 15:20 | 环境 | 安装 pnpm **12.10.1** | `npm.cmd install -g pnpm`，写入 `%APPDATA%\npm`（免提权） | `pnpm --version` |
+| **15:20:48** | **文件** | 创建 workspace 根配置 | `package.json`（workspace 脚本）、`pnpm-workspace.yaml`（含 `onlyBuiltDependencies`）、`.npmrc`、`tsconfig.base.json`（strict + Bundler 解析） | 文件时间戳（精确） |
+| **15:20:59** | **文件** | `packages/shared`：金额工具 | `src/money.ts` —— 整数「分」的解析 / 格式化 / 累加；全项目金额只走整数，杜绝浮点误差 | 文件时间戳（精确） |
+| **15:21:21** | **文件** | `apps/api` 骨架 | `src/app.ts`（构造与 `listen` 分离，便于 `inject` 测试）、`src/env.ts`（环境变量校验）、`src/routes/health.ts`、`src/server.ts`、`test/health.test.ts` | 文件时间戳（精确） |
+| **15:21:41** | **文件** | `apps/web` 骨架 | React 19 + Vite 8 + Tailwind 4；`App.tsx` 请求 `/api/v1/health` 并用共享 Zod schema 校验响应 | 文件时间戳（精确） |
+| **15:22:04** | **文件** | 单测与 CI | `money.test.ts`（含 `0.1+0.2` 与 1000 次 `0.01` 累加）、`health.test.ts`、`.github/workflows/ci.yml`（typecheck → migrate → test → build） | 文件时间戳（精确） |
+| 约 15:22 | 环境 | 安装全部依赖 | react 19.3 / vite 8.3.3 / tailwindcss 4.3.3 / fastify 5.12.5 / vitest 5.0.3 / zod 4.6.5 / typescript 7.0.2 | `pnpm list -r` |
+| **15:23:34** | **文件** | 创建 Prisma schema | `prisma/schema.prisma`：`User`、`Session` 两个模型，对应 PLAN §5.1 | 文件时间戳（精确） |
+| **15:24:18** | **文件** | 创建 `prisma.config.ts` | Prisma 7 把连接串移出了 schema | 文件时间戳（精确） |
+| **15:24:44** | **文件** | 创建 `apps/api/src/db.ts` | Prisma 7 必须传驱动适配器 | 文件时间戳（精确） |
+| 约 15:25 | 修复 | 处理三处依赖/版本问题 | 见 §6：prisma RC 版本、Prisma 7 接口变更、YAML 编码隐患 | 见 §6 |
+| 约 15:25 | 环境 | 授予 `ledger` 角色 **CREATEDB** 权限 | `prisma migrate dev` 需要创建影子数据库 | psql `ALTER ROLE` |
+| **15:24:57** | **环境** | 生成并应用首个迁移 | `20261008072457_init`；`ledger_dev` 中建出 `users`、`sessions`、`_prisma_migrations` 三张表 | `\dt` 输出（精确） |
+| 约 15:26 | 验证 | 类型检查 + 单元测试 | 三个包 `tsc --noEmit` 全通过；**测试 28 个全通过**（shared 24 + api 4） | 命令输出 |
+| 约 15:26 | 修复 | Vite 默认只监听 IPv6 | 见 §6 | netstat 实测 |
+| **约 15:27** | **验证** | **端到端验证通过** | 直连 API 返回 `{"ok":true,"service":"libellum-api","database":"up"}`（**真实连上 PostgreSQL**）；前端首页 HTTP 200；**经 Vite 代理请求 `/api/v1/health` 同样 200** —— 证明「浏览器 → Vite 代理 → Fastify → Prisma → PostgreSQL」整条链路打通 | curl 输出 |
+| **15:27:42** | **版本** | **提交 `326bf3e`** | 35 个文件、4263 行新增，已推送；GitHub Actions 随之触发 | git commit 对象（精确） |
+| 约 15:28 | 修复 | 清理漏网临时文件 | `_web.err` / `_web.log` 曾进入待提交列表 | `git add --dry-run` |
+
 ---
 
 ## 2. 关键决策记录（ADR）
@@ -191,6 +217,37 @@
 > 本表记录"到最近一次提交为止"的历史；**最新一次提交本身会在下一次提交时补入**（避免提交哈希自我引用）。
 > 话题标签：`bookkeeping` `expense-tracker` `family-finance` `fastify` `open-source` `personal-finance` `postgresql` `prisma` `react` `self-hosted` `typescript`
 
+### 4.2 项目骨架（S1 交付，提交 `326bf3e`）
+
+```
+记账程序/                        # 仓库根（GitHub 上名为 libellum）
+├─ apps/
+│  ├─ api/                       # Fastify 后端
+│  │  ├─ src/app.ts              # buildApp()：构造与 listen 分离，便于测试
+│  │  ├─ src/server.ts           # 入口：读配置 → 建 app → listen → 优雅退出
+│  │  ├─ src/env.ts              # 环境变量读取与校验（缺了就报错，不给静默默认值）
+│  │  ├─ src/db.ts               # Prisma 7 客户端 + @prisma/adapter-pg
+│  │  ├─ src/routes/health.ts    # GET /api/v1/health
+│  │  ├─ src/generated/prisma/   # Prisma 生成物（.gitignore 已排除）
+│  │  └─ test/health.test.ts     # 4 个接口测试，用 app.inject()，不需要数据库
+│  └─ web/                       # React 前端
+│     ├─ src/App.tsx             # S1 占位页：调 API 并用共享 schema 校验
+│     ├─ src/main.tsx            # 挂载入口
+│     ├─ src/index.css           # Tailwind 4 入口
+│     └─ vite.config.ts          # 绑 127.0.0.1 + /api 代理到后端
+├─ packages/
+│  └─ shared/                    # 前后端共享
+│     └─ src/{money,health,index}.ts   # 整数分金额工具 + Zod schema
+│     └─ src/{money,health}.test.ts    # 24 个单元测试
+├─ prisma/
+│  ├─ schema.prisma              # User / Session 模型
+│  └─ migrations/20261008072457_init/
+├─ prisma.config.ts              # Prisma 7 连接串配置
+├─ .github/workflows/ci.yml      # typecheck → migrate → test → build
+├─ pnpm-workspace.yaml           # workspace 定义 + onlyBuiltDependencies
+└─ tsconfig.base.json            # 统一严格模式
+```
+
 ---
 
 ## 5. 调研结论存档（含来源）
@@ -237,6 +294,11 @@
 | 约 13:21 | 文档内 7 处残留表述与新范围矛盾 | 范围从"共享账本"改为"独立账本"后未同步 | grep 全量排查并逐处修正 |
 | 约 14:16 | 密钥可能被误提交 | `.env` 存在于项目根目录 | `.gitignore` 显式排除 + `git check-ignore` 与 `git add --dry-run` 双重验证 |
 | 约 15:16 | **`npm` 在 PowerShell 中直接敲会失败** | PowerShell 执行策略禁止运行 `npm.ps1`（本机未设置任何执行策略，默认受限） | 统一改用 **`npm.cmd`**；后续 README 的 Windows 说明必须注明这一点，否则使用者会踩同样的坑 |
+| 约 15:25 | **`prisma` 装到了 8.0.0-rc** | npm registry 上 `prisma` 的 `latest` 标签当前指向 `8.0.0-rc.21`（`prev` 才是 7.10.0），而 `@prisma/client` 是 7.10.0 → CLI 与 client 大版本不一致，必然出问题 | 用 `-E` 精确钉到 `prisma@7.10.0` 与 client 对齐；提交信息中注明原因，避免后人 `pnpm update` 又跳回 RC |
+| 约 15:25 | **Prisma 7 不再支持 datasource 里的 `url`** | Prisma 7 把连接串移到 `prisma.config.ts`，并且**客户端必须传驱动适配器**，`new PrismaClient()` 会直接报错 | 按官方 v7 文档改造：新建 `prisma.config.ts`（`defineConfig` + `import "dotenv/config"`），安装 `@prisma/adapter-pg` + `pg`，客户端改为 `new PrismaClient({ adapter })` |
+| 约 15:25 | pnpm-workspace.yaml 用中文写注释 | YAML 注释含中文在 Windows 下存在编码歧义风险（`Get-Content` 已出现乱码） | 注释全部改为英文，避免工具链解析差异 |
+| 约 15:26 | **Vite 只监听 `::1`** | Vite 8 默认 `host: "localhost"` 在本机解析为 IPv6 回环，导致 `http://127.0.0.1:5173` 连不上（`netstat` 显示仅 `::1:5173`） | 在 `vite.config.ts` 显式设置 `server.host = "127.0.0.1"` |
+| 约 15:28 | 临时日志文件混入待提交列表 | 诊断 Vite 时生成的 `_web.err` / `_web.log` 未被 `.gitignore` 覆盖（当时只有 `*.log`，没有 `*.err`） | 删除文件，并在 `.gitignore` 补 `*.err` |
 
 ---
 
@@ -255,12 +317,13 @@
 
 | 优先级 | 事项 | 状态 |
 |---|---|---|
-| 1 | 建 GitHub 公开仓库 `naeor/libellum` 并推送 | ✅ 已完成 15:11 —— <https://github.com/naeor/libellum>（公开） |
-| 2 | **S0 收尾：初始化 pnpm workspace**（`apps/web`、`apps/api`、`packages/shared`） | ⏳ 下一步 —— 🟢 **全自动，无需你操作**（pnpm 走 `npm.cmd i -g pnpm`，免提权无弹窗） |
-| 3 | S1 骨架：Fastify `/api/v1/health`、Prisma 首个迁移（`users`/`sessions`）、GitHub Actions CI | ⏳ 待开始 —— 🟢 全自动 |
-| 4 | 注册域名 `libellum.app` | 计划在 S7 前完成 —— 🔴 **需你付款** |
-| 5 | 购买腾讯云香港轻量 2核2G（¥54/月 那款） | 计划在 S7 前完成 —— 🔴 **需你付款** |
-| 6 | 上线后 30 天内办理公安联网备案 | 已写入 S7 验收标准 —— 🔴 **需你实名 + APP 扫码** |
+| 1 | 建 GitHub 公开仓库 `naeor/libellum` 并推送 | ✅ 15:11 —— <https://github.com/naeor/libellum>（公开） |
+| 2 | S0 收尾：初始化 pnpm workspace | ✅ 15:20 —— pnpm 12.10.1 免提权安装，无弹窗 |
+| 3 | S1 骨架：workspace + Fastify health + Prisma 迁移 + CI | ✅ 15:27 —— 提交 `326bf3e`；28 个测试全过、端到端验证通过 |
+| 4 | **S2 账号系统**：argon2id 密码哈希、邀请码注册、登录 / 退出 / 改密、服务端会话 Cookie、登录限流、前端登录注册页 | ⏳ 下一步 —— 🟢 全自动（结束时需你点一遍验收） |
+| 5 | 注册域名 `libellum.app` | S7 前 —— 🔴 **需你付款** |
+| 6 | 购买腾讯云香港轻量 2核2G（¥54/月 那款） | S7 前 —— 🔴 **需你付款** |
+| 7 | 上线后 30 天内办理公安联网备案 | S7 验收项 —— 🔴 **需你实名 + APP 扫码** |
 
 ---
 
@@ -269,5 +332,38 @@
 - 每一轮开发结束后追加一节**当天时间线**，格式与本文一致（时间 / 类型 / 改了什么 / 为什么 / 验证）。
 - 涉及决策的变更同时写入第 2 章 ADR 表。
 - 环境或依赖变更写入第 3 章。
-- **新建文件必须登记进第 4 章文件清单。**
+- **新建文件必须登记进第 4 章文件清单**（S1 之后改为按目录树登记）。
 - 生成的 Word/PDF 版仅作阅读用，**以本 Markdown 为准**。
+
+---
+
+## 10. 附录：GitHub 设备码授权到底做了什么
+
+（于 2026-10-08 15:11:38 完成；项目所有者事后询问，特此记录）
+
+**为什么需要授权**：`gh`（GitHub CLI）和 `git push` 都要代表你的账号向 GitHub 写数据。GitHub 不接受匿名写入，所以必须有一次"证明你是 naeor"的动作。
+
+**那一步具体发生了什么**
+
+1. 我在本机运行 `gh auth login --web`，CLI 向 GitHub 申请一个**一次性设备码**（形如 `793A-62EF`），并给出地址 `https://github.com/login/device`。
+2. 你在浏览器打开该地址、登录自己的 GitHub 账号、输入这个码，再点"授权"。
+3. GitHub 确认后，把一个 **OAuth token** 发回本机 CLI；CLI 把它存进 **Windows 凭据管理器（keyring）**。
+4. 此后所有 `git push` 与 `gh` 命令都用这个 token 证明身份，**不必再输密码或验证码**。
+
+**授权范围（判断风险的关键）**：`gh auth status` 显示 token 权限为 `repo`、`gist`、`read:org`。
+
+| 权限 | 含义 |
+|---|---|
+| `repo` | 可读写你**所有**仓库的代码与设置（不只 libellum） |
+| `gist` | 可读写你的代码片段 |
+| `read:org` | 可读取你所属组织的成员信息 |
+
+**需要知道的三件事**
+
+1. 这个 token **只存在你这台电脑上**：不在聊天记录里，也没进 Git 仓库。
+2. 它**不等于你的 GitHub 密码**：不能用来登录网页、改密码、改邮箱。你可以随时在 GitHub 的 `Settings → Applications` 里撤销。
+3. **撤销后**：我这边再 `git push` 会重新要求授权（再走一次设备码流程）。撤销安全且可逆。
+
+**为什么没有用手动粘贴的个人访问令牌（PAT）**：PAT 会以明文出现在聊天记录和命令历史里。设备码方式把凭据直接交给系统凭据管理器，更安全也更省事。
+
+**风险提示**：`repo` 权限覆盖你名下所有仓库，范围偏大。若日后想收紧，可改用只对单个仓库生效的 fine-grained token，或安装限定仓库范围的 GitHub App。对当前阶段（单人开发、公开仓库）风险可接受。
