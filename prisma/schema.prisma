@@ -21,9 +21,13 @@ datasource db {
 model User {
   id           String   @id @default(uuid()) @db.Uuid
   username     String   @unique
-  /// Short, human-readable identifier shown in the UI (for example
-  /// `LB-7F3K-9M2Q`). The UUID above is internal; this is the one a person can
-  /// read out or quote when asking for help.
+  /// Eight-digit public account number, for example `48213907`.
+  ///
+  /// The UUID above is internal. This is the identifier a person reads aloud,
+  /// types on a phone and shares so someone else can find them to share a
+  /// ledger. Random rather than sequential: a contiguous series would let
+  /// anyone enumerate accounts. The database enforces the format with a CHECK
+  /// constraint, added by the `numeric_account_number` migration.
   accountNumber String  @unique @map("account_number")
   passwordHash String   @map("password_hash")
   displayName  String   @map("display_name")

@@ -38,11 +38,11 @@ export function HomePage(): React.JSX.Element {
       </header>
 
       <Card>
-        <h2 className="text-sm font-medium text-muted">账号信息</h2>
-
-        <dl className="mt-4 grid grid-cols-[auto_1fr] gap-x-6 gap-y-3 text-sm">
+        <dl className="grid grid-cols-[auto_1fr] items-baseline gap-x-6 gap-y-3 text-sm">
           <dt className="text-muted">账号编号</dt>
-          <dd className="text-right font-mono tracking-wide text-ink">{user.accountNumber}</dd>
+          <dd className="text-right font-mono text-lg tracking-[0.12em] text-ink">
+            {user.accountNumber}
+          </dd>
 
           <dt className="text-muted">用户名</dt>
           <dd className="text-right text-ink">{user.username}</dd>
@@ -54,14 +54,13 @@ export function HomePage(): React.JSX.Element {
           <dd className="text-right text-ink">{formatDateTime(user.createdAt)}</dd>
         </dl>
 
-        <p className="mt-4 text-xs leading-relaxed text-muted">
-          账号编号用于识别本账号，可以安全地提供给他人；恢复码必须保密。
+        <p className="mt-5 border-t border-line pt-4 text-xs leading-relaxed text-muted">
+          账号编号用于标识本账号，可以安全地提供给他人；恢复码必须保密。
         </p>
       </Card>
 
       <Card>
-        <h2 className="text-sm font-medium text-muted">安全</h2>
-        <div className="mt-4 flex flex-col gap-3">
+        <div className="flex flex-col gap-3">
           <Button variant="secondary" onClick={() => void navigate("/settings/password")}>
             更改密码
           </Button>

@@ -24,16 +24,24 @@ export function generateRecoveryCode(): string {
   return randomCrockford(CODE_LENGTH).replace(/(.{4})(?=.)/g, "$1-");
 }
 
+/** Digits in an account number. */
+const ACCOUNT_NUMBER_DIGITS = 8;
+const ACCOUNT_NUMBER_RANGE = 90_000_000; // 8 digits, first digit 1-9
+const ACCOUNT_NUMBER_MIN = 10_000_000;
+
 /**
- * A short public identifier for an account, shown in the interface as 账号编号.
+ * A purely numeric account number such as `48213907`.
  *
- * Deliberately looks nothing like a recovery code: it is safe to read aloud or
- * paste into a message, whereas a recovery code must stay secret.
+ * Numeric on purpose: it is meant to be read out loud, typed on a phone
+ * keypad and remembered. Random rather than sequential, because a contiguous
+ * series would let anyone enumerate accounts and count how many exist — and
+ * this identifier is public, used to find people to share a ledger with.
  */
 export function generateAccountNumber(): string {
-  const raw = randomCrockford(8);
+  const bytes = randomBytes(4);
+  const value = (bytes.readUInt32BE(0) % ACCOUNT_NUMBER_RANGE) + ACCOUNT_NUMBER_MIN;
 
-  return `LB-${raw.slice(0, 4)}-${raw.slice(4)}`;
+  return String(value).padStart(ACCOUNT_NUMBER_DIGITS, "0");
 }
 
 /**

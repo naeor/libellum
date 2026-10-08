@@ -59,7 +59,7 @@ export const regenerateRecoveryCodeRequestSchema = z.object({
 /** Fields of the signed-in user that the browser is allowed to see. */
 export const sessionUserSchema = z.object({
   id: z.string(),
-  /** Short public identifier such as `LB-7F3K-9M2Q`. */
+  /** Eight-digit public account number such as `48213907`. */
   accountNumber: z.string(),
   username: z.string(),
   displayName: z.string(),

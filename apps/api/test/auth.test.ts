@@ -96,7 +96,7 @@ describe("POST /api/v1/auth/register", () => {
 
     expect(response.statusCode).toBe(201);
     expect(body.user.username).toBe(USERNAME);
-    expect(body.user.accountNumber).toMatch(/^LB-[0-9A-Z]{4}-[0-9A-Z]{4}$/);
+    expect(body.user.accountNumber).toMatch(/^[0-9]{8}$/);
     expect(body.recoveryCode).toMatch(/^[0-9A-Z]{4}(-[0-9A-Z]{4}){3}$/);
     expect(cookieFrom(response.headers)).toContain("libellum_session=");
 
