@@ -29,12 +29,29 @@ function readPort(name: string, fallback: number): number {
   return port;
 }
 
+function readPositiveInt(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw === "") return fallback;
+
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error(`${name} must be a positive integer, received: ${raw}`);
+  }
+
+  return value;
+}
+
 export interface Env {
   readonly nodeEnv: "development" | "production" | "test";
   readonly apiHost: string;
   readonly apiPort: number;
   readonly databaseUrl: string;
   readonly webOrigin: string;
+  /** Secure cookies require HTTPS; on plain http://localhost they must be off. */
+  readonly cookieSecure: boolean;
+  readonly loginMaxFailures: number;
+  readonly loginLockoutMs: number;
+  readonly loginWindowMs: number;
 }
 
 export function loadEnv(): Env {
@@ -54,5 +71,9 @@ export function loadEnv(): Env {
     apiPort: readPort("API_PORT", 3000),
     databaseUrl: readString("DATABASE_URL"),
     webOrigin: readString("WEB_ORIGIN", "http://localhost:5173"),
+    cookieSecure: nodeEnv === "production",
+    loginMaxFailures: readPositiveInt("LOGIN_MAX_FAILURES", 5),
+    loginLockoutMs: readPositiveInt("LOGIN_LOCKOUT_MS", 60_000),
+    loginWindowMs: readPositiveInt("LOGIN_WINDOW_MS", 15 * 60_000),
   };
 }

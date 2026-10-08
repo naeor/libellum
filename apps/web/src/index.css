@@ -1,1 +1,48 @@
 @import "tailwindcss";
+
+/*
+ * Libellum theme.
+ *
+ * Light, calm and friendly: a near-white canvas, one low-saturation green as
+ * the only accent, soft corners and generous spacing. Nothing shouts.
+ */
+@theme {
+  --color-canvas: #fafcfb;
+  --color-surface: #ffffff;
+
+  --color-brand: #55997a;
+  --color-brand-dark: #447d63;
+  --color-brand-soft: #edf5f0;
+
+  --color-ink: #24312b;
+  --color-muted: #6b7f76;
+  --color-line: #e3ede7;
+
+  --color-danger: #b8574f;
+  --color-danger-soft: #fbefee;
+
+  --radius-card: 1.25rem;
+  --radius-field: 0.875rem;
+
+  --font-sans:
+    system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background-color: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Keep the numeric keypad on mobile when entering amounts or codes. */
+input[inputmode="numeric"],
+input[inputmode="decimal"] {
+  font-variant-numeric: tabular-nums;
+}

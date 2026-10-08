@@ -8,6 +8,14 @@ const prisma = createPrismaClient(env.databaseUrl);
 const app = buildApp({
   version: process.env["npm_package_version"] ?? "0.1.0",
   logger: { level: env.nodeEnv === "production" ? "info" : "debug" },
+  prisma,
+  webOrigin: env.webOrigin,
+  cookieSecure: env.cookieSecure,
+  loginThrottleOptions: {
+    maxFailures: env.loginMaxFailures,
+    lockoutMs: env.loginLockoutMs,
+    windowMs: env.loginWindowMs,
+  },
   checkDatabase: async () => {
     await prisma.$queryRaw`SELECT 1`;
     return true;
