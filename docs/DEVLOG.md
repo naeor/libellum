@@ -142,6 +142,12 @@
 | **约 15:27** | **验证** | **端到端验证通过** | 直连 API 返回 `{"ok":true,"service":"libellum-api","database":"up"}`（**真实连上 PostgreSQL**）；前端首页 HTTP 200；**经 Vite 代理请求 `/api/v1/health` 同样 200** —— 证明「浏览器 → Vite 代理 → Fastify → Prisma → PostgreSQL」整条链路打通 | curl 输出 |
 | **15:27:42** | **版本** | **提交 `326bf3e`** | 35 个文件、4263 行新增，已推送；GitHub Actions 随之触发 | git commit 对象（精确） |
 | 约 15:28 | 修复 | 清理漏网临时文件 | `_web.err` / `_web.log` 曾进入待提交列表 | `git add --dry-run` |
+| **15:27:48** | **环境** | **GitHub Actions 首次触发** | 推送后 CI 自动运行 | `gh run list` |
+| 约 15:29 | 修复 | **CI 失败：`ERR_PNPM_IGNORED_BUILDS`** | 我在 `pnpm-workspace.yaml` 里写的 `onlyBuiltDependencies` 是**pnpm 10 的旧键名，pnpm 12 已移除且静默忽略** → 每次 install 都以错误退出。用 `pnpm approve-builds --all`（支持非交互）重新生成，正确键名为 **`allowBuilds`**（布尔映射） | CI 日志 + `pnpm config get` 实测 |
+| **约 15:30** | 验证 | 本地模拟 CI 通过 | `pnpm install --frozen-lockfile` 退出码 **0**（修复前为 1） | 命令输出 |
+| **15:30:07** | **版本** | 提交 `400bb40` 修复 CI 配置 | 已推送 | git commit（精确） |
+| **约 15:32** | **验证** | **CI 全绿** | run `37743812286`：`Typecheck, migrate, test, build` **54 秒通过**（真正的"干净环境 + 真实 Postgres 服务"验证，不是本机自测） | `gh run view`（精确） |
+| 约 15:33 | 修复 | 清除 Actions 弃用警告 | 警告提示 `checkout@v4` / `setup-node@v4` / `action-setup@v4` 仍以 Node 20 为目标。查得最新为 v7 / v7 / v6，全部升级 | `gh api releases/latest` |
 
 ---
 
@@ -299,6 +305,7 @@
 | 约 15:25 | pnpm-workspace.yaml 用中文写注释 | YAML 注释含中文在 Windows 下存在编码歧义风险（`Get-Content` 已出现乱码） | 注释全部改为英文，避免工具链解析差异 |
 | 约 15:26 | **Vite 只监听 `::1`** | Vite 8 默认 `host: "localhost"` 在本机解析为 IPv6 回环，导致 `http://127.0.0.1:5173` 连不上（`netstat` 显示仅 `::1:5173`） | 在 `vite.config.ts` 显式设置 `server.host = "127.0.0.1"` |
 | 约 15:28 | 临时日志文件混入待提交列表 | 诊断 Vite 时生成的 `_web.err` / `_web.log` 未被 `.gitignore` 覆盖（当时只有 `*.log`，没有 `*.err`） | 删除文件，并在 `.gitignore` 补 `*.err` |
+| **约 15:29** | **CI 装依赖必然失败：`ERR_PNPM_IGNORED_BUILDS`** | pnpm 12 **移除了 `onlyBuiltDependencies` 设置**（连同 `onlyBuiltDependenciesFile`、`neverBuiltDependencies` 一并移除），旧键名被**静默忽略**，于是被 pnpm 判定为"存在未批准的构建脚本"而报错退出 | 改用新键 **`allowBuilds`**（布尔映射），并用 `pnpm approve-builds --all` 生成，避免手写键名再猜错 |
 
 ---
 
