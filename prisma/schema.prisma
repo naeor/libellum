@@ -1,0 +1,48 @@
+// Libellum database schema.
+//
+// Design notes that matter (see docs/PLAN.md section 5):
+//  * money is stored as an integer number of cents, never as a float
+//  * every business table carries a book_id, and permissions are decided by
+//    book_members alone
+//  * v1 gives every account its own book; the Book/BookMember tables already
+//    exist so that v2 can add sharing without a data migration
+
+generator client {
+  provider = "prisma-client"
+  output   = "../apps/api/src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  username     String   @unique
+  passwordHash String   @map("password_hash")
+  displayName  String   @map("display_name")
+  isDemo       Boolean  @default(false) @map("is_demo")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  sessions Session[]
+
+  @@map("users")
+}
+
+/// A login session. Only the hash of the token is stored, so a database leak
+/// cannot be replayed as a valid session.
+model Session {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  tokenHash String   @unique @map("token_hash")
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+  userAgent String?  @map("user_agent")
+  ipAddress String?  @map("ip_address")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}

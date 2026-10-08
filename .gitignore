@@ -7,6 +7,9 @@ dist/
 build/
 *.tsbuildinfo
 
+# ---- Prisma 生成的客户端代码（由 pnpm db:generate 产出，不进仓库）----
+apps/api/src/generated/
+
 # ---- 环境变量与密钥：绝对不要提交 ----
 .env
 .env.*
@@ -26,6 +29,7 @@ uploads/
 
 # ---- 日志与临时文件 ----
 *.log
+*.err
 npm-debug.log*
 pnpm-debug.log*
 logs/

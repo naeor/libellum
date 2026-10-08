@@ -1,0 +1,31 @@
+{
+  "name": "libellum",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Libellum - the free, open ledger",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "packageManager": "pnpm@12.10.1",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "pnpm -r --parallel dev",
+    "dev:web": "pnpm --filter @libellum/web dev",
+    "dev:api": "pnpm --filter @libellum/api dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:studio": "prisma studio",
+    "db:reset": "prisma migrate reset"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "dotenv": "^18.0.6",
+    "prisma": "7.10.0",
+    "typescript": "^7.0.2"
+  }
+}

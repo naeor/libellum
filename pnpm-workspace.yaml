@@ -1,0 +1,13 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+# pnpm 10+ does not run dependency install scripts by default (security).
+# These packages genuinely need their build scripts, so they are explicitly allowed.
+onlyBuiltDependencies:
+  - "@prisma/client"
+  - "@prisma/engines"
+  - prisma
+  - esbuild
+  - workerd
+  - sharp
