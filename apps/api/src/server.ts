@@ -25,7 +25,7 @@ process.on("SIGINT", () => void shutdown("SIGINT"));
 process.on("SIGTERM", () => void shutdown("SIGTERM"));
 
 try {
-  await app.listen({ port: env.apiPort, host: "0.0.0.0" });
+  await app.listen({ host: env.apiHost, port: env.apiPort });
 } catch (error) {
   app.log.error(error, "failed to start");
   await prisma.$disconnect();

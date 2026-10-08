@@ -148,6 +148,8 @@
 | **15:30:07** | **版本** | 提交 `400bb40` 修复 CI 配置 | 已推送 | git commit（精确） |
 | **约 15:32** | **验证** | **CI 全绿** | run `37743812286`：`Typecheck, migrate, test, build` **54 秒通过**（真正的"干净环境 + 真实 Postgres 服务"验证，不是本机自测） | `gh run view`（精确） |
 | 约 15:33 | 修复 | 清除 Actions 弃用警告 | 警告提示 `checkout@v4` / `setup-node@v4` / `action-setup@v4` 仍以 Node 20 为目标。查得最新为 v7 / v7 / v6，全部升级 | `gh api releases/latest` |
+| **约 15:35** | **调查** | **用户报告遇到一次 Node.js 弹窗** | 现场核查：系统中已新增**两条防火墙规则** `Node.js JavaScript Runtime`（入站 / 允许 / **公用网络**），指向 `C:\program files\nodejs\node.exe`。此类规则只在用户在 Windows 防火墙弹窗上点"允许访问"后生成，而该操作需要管理员权限——与用户描述完全吻合 | `Get-NetFirewallRule` + `Get-NetFirewallApplicationFilter` |
+| **约 15:36** | **修复** | **API 默认只监听回环地址** | 根因是我把 `app.listen` 的 host 写死为 `0.0.0.0`（所有网卡），Windows 检测到对外监听即弹确认框。改为 `API_HOST` 可配置：开发默认 `127.0.0.1`，生产默认 `0.0.0.0` | 实测监听地址由 3 个（含 `192.168.0.184`、`26.126.162.61`）变为**仅 `127.0.0.1`**；健康检查仍返回 `database: "up"` |
 
 ---
 
@@ -306,6 +308,7 @@
 | 约 15:26 | **Vite 只监听 `::1`** | Vite 8 默认 `host: "localhost"` 在本机解析为 IPv6 回环，导致 `http://127.0.0.1:5173` 连不上（`netstat` 显示仅 `::1:5173`） | 在 `vite.config.ts` 显式设置 `server.host = "127.0.0.1"` |
 | 约 15:28 | 临时日志文件混入待提交列表 | 诊断 Vite 时生成的 `_web.err` / `_web.log` 未被 `.gitignore` 覆盖（当时只有 `*.log`，没有 `*.err`） | 删除文件，并在 `.gitignore` 补 `*.err` |
 | **约 15:29** | **CI 装依赖必然失败：`ERR_PNPM_IGNORED_BUILDS`** | pnpm 12 **移除了 `onlyBuiltDependencies` 设置**（连同 `onlyBuiltDependenciesFile`、`neverBuiltDependencies` 一并移除），旧键名被**静默忽略**，于是被 pnpm 判定为"存在未批准的构建脚本"而报错退出 | 改用新键 **`allowBuilds`**（布尔映射），并用 `pnpm approve-builds --all` 生成，避免手写键名再猜错 |
+| **约 15:35** | **Windows 防火墙弹窗（"Node.js JavaScript Runtime"）** | Fastify 的 `listen` 被我写死为 `0.0.0.0`（所有网卡）。Windows 检测到程序对外监听即弹出"是否允许访问网络"确认框，**该确认需要管理员权限**，所以看起来像"权限不足"。用户在不知情的情况下点了允许，系统因此多出两条入站放行规则 | 改为 `API_HOST` 可配置：**开发默认 `127.0.0.1`**（不弹窗，也不把未鉴权的开发服务器暴露到局域网），**生产默认 `0.0.0.0`**（容器内必须被反向代理访问）。<br>⚠️ 例外：S3 若要**用手机通过局域网访问开发服务器**，需要临时设 `API_HOST=0.0.0.0`，届时会再弹一次防火墙确认（我会提前告知） |
 
 ---
 

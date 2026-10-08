@@ -31,6 +31,7 @@ function readPort(name: string, fallback: number): number {
 
 export interface Env {
   readonly nodeEnv: "development" | "production" | "test";
+  readonly apiHost: string;
   readonly apiPort: number;
   readonly databaseUrl: string;
   readonly webOrigin: string;
@@ -44,6 +45,12 @@ export function loadEnv(): Env {
 
   return {
     nodeEnv,
+    // Development binds to the loopback interface on purpose: listening on
+    // 0.0.0.0 makes Windows Defender Firewall pop up an "allow this app"
+    // dialog (which needs administrator approval) every time the dev server
+    // starts, and it exposes an unauthenticated dev server to the LAN.
+    // Containers in production must bind 0.0.0.0 to be reachable.
+    apiHost: readString("API_HOST", nodeEnv === "production" ? "0.0.0.0" : "127.0.0.1"),
     apiPort: readPort("API_PORT", 3000),
     databaseUrl: readString("DATABASE_URL"),
     webOrigin: readString("WEB_ORIGIN", "http://localhost:5173"),
