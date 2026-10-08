@@ -1,10 +1,12 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router";
 
 import { AuthProvider, useAuth } from "./auth/AuthProvider.js";
+import { ChangePasswordPage } from "./pages/ChangePasswordPage.js";
 import { HomePage } from "./pages/HomePage.js";
 import { LoginPage } from "./pages/LoginPage.js";
 import { RecoverPage } from "./pages/RecoverPage.js";
 import { RegisterPage } from "./pages/RegisterPage.js";
+import { RegenerateRecoveryCodePage } from "./pages/RegenerateRecoveryCodePage.js";
 
 function Splash(): React.JSX.Element {
   return (
@@ -33,6 +35,26 @@ function AppRoutes(): React.JSX.Element {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/recover" element={<RecoverPage />} />
+
+      {/* Account settings live one level below the home page. A full settings
+          screen will host them later; the routes are already nested for that. */}
+      <Route
+        path="/settings/password"
+        element={
+          <RequireAuth>
+            <ChangePasswordPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/settings/recovery-code"
+        element={
+          <RequireAuth>
+            <RegenerateRecoveryCodePage />
+          </RequireAuth>
+        }
+      />
+
       <Route
         path="/"
         element={

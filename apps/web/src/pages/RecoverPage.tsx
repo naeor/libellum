@@ -25,7 +25,7 @@ export function RecoverPage(): React.JSX.Element {
 
     const parsed = recoverRequestSchema.safeParse({ username, recoveryCode, newPassword });
     if (!parsed.success) {
-      setError(parsed.error.issues[0]?.message ?? "请检查填写的内容");
+      setError(parsed.error.issues[0]?.message ?? "请检查填写的内容。");
       return;
     }
 
@@ -45,7 +45,7 @@ export function RecoverPage(): React.JSX.Element {
 
   if (issuedCode) {
     return (
-      <AuthLayout title="密码已重置" subtitle="旧密码已失效，请用新密码登录。">
+      <AuthLayout title="密码已重置" subtitle="原密码已失效，请使用新密码登录。">
         <RecoveryCodeCard
           code={issuedCode}
           onContinue={() => {
@@ -59,7 +59,7 @@ export function RecoverPage(): React.JSX.Element {
   return (
     <AuthLayout
       title="找回密码"
-      subtitle="用注册时保存的恢复码重置密码。"
+      subtitle="输入用户名与恢复码，即可设置新密码。"
       footer={
         <Link className="font-medium text-brand-dark hover:underline" to="/login">
           返回登录
@@ -83,7 +83,7 @@ export function RecoverPage(): React.JSX.Element {
           label="恢复码"
           placeholder="XXXX-XXXX-XXXX-XXXX"
           autoComplete="off"
-          hint="大小写和横线都可以随便写，我们会自动识别"
+          hint="不区分大小写，可省略连字符"
           value={recoveryCode}
           onChange={(event) => {
             setRecoveryCode(event.target.value);
@@ -102,7 +102,7 @@ export function RecoverPage(): React.JSX.Element {
         />
 
         <Button type="submit" disabled={busy}>
-          {busy ? "重置中…" : "重置密码"}
+          {busy ? "提交中…" : "重置密码"}
         </Button>
       </form>
     </AuthLayout>

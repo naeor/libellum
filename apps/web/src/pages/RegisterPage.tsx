@@ -40,7 +40,7 @@ export function RegisterPage(): React.JSX.Element {
     });
 
     if (!parsed.success) {
-      setError(parsed.error.issues[0]?.message ?? "请检查填写的内容");
+      setError(parsed.error.issues[0]?.message ?? "请检查填写的内容。");
       return;
     }
 
@@ -57,7 +57,7 @@ export function RegisterPage(): React.JSX.Element {
 
   if (recoveryCode) {
     return (
-      <AuthLayout title="你的恢复码" subtitle="这是找回账号的唯一凭据。">
+      <AuthLayout title="恢复码" subtitle="注册已完成。">
         <RecoveryCodeCard
           code={recoveryCode}
           onContinue={() => {
@@ -71,10 +71,10 @@ export function RegisterPage(): React.JSX.Element {
   return (
     <AuthLayout
       title="创建账号"
-      subtitle="需要一个邀请码才能注册——这个工具只给家人和朋友用。"
+      subtitle="注册需要有效的邀请码。"
       footer={
         <>
-          已经有账号了？{" "}
+          已有账号？{" "}
           <Link className="font-medium text-brand-dark hover:underline" to="/login">
             去登录
           </Link>
@@ -96,7 +96,7 @@ export function RegisterPage(): React.JSX.Element {
 
         <TextField
           label="用户名"
-          hint="3–20 位字母、数字或下划线，用来登录"
+          hint="3–20 位字母、数字或下划线，用于登录"
           autoComplete="username"
           value={username}
           onChange={(event) => {
@@ -105,8 +105,8 @@ export function RegisterPage(): React.JSX.Element {
         />
 
         <TextField
-          label="称呼"
-          hint={`记账时显示的名字，最多 ${String(DISPLAY_NAME_MAX_LENGTH)} 个字`}
+          label="显示名称"
+          hint={`在账目中展示的名称，最多 ${String(DISPLAY_NAME_MAX_LENGTH)} 个字符`}
           value={displayName}
           onChange={(event) => {
             setDisplayName(event.target.value);
@@ -117,7 +117,7 @@ export function RegisterPage(): React.JSX.Element {
           label="密码"
           type="password"
           autoComplete="new-password"
-          hint={`至少 ${String(PASSWORD_MIN_LENGTH)} 位，建议用一句好记的话`}
+          hint={`至少 ${String(PASSWORD_MIN_LENGTH)} 位`}
           value={password}
           onChange={(event) => {
             setPassword(event.target.value);

@@ -48,7 +48,7 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
       throw new ApiRequestError(response.status, parsed.data.code, parsed.data.message, parsed.data.details);
     }
 
-    throw new ApiRequestError(response.status, "unexpected_error", "网络或服务器异常，请稍后再试");
+    throw new ApiRequestError(response.status, "unexpected_error", "服务暂时不可用，请稍后再试。");
   }
 
   return payload as T;
@@ -57,6 +57,5 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
 /** Turn any thrown value into something safe to show a user. */
 export function errorMessage(error: unknown): string {
   if (error instanceof ApiRequestError) return error.message;
-  if (error instanceof Error && error.message) return error.message;
-  return "出了点问题，请稍后再试";
+  return "网络连接异常，请稍后再试。";
 }

@@ -7,9 +7,9 @@ import { Card } from "./Card.js";
 /**
  * Shown exactly once, right after a recovery code is created.
  *
- * The code is never retrievable again, so the screen deliberately blocks the
- * way forward behind a confirmation checkbox — losing it means losing the only
- * self-service way back into the account.
+ * The code can never be retrieved again, so the way forward stays blocked
+ * behind a confirmation — losing it means losing the only self-service route
+ * back into the account.
  */
 export function RecoveryCodeCard({
   code,
@@ -33,9 +33,7 @@ export function RecoveryCodeCard({
   return (
     <div className="flex flex-col gap-5">
       <Alert tone="info">
-        请把这串恢复码抄下来或存进密码管理器。
-        <strong className="font-semibold">它只会出现这一次</strong>
-        ，忘记密码时用它重置。
+        请妥善保存以下恢复码。它仅显示一次，是忘记密码时重置密码的唯一凭据。
       </Alert>
 
       <Card className="bg-brand-soft/50 text-center">
@@ -55,11 +53,11 @@ export function RecoveryCodeCard({
           }}
           className="mt-0.5 size-4 accent-[#55997a]"
         />
-        <span>我已经把恢复码保存好了</span>
+        <span>我已妥善保存该恢复码</span>
       </label>
 
       <Button disabled={!confirmed} onClick={onContinue}>
-        进入我的账本
+        完成
       </Button>
     </div>
   );

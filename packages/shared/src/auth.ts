@@ -24,8 +24,8 @@ export const passwordSchema = z
 export const displayNameSchema = z
   .string()
   .trim()
-  .min(1, "请填写一个称呼")
-  .max(DISPLAY_NAME_MAX_LENGTH, `称呼最多 ${String(DISPLAY_NAME_MAX_LENGTH)} 个字`);
+  .min(1, "请填写显示名称")
+  .max(DISPLAY_NAME_MAX_LENGTH, `显示名称最多 ${String(DISPLAY_NAME_MAX_LENGTH)} 个字符`);
 
 export const inviteCodeSchema = z.string().trim().min(4, "请填写邀请码");
 
@@ -59,6 +59,8 @@ export const regenerateRecoveryCodeRequestSchema = z.object({
 /** Fields of the signed-in user that the browser is allowed to see. */
 export const sessionUserSchema = z.object({
   id: z.string(),
+  /** Short public identifier such as `LB-7F3K-9M2Q`. */
+  accountNumber: z.string(),
   username: z.string(),
   displayName: z.string(),
   isDemo: z.boolean(),

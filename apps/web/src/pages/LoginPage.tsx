@@ -10,7 +10,7 @@ import { TextField } from "../components/TextField.js";
 import { errorMessage } from "../lib/api.js";
 
 export function LoginPage(): React.JSX.Element {
-  const { user, login } = useAuth();
+  const { user, login, sessionRevoked } = useAuth();
   const navigate = useNavigate();
 
   const [username, setUsername] = useState("");
@@ -26,7 +26,7 @@ export function LoginPage(): React.JSX.Element {
 
     const parsed = loginRequestSchema.safeParse({ username, password });
     if (!parsed.success) {
-      setError(parsed.error.issues[0]?.message ?? "请把用户名和密码填完整");
+      setError(parsed.error.issues[0]?.message ?? "请填写用户名和密码。");
       return;
     }
 
@@ -44,16 +44,19 @@ export function LoginPage(): React.JSX.Element {
   return (
     <AuthLayout
       title="登录"
-      subtitle="欢迎回来，接着记你的账。"
       footer={
         <>
           还没有账号？{" "}
           <Link className="font-medium text-brand-dark hover:underline" to="/register">
-            用邀请码注册
+            使用邀请码注册
           </Link>
         </>
       }
     >
+      {sessionRevoked ? (
+        <Alert tone="info">该账号已在其它设备上登录，本设备的登录状态已失效。</Alert>
+      ) : null}
+
       <form className="flex flex-col gap-5" onSubmit={(event) => void submit(event)}>
         {error ? <Alert>{error}</Alert> : null}
 
@@ -82,11 +85,11 @@ export function LoginPage(): React.JSX.Element {
         </Button>
       </form>
 
-      <p className="text-center text-sm">
+      <div className="text-center text-sm">
         <Link className="text-muted transition hover:text-ink" to="/recover">
-          忘记密码了？
+          忘记密码
         </Link>
-      </p>
+      </div>
     </AuthLayout>
   );
 }

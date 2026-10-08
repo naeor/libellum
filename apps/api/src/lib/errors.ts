@@ -76,7 +76,7 @@ export function registerErrorHandlers(app: FastifyInstance): void {
 
     if (statusCode >= 500) {
       request.log.error({ err: error }, "unhandled error");
-      void reply.status(500).send({ code: "internal_error", message: "服务器出错了，请稍后再试" });
+      void reply.status(500).send({ code: "internal_error", message: "服务暂时不可用，请稍后再试。" });
       return;
     }
 

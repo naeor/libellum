@@ -13,7 +13,11 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
 import { LoginThrottle } from "../auth/login-throttle.js";
 import { getDummyHash, hashPassword, verifyPassword } from "../auth/password.js";
-import { generateRecoveryCode, normalizeRecoveryCode } from "../auth/recovery-code.js";
+import {
+  generateAccountNumber,
+  generateRecoveryCode,
+  normalizeRecoveryCode,
+} from "../auth/recovery-code.js";
 import {
   SESSION_COOKIE_NAME,
   SESSION_TTL_MS,
@@ -38,6 +42,7 @@ interface RequestMeta {
 
 type UserRow = {
   id: string;
+  accountNumber: string;
   username: string;
   displayName: string;
   isDemo: boolean;
@@ -47,11 +52,39 @@ type UserRow = {
 function toSessionUser(user: UserRow): SessionUser {
   return {
     id: user.id,
+    accountNumber: user.accountNumber,
     username: user.username,
     displayName: user.displayName,
     isDemo: user.isDemo,
     createdAt: user.createdAt.toISOString(),
   };
+}
+
+/**
+ * Account numbers are unique, so a collision needs a retry rather than an
+ * error. With 40 bits of randomness a clash is vanishingly unlikely, but
+ * "unlikely" is not "impossible" and the unique index would otherwise reject
+ * an otherwise valid signup.
+ */
+async function allocateAccountNumber(tx: {
+  user: {
+    findUnique(args: {
+      where: { accountNumber: string };
+      select: { id: true };
+    }): Promise<{ id: string } | null>;
+  };
+}): Promise<string> {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const candidate = generateAccountNumber();
+    const taken = await tx.user.findUnique({
+      where: { accountNumber: candidate },
+      select: { id: true },
+    });
+
+    if (!taken) return candidate;
+  }
+
+  throw new Error("could not allocate a unique account number");
 }
 
 function setSessionCookie(reply: FastifyReply, token: string, secure: boolean): void {
@@ -136,7 +169,7 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
 
     if (retryAfter > 0) {
       reply.header("retry-after", String(retryAfter));
-      throw tooManyRequests("too_many_attempts", `尝试次数过多，请 ${String(retryAfter)} 秒后再试`);
+      throw tooManyRequests("too_many_attempts", `尝试次数过多，请 ${String(retryAfter)} 秒后再试。`);
     }
   }
 
@@ -149,22 +182,25 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
 
     const invite = await prisma.registrationInvite.findUnique({ where: { code: inviteCode } });
 
-    if (!invite) throw badRequest("invite_invalid", "邀请码无效");
-    if (invite.usedAt) throw badRequest("invite_used", "这个邀请码已经被用过了");
+    if (!invite) throw badRequest("invite_invalid", "邀请码无效。");
+    if (invite.usedAt) throw badRequest("invite_used", "该邀请码已被使用。");
     if (invite.expiresAt && invite.expiresAt.getTime() <= Date.now()) {
-      throw badRequest("invite_expired", "这个邀请码已过期");
+      throw badRequest("invite_expired", "该邀请码已过期。");
     }
 
     const taken = await prisma.user.findUnique({ where: { username: body.username } });
-    if (taken) throw conflict("username_taken", "这个用户名已经被占用了");
+    if (taken) throw conflict("username_taken", "该用户名已被占用。");
 
     const passwordHash = await hashPassword(body.password);
     const recoveryCode = generateRecoveryCode();
     const recoveryCodeHash = await hashPassword(normalizeRecoveryCode(recoveryCode));
 
     const user = await prisma.$transaction(async (tx) => {
+      const accountNumber = await allocateAccountNumber(tx);
+
       const created = await tx.user.create({
         data: {
+          accountNumber,
           username: body.username,
           displayName: body.displayName,
           passwordHash,
@@ -180,7 +216,7 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
       });
 
       if (claimed.count !== 1) {
-        throw badRequest("invite_used", "这个邀请码已经被用过了");
+        throw badRequest("invite_used", "该邀请码已被使用。");
       }
 
       return created;
@@ -213,7 +249,7 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
 
     if (!user || !passwordOk) {
       throttle.recordFailure(keys);
-      throw unauthorized("invalid_credentials", "用户名或密码不正确");
+      throw unauthorized("invalid_credentials", "用户名或密码不正确。");
     }
 
     throttle.recordSuccess(keys);

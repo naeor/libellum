@@ -89,10 +89,14 @@ describe("POST /api/v1/auth/register", () => {
     await seedInvite();
 
     const response = await register(app);
-    const body = response.json() as { user: { username: string }; recoveryCode: string };
+    const body = response.json() as {
+      user: { username: string; accountNumber: string };
+      recoveryCode: string;
+    };
 
     expect(response.statusCode).toBe(201);
     expect(body.user.username).toBe(USERNAME);
+    expect(body.user.accountNumber).toMatch(/^LB-[0-9A-Z]{4}-[0-9A-Z]{4}$/);
     expect(body.recoveryCode).toMatch(/^[0-9A-Z]{4}(-[0-9A-Z]{4}){3}$/);
     expect(cookieFrom(response.headers)).toContain("libellum_session=");
 
@@ -100,6 +104,23 @@ describe("POST /api/v1/auth/register", () => {
     const stored = await prisma.user.findUniqueOrThrow({ where: { username: USERNAME } });
     expect(stored.recoveryCodeHash).not.toBeNull();
     expect(stored.recoveryCodeHash).not.toContain(body.recoveryCode);
+  });
+
+  it("gives every account a different account number", async () => {
+    await seedInvite();
+    await seedInvite("TESTINVITE04");
+
+    const first = await register(app);
+    const second = await register(app, {
+      ...REGISTER_BODY,
+      inviteCode: "TESTINVITE04",
+      username: "baba",
+    });
+
+    const firstNumber = (first.json() as { user: { accountNumber: string } }).user.accountNumber;
+    const secondNumber = (second.json() as { user: { accountNumber: string } }).user.accountNumber;
+
+    expect(firstNumber).not.toBe(secondNumber);
   });
 
   it("refuses to reuse an invite code", async () => {
