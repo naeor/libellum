@@ -88,7 +88,11 @@
 |---|---|---|---|---|
 | **约 15:08** | **环境** | **配置 git 提交身份** | `user.name=naeor`，`user.email=339472656+naeor@users.noreply.github.com`。用 GitHub 的 **noreply 邮箱**：提交不暴露真实邮箱，GitHub 仍把提交算到账号上（GitHub 官方提示"命令行 Git 操作必须自行设置邮箱才能使用私有邮箱"） | `git config --global --list`（精确） |
 | 约 15:09 | 环境 | 后台安装 GitHub CLI | `winget install --id GitHub.cli -e`，用于一条命令建仓库、发 Release | winget 输出 |
-| **约 15:10** | **文件** | **创建 `docs/DEVLOG.md`（本文件）** | 按用户要求，把本日全部改动按时间顺序详细记录，含时间、类型、改了什么、为什么、验证方式 | 本文件 |
+| **15:08:36** | **文件** | **创建 `docs/DEVLOG.md`（本文件）** | 按用户要求，把本日全部改动按时间顺序详细记录，含时间、类型、改了什么、为什么、验证方式 | 文件 CreationTime（精确） |
+| 约 15:08:50 | 环境 | GitHub CLI 安装完成 | gh **2.102.0**（2026-09-30 版） | `gh --version` |
+| 约 15:08:55 | 环境 | 发起 GitHub 设备码授权 | `gh auth login --web`（在非交互终端下同样可用），输出一次性设备码与 `https://github.com/login/device`，等待用户在浏览器确认。**设备码属一次性凭据，本日志不记录** | gh 输出 |
+| **15:09:06** | **文件** | 生成 `开发日志.docx/pdf` | 开发日志可读版；**17 页**，结构检查通过、版面零溢出 | 文件时间戳（精确） |
+| **15:09:20** | **版本** | **首次提交 `8689706107`** | `chore: bootstrap project docs, tooling and dev log` —— 10 个文件、2105 行新增。提交前用 `git check-ignore` + `git add --dry-run` **双重确认 `.env` / `.docx` / `.pdf` 均未被提交** | git commit 对象（精确） |
 
 ---
 
@@ -143,9 +147,19 @@
 | 14:14:45 | 14:14:45 | `.gitattributes` | 换行符与二进制文件规则 |
 | 14:14:45 | 14:14:57 | `.gitignore` | 排除依赖/构建产物/密钥/导出件 |
 | 14:14:45 | 14:14:45 | `.env.example` | 环境变量模板（可进仓库） |
-| 约 15:10 | — | `docs/DEVLOG.md` | 本开发日志 |
+| 15:08:36 | 15:09:27 | `docs/DEVLOG.md` | 本开发日志 |
+| 15:09:06 | 15:09:06 | `docs/开发日志.docx` | 开发日志 Word 版（**不进仓库**） |
+| 15:09:06 | 15:09:08 | `docs/开发日志.pdf` | 开发日志 PDF 版（**不进仓库**） |
 
-> 项目根目录 `Desktop\工作\记账程序` 创建于 **2026-10-08 13:08:01**。
+> 项目根目录 `Desktop\工作\记账程序` 创建于 **2026-10-08 13:08:01**；项目根目录下的 `.git` 由 `git init` 于约 14:15 建立。
+
+### 4.1 提交历史
+
+| 提交 | 时间 | 信息 | 内容 |
+|---|---|---|---|
+| `8689706107` | 2026-10-08 15:09:20 | `chore: bootstrap project docs, tooling and dev log` | 10 个文件 / 2105 行：`.env.example`、`.gitattributes`、`.gitignore`、`docs/DEVLOG.md`、`docs/PLAN.md`、`docs/ROADMAP.md`、`tools/` 下 4 个脚本 |
+
+> 作者身份：`naeor <339472656+naeor@users.noreply.github.com>`（使用 GitHub noreply 邮箱，提交中不暴露真实邮箱）
 
 ---
 
@@ -210,7 +224,7 @@
 
 | 优先级 | 事项 | 状态 |
 |---|---|---|
-| 1 | 建 GitHub 公开仓库 `naeor/libellum` 并首次提交推送 | ⏳ 待执行（GitHub CLI 安装中） |
+| 1 | 建 GitHub 公开仓库 `naeor/libellum` 并推送 | 🔄 本地首次提交已完成（`8689706`）；等待 GitHub 设备码授权后建仓库并推送 |
 | 2 | S1 骨架：pnpm workspace（`apps/web`、`apps/api`、`packages/shared`）、Fastify `/api/v1/health`、Prisma 首个迁移（`users`/`sessions`）、GitHub Actions CI | ⏳ 下一步 |
 | 3 | 注册域名 `libellum.app` | 计划在 S7 前完成 |
 | 4 | 购买腾讯云香港轻量 2核2G（¥54/月 那款） | 计划在 S7 前完成 |
