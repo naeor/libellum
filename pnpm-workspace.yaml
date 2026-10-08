@@ -2,12 +2,14 @@ packages:
   - "apps/*"
   - "packages/*"
 
-# pnpm 10+ does not run dependency install scripts by default (security).
-# These packages genuinely need their build scripts, so they are explicitly allowed.
-onlyBuiltDependencies:
-  - "@prisma/client"
-  - "@prisma/engines"
-  - prisma
-  - esbuild
-  - workerd
-  - sharp
+# pnpm does not run dependency install scripts by default (supply-chain safety).
+# Each package listed below needs its install script for this project to work;
+# approving them is also what lets `pnpm install --frozen-lockfile` succeed in CI.
+#
+# NOTE: the key is `allowBuilds` in pnpm 12. The older `onlyBuiltDependencies`
+# name was removed and is silently ignored, which shows up as
+# ERR_PNPM_IGNORED_BUILDS during install.
+allowBuilds:
+  "@prisma/engines": true
+  esbuild: true
+  prisma: true
