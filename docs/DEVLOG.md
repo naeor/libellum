@@ -1,7 +1,7 @@
 # Libellum 开发日志（DEVLOG）
 
 > **项目**：Libellum —— 开源、免费的记账 Web 应用
-> **仓库**：`github.com/naeor/libellum`（待创建）
+> **仓库**：<https://github.com/naeor/libellum>（公开，创建于 2026-10-08 15:11:48）
 > **本地路径**：`C:\Users\ZhuanZ（无密码）\Desktop\工作\记账程序`
 > **日志起始**：2026-10-08
 
@@ -93,6 +93,12 @@
 | 约 15:08:55 | 环境 | 发起 GitHub 设备码授权 | `gh auth login --web`（在非交互终端下同样可用），输出一次性设备码与 `https://github.com/login/device`，等待用户在浏览器确认。**设备码属一次性凭据，本日志不记录** | gh 输出 |
 | **15:09:06** | **文件** | 生成 `开发日志.docx/pdf` | 开发日志可读版；**17 页**，结构检查通过、版面零溢出 | 文件时间戳（精确） |
 | **15:09:20** | **版本** | **首次提交 `8689706107`** | `chore: bootstrap project docs, tooling and dev log` —— 10 个文件、2105 行新增。提交前用 `git check-ignore` + `git add --dry-run` **双重确认 `.env` / `.docx` / `.pdf` 均未被提交** | git commit 对象（精确） |
+| **15:10:06** | **版本** | 第二次提交 `fb9071f` | `docs: record bootstrap commit and GitHub auth in dev log`（+18 −4 行）：把首次提交哈希与授权过程补入本日志 | git commit 对象（精确） |
+| **15:11:38** | **环境** | **GitHub 设备码授权完成** | 用户在浏览器确认设备码后，gh 将凭据写入系统 keyring；账号 `naeor`，token 权限 `repo` / `gist` / `read:org`，git 协议 https | `gh auth status` + `hosts.yml` 时间戳（精确） |
+| **15:11:48** | **版本/环境** | **创建公开仓库** | `gh repo create libellum --public --source . --push` → <https://github.com/naeor/libellum>，默认分支 `main`，可见性 PUBLIC | GitHub API `created_at`（精确） |
+| **15:11:54** | **版本** | **首次推送完成** | 两个提交推送到远程 `main`；随后设置仓库描述与 **11 个话题标签**；远程文件树核对确认**不含 `.env`、不含 docx/pdf** | GitHub API `pushed_at` + 文件树接口（精确） |
+| **15:12:41** | **文件** | 创建 `LICENSE` | AGPL-3.0 官方全文（34,526 字节），经 GitHub Licenses API 获取，**未改动一字**；版权声明写在 README 而不去改动许可证正文 | 文件时间戳（精确） |
+| **15:12:54** | **文件** | 创建 `README.md` + `README.zh-CN.md` | 公开仓库的门面：英文主文档 + 中文版。明确标注「早期开发中、尚不可部署」以免误导；含名字来历（liber = 书/自由）、技术栈、文档索引、隐私声明、AGPL 释义 | 文件时间戳（精确） |
 
 ---
 
@@ -150,6 +156,9 @@
 | 15:08:36 | 15:09:27 | `docs/DEVLOG.md` | 本开发日志 |
 | 15:09:06 | 15:09:06 | `docs/开发日志.docx` | 开发日志 Word 版（**不进仓库**） |
 | 15:09:06 | 15:09:08 | `docs/开发日志.pdf` | 开发日志 PDF 版（**不进仓库**） |
+| 15:12:41 | 15:12:41 | `LICENSE` | AGPL-3.0 官方全文（34.5 KB，未改动） |
+| 15:12:54 | 15:12:54 | `README.md` | 英文主 README（公开仓库门面） |
+| 15:12:54 | 15:12:54 | `README.zh-CN.md` | 中文 README |
 
 > 项目根目录 `Desktop\工作\记账程序` 创建于 **2026-10-08 13:08:01**；项目根目录下的 `.git` 由 `git init` 于约 14:15 建立。
 
@@ -158,8 +167,12 @@
 | 提交 | 时间 | 信息 | 内容 |
 |---|---|---|---|
 | `8689706107` | 2026-10-08 15:09:20 | `chore: bootstrap project docs, tooling and dev log` | 10 个文件 / 2105 行：`.env.example`、`.gitattributes`、`.gitignore`、`docs/DEVLOG.md`、`docs/PLAN.md`、`docs/ROADMAP.md`、`tools/` 下 4 个脚本 |
+| `fb9071f` | 2026-10-08 15:10:06 | `docs: record bootstrap commit and GitHub auth in dev log` | 1 个文件 / +18 −4 行：补入首次提交哈希与授权过程 |
 
 > 作者身份：`naeor <339472656+naeor@users.noreply.github.com>`（使用 GitHub noreply 邮箱，提交中不暴露真实邮箱）
+> 远程仓库：<https://github.com/naeor/libellum>（公开；创建 15:11:48，首次推送 15:11:54）
+> 本表记录"到最近一次提交为止"的历史；**最新一次提交本身会在下一次提交时补入**（避免提交哈希自我引用）。
+> 话题标签：`bookkeeping` `expense-tracker` `family-finance` `fastify` `open-source` `personal-finance` `postgresql` `prisma` `react` `self-hosted` `typescript`
 
 ---
 
@@ -224,7 +237,7 @@
 
 | 优先级 | 事项 | 状态 |
 |---|---|---|
-| 1 | 建 GitHub 公开仓库 `naeor/libellum` 并推送 | 🔄 本地首次提交已完成（`8689706`）；等待 GitHub 设备码授权后建仓库并推送 |
+| 1 | 建 GitHub 公开仓库 `naeor/libellum` 并推送 | ✅ 已完成 15:11 —— <https://github.com/naeor/libellum>（公开） |
 | 2 | S1 骨架：pnpm workspace（`apps/web`、`apps/api`、`packages/shared`）、Fastify `/api/v1/health`、Prisma 首个迁移（`users`/`sessions`）、GitHub Actions CI | ⏳ 下一步 |
 | 3 | 注册域名 `libellum.app` | 计划在 S7 前完成 |
 | 4 | 购买腾讯云香港轻量 2核2G（¥54/月 那款） | 计划在 S7 前完成 |
