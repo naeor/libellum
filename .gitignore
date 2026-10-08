@@ -1,0 +1,53 @@
+# ---- 依赖 ----
+node_modules/
+.pnpm-store/
+
+# ---- 构建产物 ----
+dist/
+build/
+*.tsbuildinfo
+
+# ---- 环境变量与密钥：绝对不要提交 ----
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+
+# ---- 数据库与备份 ----
+pgdata/
+backups/
+*.sql.gz
+*.dump
+
+# ---- 上传的小票图片（本地开发）----
+uploads/
+
+# ---- 日志与临时文件 ----
+*.log
+npm-debug.log*
+pnpm-debug.log*
+logs/
+tmp/
+
+# ---- 测试与覆盖率 ----
+coverage/
+.nyc_output/
+
+# ---- 编辑器与系统 ----
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---- 本项目文档流水线的临时产物 ----
+docs/_pv_*/
+docs/_c*.json
+
+# ---- 文档导出产物（Markdown 是源文件，导出件不必进仓库）----
+# 如果你希望简历里直接看到 PDF，把下面两行删掉即可
+docs/*.docx
+docs/*.pdf
