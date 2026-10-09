@@ -5,6 +5,7 @@ import {
   type CreateTransactionInput,
   type LedgerMetaResponse,
   type MeResponse,
+  type RecognizeResponse,
   type StatsQuery,
   type StatsResponse,
   type SummaryResponse,
@@ -71,6 +72,32 @@ export function useUpdatePreferences() {
     onSuccess: (data) => {
       client.setQueryData(["me"], data);
       void client.invalidateQueries({ queryKey: ["me"] });
+    },
+  });
+}
+
+/**
+ * Send screenshots to be read.
+ *
+ * A mutation rather than a query, even though it looks like a read: it sends
+ * files, the server does real work, and nothing about it should be cached or
+ * retried behind the user's back. The same screenshot must not be recognised
+ * twice because a cache decided to refetch.
+ *
+ * The deadline is generous because five screenshots take several seconds on
+ * the server — the recogniser runs on the CPU, one image at a time.
+ */
+export function useRecognize(): UseMutationResult<RecognizeResponse, Error, File[]> {
+  return useMutation({
+    mutationFn: (files: File[]) => {
+      const form = new FormData();
+      for (const file of files) form.append("file", file);
+
+      return apiFetch<RecognizeResponse>("/recognize", {
+        method: "POST",
+        formData: form,
+        timeoutMs: 90_000,
+      });
     },
   });
 }

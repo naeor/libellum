@@ -19,6 +19,16 @@ interface RequestOptions {
   readonly body?: unknown;
   /** Query parameters; `undefined` values are dropped. */
   readonly query?: Record<string, string | number | undefined>;
+  /**
+   * A multipart body, sent as-is.
+   *
+   * The `Content-Type` header is deliberately left unset for these: only the
+   * browser knows the boundary it generated, and setting the header by hand
+   * produces a request the server cannot parse.
+   */
+  readonly formData?: FormData;
+  /** Longer deadline for uploads, which are slower than a JSON call. */
+  readonly timeoutMs?: number;
 }
 
 function buildUrl(path: string, query: RequestOptions["query"]): string {
@@ -63,7 +73,7 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
   const controller = new AbortController();
   const timer = window.setTimeout(() => {
     controller.abort();
-  }, REQUEST_TIMEOUT_MS);
+  }, options.timeoutMs ?? REQUEST_TIMEOUT_MS);
 
   const init: RequestInit = {
     method: options.method ?? "GET",
@@ -72,7 +82,10 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
     signal: controller.signal,
   };
 
-  if (options.body !== undefined) {
+  if (options.formData !== undefined) {
+    // No content-type: the browser adds one with the boundary it chose.
+    init.body = options.formData;
+  } else if (options.body !== undefined) {
     init.headers = { ...init.headers, "content-type": "application/json" };
     init.body = JSON.stringify(options.body);
   }

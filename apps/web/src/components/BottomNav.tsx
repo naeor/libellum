@@ -97,6 +97,8 @@ interface EntryAction {
   readonly icon: ReactNode;
   readonly available: boolean;
   readonly hint?: string;
+  /** Where the card goes, when it goes anywhere. */
+  readonly to?: string;
 }
 
 /**
@@ -109,8 +111,8 @@ interface EntryAction {
  */
 const ENTRY_ACTIONS: readonly EntryAction[] = [
   { label: "语音", icon: <MicrophoneIcon className="size-6" />, available: false, hint: "即将开放" },
-  { label: "手动", icon: <PenIcon className="size-6" />, available: true },
-  { label: "拍照", icon: <CameraIcon className="size-6" />, available: false, hint: "即将开放" },
+  { label: "手动", icon: <PenIcon className="size-6" />, available: true, to: "/add" },
+  { label: "拍照", icon: <CameraIcon className="size-6" />, available: true, to: "/scan" },
 ];
 
 /**
@@ -156,7 +158,13 @@ export function BottomNav({
           expanded ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-2 opacity-0"
         }`}
       >
-        <ul className="mx-auto flex w-full max-w-md items-end justify-center gap-3 px-6 pb-3">
+        {/*
+          pb-10 rather than a small gap: the cross button is raised 32px above
+          the bar, so a row that sits close to the bar would collide with it.
+          This clears the button's top by about 8px, which is also what makes
+          the row look deliberately placed rather than crammed in.
+        */}
+        <ul className="mx-auto flex w-full max-w-md items-end justify-center gap-3 px-6 pb-10">
           {ENTRY_ACTIONS.map((action) => (
             <li key={action.label}>
               <button
@@ -164,7 +172,7 @@ export function BottomNav({
                 disabled={!action.available}
                 tabIndex={expanded ? 0 : -1}
                 onClick={() => {
-                  if (action.label === "手动") onNavigate("/add");
+                  if (action.to !== undefined) onNavigate(action.to);
                 }}
                 title={action.available ? action.label : `${action.label}记账，${action.hint ?? ""}`}
                 aria-label={
