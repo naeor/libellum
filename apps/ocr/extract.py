@@ -66,7 +66,18 @@ REFUND_MARKERS = ("退款状态", "退款成功", "已退款", "退款方式", "
 # you paid; on money received, 付款方 is the person who paid you. Reading them
 # as a direction made an Alipay payment to a game company look like income,
 # because its bill screen has a field called 收款方全称.
-INCOME_MARKERS = ("收款成功", "已到账", "对方已收", "收款到账")
+#
+# 你已收款 came from an Android screenshot, whose wording differs from the
+# iPhone one for the same event.
+INCOME_MARKERS = (
+    "收款成功",
+    "已到账",
+    "对方已收",
+    "收款到账",
+    "你已收款",
+    "已收款",
+    "资金已存入",
+)
 
 # Distinctive strings no other app prints. Relying on the word 转账 was wrong:
 # it appears in a WeChat refund titled 转账-退款.
@@ -74,6 +85,9 @@ CHANNEL_MARKERS: tuple[tuple[str, str], ...] = (
     ("财付通", "WECHAT"),
     ("微信支付", "WECHAT"),
     ("对订单有疑惑", "WECHAT"),
+    # Android WeChat bill screens carry neither 财付通 nor 微信支付. 零钱 is
+    # WeChat Wallet's own word for its balance; Alipay calls its equivalent 余额.
+    ("零钱", "WECHAT"),
     ("支付宝", "ALIPAY"),
     ("芝麻", "ALIPAY"),
     ("账单管理", "ALIPAY"),

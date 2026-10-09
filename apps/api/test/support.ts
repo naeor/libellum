@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 
-import { buildApp } from "../src/app.js";
+import { buildApp, type BuildAppOptions } from "../src/app.js";
 import { createPrismaClient } from "../src/db.js";
 
 /**
@@ -12,7 +12,7 @@ import { createPrismaClient } from "../src/db.js";
  */
 export const prisma = createPrismaClient(process.env["DATABASE_URL"] ?? "");
 
-export function makeApp(): FastifyInstance {
+export function makeApp(overrides: Partial<BuildAppOptions> = {}): FastifyInstance {
   return buildApp({
     version: "0.1.0-test",
     checkDatabase: async () => true,
@@ -21,6 +21,7 @@ export function makeApp(): FastifyInstance {
     cookieSecure: false,
     // High enough that unrelated tests never trip the lockout.
     loginThrottleOptions: { maxFailures: 50, lockoutMs: 1_000, windowMs: 60_000 },
+    ...overrides,
   });
 }
 

@@ -1,4 +1,6 @@
 import cookie from "@fastify/cookie";
+import multipart from "@fastify/multipart";
+import { MAX_RECOGNIZE_BYTES, MAX_RECOGNIZE_IMAGES } from "@libellum/shared";
 import rateLimit from "@fastify/rate-limit";
 import Fastify, { type FastifyInstance, type FastifyServerOptions } from "fastify";
 
@@ -6,10 +8,12 @@ import { createRequireAuth } from "./auth/guard.js";
 import { LoginThrottle, type LoginThrottleOptions } from "./auth/login-throttle.js";
 import type { PrismaClient } from "./db.js";
 import { forbidden, registerErrorHandlers } from "./lib/errors.js";
+import { OcrService } from "./ocr/client.js";
 import { registerAuthRoutes } from "./routes/auth.js";
 import { registerClassificationRoutes } from "./routes/classification.js";
 import { registerHealthRoute, type HealthDeps } from "./routes/health.js";
 import { registerLedgerRoutes } from "./routes/ledger.js";
+import { registerRecognizeRoutes } from "./routes/recognize.js";
 import { registerStatsRoutes } from "./routes/stats.js";
 import { registerTransactionRoutes } from "./routes/transactions.js";
 
@@ -20,6 +24,11 @@ export interface BuildAppOptions extends HealthDeps {
   readonly webOrigin?: string;
   readonly cookieSecure?: boolean;
   readonly loginThrottleOptions?: LoginThrottleOptions;
+  /**
+   * Screenshot recogniser. Supplied by tests as a stub; the real one spawns a
+   * Python process, which is not something a unit test should depend on.
+   */
+  readonly ocr?: Pick<OcrService, "recognize" | "stop">;
 }
 
 const DEFAULT_THROTTLE: LoginThrottleOptions = {
@@ -43,6 +52,20 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   registerErrorHandlers(app);
 
   void app.register(cookie);
+  // Screenshots are read into memory; the limits are declared here as well so
+  // an oversized upload is refused while it is still arriving rather than
+  // after it has all been buffered.
+  //
+  // The file count is a backstop, deliberately higher than the limit the route
+  // enforces. The plugin's own error is a bare 413 with no explanation; the
+  // route can say how many screenshots are allowed, which is the part a user
+  // can act on. This still stops a hundred-file upload before it is buffered.
+  void app.register(multipart, {
+    limits: {
+      fileSize: MAX_RECOGNIZE_BYTES,
+      files: MAX_RECOGNIZE_IMAGES + 5,
+    },
+  });
   void app.register(rateLimit, {
     max: 100,
     timeWindow: "1 minute",
@@ -88,6 +111,23 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   if (options.prisma) {
     const requireAuth = createRequireAuth(options.prisma);
 
+    /**
+     * Started on first use, not here.
+     *
+     * The recogniser holds a few hundred megabytes of models. A deployment
+     * that never uploads a screenshot should not pay for that, and the two
+     * seconds of loading are better spent once, behind the first request,
+     * than on every server start.
+     *
+     * Injectable so tests can supply a stub. Loading real models in every test
+     * run would add a minute to the suite and couple the API's tests to a
+     * Python environment being installed.
+     */
+    const ocr = options.ocr ?? new OcrService();
+    app.addHook("onClose", () => {
+      ocr.stop();
+    });
+
     registerAuthRoutes(app, {
       prisma: options.prisma,
       throttle: new LoginThrottle(options.loginThrottleOptions ?? DEFAULT_THROTTLE),
@@ -98,6 +138,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     registerTransactionRoutes(app, { prisma: options.prisma, requireAuth });
     registerStatsRoutes(app, { prisma: options.prisma, requireAuth });
     registerClassificationRoutes(app, { prisma: options.prisma, requireAuth });
+    registerRecognizeRoutes(app, { requireAuth, ocr });
   }
 
   return app;

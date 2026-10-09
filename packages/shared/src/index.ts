@@ -7,6 +7,25 @@ export {
 } from "./money.js";
 
 export {
+  MAX_RECOGNIZE_BYTES,
+  MAX_RECOGNIZE_IMAGES,
+  OCR_CHANNELS,
+  OCR_CHANNEL_LABELS,
+  RECOGNIZE_MIME_TYPES,
+  ocrChannelSchema,
+  ocrDraftSchema,
+  ocrItemResultSchema,
+  recognizeResponseSchema,
+} from "./ocr.js";
+
+export type {
+  OcrChannel,
+  OcrDraft,
+  OcrItemResult,
+  RecognizeResponse,
+} from "./ocr.js";
+
+export {
   MAX_STATS_DAYS,
   RANGE_LABELS,
   STATS_BUCKETS,
