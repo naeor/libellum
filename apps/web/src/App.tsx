@@ -1,4 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { Suspense, lazy } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router";
 
 import { AuthProvider, useAuth } from "./auth/AuthProvider.js";
@@ -18,6 +19,18 @@ import { RecoverPage } from "./pages/RecoverPage.js";
 import { RegisterPage } from "./pages/RegisterPage.js";
 import { RegenerateRecoveryCodePage } from "./pages/RegenerateRecoveryCodePage.js";
 import { SettingsPage } from "./pages/SettingsPage.js";
+
+/**
+ * The chart foundation's development harness.
+ *
+ * `import.meta.env.DEV` is replaced with `false` in a production build, so the
+ * dynamic import is eliminated and this page never reaches the shipped bundle.
+ * It exists to look at the drawing primitives under awkward data, which is far
+ * cheaper than discovering those cases on a phone.
+ */
+const ChartLabPage = import.meta.env.DEV
+  ? lazy(async () => import("./pages/ChartLabPage.js").then((module) => ({ default: module.ChartLabPage })))
+  : null;
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -124,6 +137,17 @@ function AppRoutes(): React.JSX.Element {
       <Route path="/tags" element={<RequireAuth><TagsPage /></RequireAuth>} />
       <Route path="/books" element={<RequireAuth><BooksPage /></RequireAuth>} />
       <Route path="/about" element={<RequireAuth><AboutPage /></RequireAuth>} />
+
+      {ChartLabPage === null ? null : (
+        <Route
+          path="/lab/charts"
+          element={
+            <Suspense fallback={<Splash />}>
+              <ChartLabPage />
+            </Suspense>
+          }
+        />
+      )}
 
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
