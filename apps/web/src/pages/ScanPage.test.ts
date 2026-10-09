@@ -104,6 +104,22 @@ describe("draftOf", () => {
 });
 
 describe("foldDrafts", () => {
+  it("handles a single screenshot, which is now the common case", () => {
+    // The mode question is only asked when there is more than one screenshot,
+    // so one screenshot goes down this path with the default mode. It must
+    // come out unchanged.
+    const folded = foldDrafts([item({ amount: "328.00" })], CATEGORIES, METHODS, null);
+
+    expect(folded.amount).toBe("328.00");
+    expect(folded.currency).toBe("CNY");
+  });
+
+  it("handles a single yen screenshot without inventing decimals", () => {
+    const folded = foldDrafts([item({ amount: "1250", currency: "JPY" })], CATEGORIES, METHODS, null);
+
+    expect(folded.amount).toBe("1250");
+  });
+
   it("adds up several proofs of one purchase", () => {
     const folded = foldDrafts(
       [item({ amount: "0.10" }), item({ amount: "0.20" }), item({ amount: "30.00" })],

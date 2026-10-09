@@ -394,25 +394,37 @@ function PickStep({
         </ul>
       )}
 
-      <section className="flex flex-col gap-2">
-        <h2 className="text-xs text-muted">这些截图怎么算</h2>
-        <div className="flex flex-col gap-2">
-          <ModeOption
-            mode="single"
-            current={mode}
-            title="同一笔消费，分几张凭证"
-            hint="金额相加，只核对一次"
-            onSelect={onMode}
-          />
-          <ModeOption
-            mode="batch"
-            current={mode}
-            title="几笔不同的消费"
-            hint="每张单独核对一次"
-            onSelect={onMode}
-          />
-        </div>
-      </section>
+      {/*
+        Only asked when there is something to choose. With one screenshot both
+        answers produce the same single review, so the question is not a
+        decision — it is a step the user has to get past before they can do the
+        thing they came for. A question with only one answer should not be
+        asked.
+
+        The default stands when the section is hidden, so nothing downstream
+        has to know whether it was shown.
+      */}
+      {files.length > 1 ? (
+        <section className="flex flex-col gap-2">
+          <h2 className="text-xs text-muted">这些截图怎么算</h2>
+          <div className="flex flex-col gap-2">
+            <ModeOption
+              mode="single"
+              current={mode}
+              title="同一笔消费，分几张凭证"
+              hint="金额相加，只核对一次"
+              onSelect={onMode}
+            />
+            <ModeOption
+              mode="batch"
+              current={mode}
+              title="几笔不同的消费"
+              hint="每张单独核对一次"
+              onSelect={onMode}
+            />
+          </div>
+        </section>
+      ) : null}
 
       <Button disabled={files.length === 0 || busy} onClick={onStart}>
         开始识别
