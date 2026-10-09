@@ -18,6 +18,10 @@ datasource db {
   provider = "postgresql"
 }
 
+// ---------------------------------------------------------------------------
+// Accounts
+// ---------------------------------------------------------------------------
+
 model User {
   id           String   @id @default(uuid()) @db.Uuid
   username     String   @unique
@@ -42,6 +46,10 @@ model User {
 
   session Session?
   invite  RegistrationInvite?
+
+  createdBooks    Book[]        @relation("BookCreator")
+  bookMemberships BookMember[]
+  transactions    Transaction[]
 
   @@map("users")
 }
@@ -88,4 +96,200 @@ model RegistrationInvite {
   usedBy User? @relation(fields: [usedByUserId], references: [id], onDelete: SetNull)
 
   @@map("registration_invites")
+}
+
+// ---------------------------------------------------------------------------
+// Books and membership
+// ---------------------------------------------------------------------------
+
+/// A ledger.
+///
+/// v1 creates exactly one per account and never shows a book switcher, but the
+/// table exists from the first migration so that sharing can arrive in v2
+/// without migrating anybody's data.
+model Book {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  createdBy String   @map("created_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  creator        User            @relation("BookCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+  members        BookMember[]
+  categories     Category[]
+  paymentMethods PaymentMethod[]
+  tags           Tag[]
+  transactions   Transaction[]
+
+  @@map("books")
+}
+
+enum BookRole {
+  owner
+  editor
+  viewer
+}
+
+/// Who may touch a book. **This table is the only source of truth for
+/// permission checks** — never the user id sent by a client.
+model BookMember {
+  bookId   String   @map("book_id") @db.Uuid
+  userId   String   @map("user_id") @db.Uuid
+  role     BookRole @default(owner)
+  joinedAt DateTime @default(now()) @map("joined_at") @db.Timestamptz(6)
+
+  book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([bookId, userId])
+  @@index([userId])
+  @@map("book_members")
+}
+
+// ---------------------------------------------------------------------------
+// Classification
+// ---------------------------------------------------------------------------
+
+enum TransactionKind {
+  income
+  expense
+}
+
+/// A category belongs to one kind: income and expense each have their own set,
+/// so switching to 收入 never shows 餐饮.
+///
+/// Categories are archived, never deleted: past entries keep pointing at them
+/// and must still render correctly.
+model Category {
+  id         String          @id @default(uuid()) @db.Uuid
+  bookId     String          @map("book_id") @db.Uuid
+  name       String
+  kind       TransactionKind
+  /// Unused in v1 (no icons by decision), kept so adding them needs no migration.
+  icon       String?
+  sortOrder  Int             @default(0) @map("sort_order")
+  isArchived Boolean         @default(false) @map("is_archived")
+  createdAt  DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  book         Book          @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@unique([bookId, kind, name])
+  @@index([bookId, kind, isArchived])
+  @@map("categories")
+}
+
+/// How a payment was made (WeChat, cash, ...). v1 records this but does not
+/// track balances — balances drag in transfers and reconciliation.
+model PaymentMethod {
+  id         String   @id @default(uuid()) @db.Uuid
+  bookId     String   @map("book_id") @db.Uuid
+  name       String
+  icon       String?
+  sortOrder  Int      @default(0) @map("sort_order")
+  isArchived Boolean  @default(false) @map("is_archived")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  book         Book          @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@unique([bookId, name])
+  @@index([bookId, isArchived])
+  @@map("payment_methods")
+}
+
+/// A cross-category label such as 出差 or 可报销.
+model Tag {
+  id        String   @id @default(uuid()) @db.Uuid
+  bookId    String   @map("book_id") @db.Uuid
+  name      String
+  color     String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  book         Book             @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  transactions TransactionTag[]
+
+  @@unique([bookId, name])
+  @@map("tags")
+}
+
+// ---------------------------------------------------------------------------
+// Entries
+// ---------------------------------------------------------------------------
+
+/// One recorded entry.
+///
+/// Three things here exist purely for the offline-first design in PLAN 3.3:
+///  * `id` is generated by the client, so an entry can be created offline and
+///    keeps the same identity once it reaches the server
+///  * `idempotency_key` makes a retried upload harmless — the same key can only
+///    ever produce one row
+///  * `version` plus `deleted_at` (a tombstone, never a hard delete) let a
+///    device that was offline learn what changed without resurrecting data
+model Transaction {
+  id     String @id @db.Uuid
+  bookId String @map("book_id") @db.Uuid
+  /// Who recorded it.
+  userId String @map("user_id") @db.Uuid
+
+  /// Null means 无分类: the interface always shows a category, but a person is
+  /// never forced to pick one before saving.
+  categoryId      String? @map("category_id") @db.Uuid
+  paymentMethodId String? @map("payment_method_id") @db.Uuid
+
+  /// Stored alongside the category so statistics stay correct even if the
+  /// category is later reclassified or archived.
+  kind TransactionKind
+
+  /// Integer cents. Never a float: 0.1 + 0.2 != 0.3, and a cent of drift is a
+  /// fatal bug in a ledger.
+  amountCents BigInt @map("amount_cents")
+  /// ISO 4217, uppercase. Each entry carries its own currency; v1 reports per
+  /// currency and never converts.
+  currency    String @db.Char(3)
+
+  /// The instant, to the second.
+  occurredAt DateTime @map("occurred_at") @db.Timestamptz(6)
+  /// The local calendar date where the entry was made. Grouping, filtering and
+  /// "this month" all use this, so the server never has to guess a time zone.
+  occurredLocalDate DateTime @map("occurred_local_date") @db.Date
+  /// IANA zone the entry was recorded in, e.g. `Asia/Shanghai`.
+  occurredTz String @map("occurred_tz")
+
+  note String?
+
+  version        Int      @default(1)
+  idempotencyKey String   @unique @map("idempotency_key") @db.Uuid
+
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  book          Book           @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category      Category?      @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  paymentMethod PaymentMethod? @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull)
+  tags          TransactionTag[]
+
+  // The list view always asks for one book's live rows newest-first; cursor
+  // pagination walks (occurred_local_date, created_at, id).
+  @@index([bookId, deletedAt, occurredLocalDate(sort: Desc), createdAt(sort: Desc)])
+  @@index([bookId, kind, occurredLocalDate(sort: Desc)])
+  @@index([categoryId])
+  @@index([paymentMethodId])
+  @@map("transactions")
+}
+
+model TransactionTag {
+  transactionId String @map("transaction_id") @db.Uuid
+  tagId         String @map("tag_id") @db.Uuid
+
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  tag         Tag         @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([transactionId, tagId])
+  @@index([tagId])
+  @@map("transaction_tags")
 }
