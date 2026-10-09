@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 import { BottomNav } from "./BottomNav.js";
 import { SyncBanner } from "./SyncBanner.js";
 import { useGoBack } from "../lib/connectivity.js";
@@ -24,6 +26,20 @@ export function TabPage({
   readonly children: React.ReactNode;
   readonly className?: string;
 }): React.JSX.Element {
+  /**
+   * Whether the three recording cards above the bar are showing.
+   *
+   * Held here rather than inside the bar so the scrolling region can make room
+   * for them. That is the whole advantage of cards above the bar over a control
+   * floating over the list: nothing has to be shoved aside at the last moment,
+   * because the space is reserved before anything is drawn.
+   *
+   * Open by default, so recording something is one tap from the moment the app
+   * loads. Whether it should stay open on later visits is a preference and
+   * belongs in settings — recorded in the backlog.
+   */
+  const [entryOpen, setEntryOpen] = useState(true);
+
   return (
     <div className="flex h-dvh flex-col overflow-hidden">
       <SyncBanner />
@@ -34,7 +50,27 @@ export function TabPage({
         <div className={`mx-auto flex w-full max-w-md flex-col pb-24 ${className}`}>{children}</div>
       </div>
 
-      <BottomNav active={active} onNavigate={onNavigate} />
+      {/*
+        Real space for the cards, not a floating layer over the list.
+        The scroll region shrinks by this much while they are out, so nothing
+        ever passes behind them — they are in the layout rather than on top of
+        it. Animating the height keeps the list from jumping as they fold away.
+      */}
+      <div
+        aria-hidden="true"
+        className={`shrink-0 transition-[height] duration-200 ease-out ${
+          entryOpen ? "h-24" : "h-0"
+        }`}
+      />
+
+      <BottomNav
+        active={active}
+        onNavigate={onNavigate}
+        expanded={entryOpen}
+        onToggle={() => {
+          setEntryOpen((open) => !open);
+        }}
+      />
     </div>
   );
 }

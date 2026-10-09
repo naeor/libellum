@@ -1,35 +1,45 @@
-/**
- * Bottom navigation — 明细 · 分析 · 记账 · 协作者 · 我的.
- *
- * The entry button sits in the middle, larger and in the accent colour,
- * because recording an entry is the one thing this app exists for; every other
- * destination is somewhere you go to look at something.
- *
- * Icons are inline SVG rather than a component library: five icons do not
- * justify a dependency, and stroke-only paths match the flat look.
- */
+import type { ReactNode } from "react";
 
 interface IconProps {
   readonly className?: string;
 }
 
-function ListIcon({ className = "" }: IconProps): React.JSX.Element {
+function ListIcon({ className }: IconProps): React.JSX.Element {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className}>
-      <path d="M4 6h16M4 12h16M4 18h10" strokeLinecap="round" />
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className={className}>
+      <path d="M4 7h16M4 12h16M4 17h10" strokeLinecap="round" />
     </svg>
   );
 }
 
-function ChartIcon({ className = "" }: IconProps): React.JSX.Element {
+function ChartIcon({ className }: IconProps): React.JSX.Element {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className}>
-      <path d="M5 19V10M12 19V5M19 19v-6" strokeLinecap="round" />
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className={className}>
+      <path d="M5 19V11M12 19V5M19 19v-6" strokeLinecap="round" />
     </svg>
   );
 }
 
-function PlusIcon({ className = "" }: IconProps): React.JSX.Element {
+function PeopleIcon({ className }: IconProps): React.JSX.Element {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className={className}>
+      <circle cx="9" cy="8" r="3.2" />
+      <path d="M3.5 19a5.5 5.5 0 0 1 11 0" strokeLinecap="round" />
+      <path d="M16 6.2a3 3 0 0 1 0 5.6M17 19a5.5 5.5 0 0 0-2-4.3" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function PersonIcon({ className }: IconProps): React.JSX.Element {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className={className}>
+      <circle cx="12" cy="8" r="3.4" />
+      <path d="M5.5 20a6.5 6.5 0 0 1 13 0" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+export function PlusIcon({ className }: IconProps): React.JSX.Element {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className={className}>
       <path d="M12 5v14M5 12h14" strokeLinecap="round" />
@@ -37,21 +47,32 @@ function PlusIcon({ className = "" }: IconProps): React.JSX.Element {
   );
 }
 
-function PeopleIcon({ className = "" }: IconProps): React.JSX.Element {
+function MicrophoneIcon({ className }: IconProps): React.JSX.Element {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className}>
-      <circle cx="9" cy="8" r="3.2" />
-      <path d="M3.5 19c0-3 2.5-5 5.5-5s5.5 2 5.5 5" strokeLinecap="round" />
-      <path d="M16 6.5a3 3 0 0 1 0 5.6M17.5 19c0-2-.6-3.6-1.6-4.7" strokeLinecap="round" />
+      <rect x="9" y="3" width="6" height="11" rx="3" />
+      <path d="M5 11a7 7 0 0 0 14 0M12 18v3" strokeLinecap="round" />
     </svg>
   );
 }
 
-function PersonIcon({ className = "" }: IconProps): React.JSX.Element {
+function PenIcon({ className }: IconProps): React.JSX.Element {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className}>
-      <circle cx="12" cy="8" r="3.4" />
-      <path d="M5.5 19.5c0-3.3 2.9-5.6 6.5-5.6s6.5 2.3 6.5 5.6" strokeLinecap="round" />
+      <path d="M4 20h4L19.5 8.5a2.1 2.1 0 0 0-3-3L5 17v3Z" strokeLinejoin="round" />
+      <path d="M14.5 6.5 17.5 9.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function CameraIcon({ className }: IconProps): React.JSX.Element {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className}>
+      <path
+        d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z"
+        strokeLinejoin="round"
+      />
+      <circle cx="12" cy="13" r="3.4" />
     </svg>
   );
 }
@@ -71,12 +92,50 @@ export const TABS: readonly Tab[] = [
   { to: "/me", label: "账户", icon: PersonIcon },
 ];
 
+interface EntryAction {
+  readonly label: string;
+  readonly icon: ReactNode;
+  readonly available: boolean;
+  readonly hint?: string;
+}
+
+/**
+ * The three ways to record something, in the order they appear.
+ *
+ * Voice and camera say they are not ready when pressed rather than being
+ * hidden. A card that looks live and does nothing is worse than one that
+ * admits it is not, and hiding them would make the row's shape change the day
+ * they ship.
+ */
+const ENTRY_ACTIONS: readonly EntryAction[] = [
+  { label: "语音", icon: <MicrophoneIcon className="size-6" />, available: false, hint: "即将开放" },
+  { label: "手动", icon: <PenIcon className="size-6" />, available: true },
+  { label: "拍照", icon: <CameraIcon className="size-6" />, available: false, hint: "即将开放" },
+];
+
+/**
+ * The bottom bar, whose centre button is a switch rather than a destination.
+ *
+ * Pressing it turns the `+` forty-five degrees into an `×` and unfolds three
+ * cards above it. Pressing it again folds them away. The rotation is the whole
+ * animation — a plus rotated forty-five degrees *is* a cross, so there is no
+ * second icon to swap in and nothing to keep in sync.
+ *
+ * The cards sit above the bar rather than floating over the list. That is the
+ * difference between this and the island it replaced: an overlay has to be
+ * given room by shoving content aside, and this simply occupies space nothing
+ * else wanted.
+ */
 export function BottomNav({
   active,
   onNavigate,
+  expanded,
+  onToggle,
 }: {
   readonly active: string;
   readonly onNavigate: (to: string) => void;
+  readonly expanded: boolean;
+  readonly onToggle: () => void;
 }): React.JSX.Element {
   return (
     // Not `fixed`: the frame that owns this bar is the full dynamic viewport
@@ -86,6 +145,43 @@ export function BottomNav({
       aria-label="主导航"
       className="relative z-10 shrink-0 border-t border-line bg-surface pb-[env(safe-area-inset-bottom)]"
     >
+      {/*
+        Kept mounted and animated, rather than added and removed: an element
+        that appears instantly has nothing to animate, and the fade is what
+        makes the row read as coming out of the button.
+      */}
+      <div
+        aria-hidden={!expanded}
+        className={`absolute inset-x-0 bottom-full transition-all duration-200 ease-out ${
+          expanded ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-2 opacity-0"
+        }`}
+      >
+        <ul className="mx-auto flex w-full max-w-md items-end justify-center gap-3 px-6 pb-3">
+          {ENTRY_ACTIONS.map((action) => (
+            <li key={action.label}>
+              <button
+                type="button"
+                disabled={!action.available}
+                tabIndex={expanded ? 0 : -1}
+                onClick={() => {
+                  if (action.label === "手动") onNavigate("/add");
+                }}
+                title={action.available ? action.label : `${action.label}记账，${action.hint ?? ""}`}
+                aria-label={
+                  action.available ? `${action.label}记账` : `${action.label}记账，${action.hint ?? "即将开放"}`
+                }
+                className={`flex w-[4.5rem] flex-col items-center gap-0.5 rounded-2xl bg-brand-soft py-2 text-brand-dark shadow-sm transition ${
+                  action.available ? "active:bg-brand-soft/70" : "opacity-60"
+                }`}
+              >
+                {action.icon}
+                <span className="text-[11px]">{action.label}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+
       <ul className="mx-auto flex w-full max-w-md items-end justify-around px-2">
         {TABS.map((tab) => {
           const isActive = tab.to === active;
@@ -96,16 +192,19 @@ export function BottomNav({
               <li key={tab.to} className="flex-1">
                 <button
                   type="button"
-                  onClick={() => {
-                    onNavigate(tab.to);
-                  }}
-                  aria-label={tab.label}
+                  onClick={onToggle}
+                  aria-expanded={expanded}
+                  aria-label={expanded ? "收起记账方式" : "展开记账方式"}
                   // Raised well above the bar and ringed in the bar's own
                   // colour, so it reads as the one deliberate action rather
                   // than a fifth destination.
                   className="mx-auto -mt-8 mb-2 flex size-16 items-center justify-center rounded-full bg-brand text-white shadow-lg ring-4 ring-surface transition hover:bg-brand-dark"
                 >
-                  <Icon className="size-8" />
+                  <PlusIcon
+                    className={`size-8 transition-transform duration-200 ease-out ${
+                      expanded ? "rotate-45" : "rotate-0"
+                    }`}
+                  />
                 </button>
               </li>
             );
