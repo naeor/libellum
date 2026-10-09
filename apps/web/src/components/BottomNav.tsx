@@ -68,7 +68,7 @@ export const TABS: readonly Tab[] = [
   { to: "/stats", label: "分析", icon: ChartIcon },
   { to: "/add", label: "记账", icon: PlusIcon, primary: true },
   { to: "/collaborators", label: "协作者", icon: PeopleIcon },
-  { to: "/me", label: "我的", icon: PersonIcon },
+  { to: "/me", label: "账户", icon: PersonIcon },
 ];
 
 export function BottomNav({

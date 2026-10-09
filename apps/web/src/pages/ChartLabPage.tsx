@@ -6,6 +6,7 @@ import { CategoryDonut } from "../components/charts/CategoryDonut.js";
 import { ComparisonPanel, YearOverview } from "../components/charts/SummaryPanel.js";
 import { TrendChart } from "../components/charts/TrendChart.js";
 import { EntrySaved } from "../components/EntrySaved.js";
+import { DefaultAvatar } from "../components/DefaultAvatar.js";
 
 /**
  * A development harness — **not a shipped feature**.
@@ -79,6 +80,16 @@ export function ChartLabPage(): React.JSX.Element {
           这个页面只在开发模式下存在，用来确认图表与完成页在异常数据下仍然可读。它不是产品功能，也不需要登录。
         </p>
       </header>
+
+      <Section title="「账户」页头部（头像 + 名字）">
+        <div className="-m-4 overflow-hidden rounded-card">
+          <div className="flex flex-col items-center gap-3 bg-brand px-6 pt-12 pb-10 text-white">
+            <DefaultAvatar />
+            <p className="mt-1 text-xl font-semibold tracking-tight">Tao</p>
+            <p className="text-xs text-white/75">@naeor</p>
+          </div>
+        </div>
+      </Section>
 
       <Section title="记账完成页（保存后出现）">
         <div className="-m-4 overflow-hidden rounded-card">

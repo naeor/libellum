@@ -39,13 +39,15 @@ describe("collaborators copy", () => {
 
 describe("account copy", () => {
   it("separates what may be shared from what must not be", () => {
-    const me = source("../pages/MePage.tsx");
+    // Moved to the profile screen when the account screen was rebuilt, which
+    // this test caught. What matters is the wording, not which file holds it.
+    const profile = source("../pages/ProfilePage.tsx");
 
     // One sentence used to run the two together with a semicolon, which reads
     // as a single thought. They are opposite instructions and are now two.
-    expect(me).toContain("可安全地分享给他人");
-    expect(me).toContain("请勿向任何人透露恢复码");
-    expect(me).not.toContain("恢复码必须保密");
+    expect(profile).toContain("可安全地分享给他人");
+    expect(profile).toContain("请勿向任何人透露恢复码");
+    expect(profile).not.toContain("恢复码必须保密");
   });
 });
 
@@ -66,6 +68,7 @@ describe("register", () => {
       "../pages/StatsPage.tsx",
       "../pages/ManagePages.tsx",
       "../pages/MePage.tsx",
+      "../pages/ProfilePage.tsx",
       "../pages/SettingsPage.tsx",
       "../pages/PlaceholderPages.tsx",
       "../pages/BooksPage.tsx",

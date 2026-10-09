@@ -3,33 +3,21 @@ import { useNavigate } from "react-router";
 
 import { useAuth } from "../auth/AuthProvider.js";
 import { ConfirmDialog } from "../components/ConfirmDialog.js";
+import { DefaultAvatar } from "../components/DefaultAvatar.js";
 import { TabPage } from "../components/Layouts.js";
 
-function formatDateTime(iso: string): string {
-  return new Date(iso).toLocaleString("zh-CN", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function GearIcon(): React.JSX.Element {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="size-6">
-      <circle cx="12" cy="12" r="3.2" />
-      <path d="M19.4 13.5a7.7 7.7 0 0 0 0-3l1.7-1.3-1.8-3.1-2 .8a7.6 7.6 0 0 0-2.6-1.5L14.4 3h-3.6l-.3 2.4a7.6 7.6 0 0 0-2.6 1.5l-2-.8-1.8 3.1 1.7 1.3a7.7 7.7 0 0 0 0 3l-1.7 1.3 1.8 3.1 2-.8a7.6 7.6 0 0 0 2.6 1.5l.3 2.4h3.6l.3-2.4a7.6 7.6 0 0 0 2.6-1.5l2 .8 1.8-3.1-1.7-1.3Z" />
-    </svg>
-  );
-}
-
 /**
- * Account and destination screen.
+ * The account screen.
  *
- * Signing out is deliberately separated from everything else: it sits at the
- * very bottom on its own, in the warning colour, and asks for confirmation
- * like any other action that is not trivially reversible.
+ * Shaped like the account page of a phone's settings, because that is the
+ * pattern people already know for "the things about me": a mark, a name, then
+ * a list of places to go. Everything that used to be crammed into the header —
+ * the account number, the settings gear — has moved to the place its label
+ * says it belongs, which is also why the account number now appears once.
+ *
+ * Signing out is deliberately separated from everything else: bottom, on its
+ * own, in the warning colour, behind a confirmation like any other action that
+ * cannot be trivially undone.
  */
 export function MePage(): React.JSX.Element {
   const { user, logout } = useAuth();
@@ -38,57 +26,28 @@ export function MePage(): React.JSX.Element {
 
   if (!user) return <></>;
 
-  const links: { to: string; label: string; hint: string }[] = [
+  /**
+   * One list, in the order somebody would look for things: who I am, then
+   * what I manage, then settings.
+   */
+  const links: { to: string; label: string; hint?: string }[] = [
+    { to: "/profile", label: "个人资料", hint: "昵称、用户名、账号编号" },
     { to: "/categories", label: "分类管理", hint: "新增、改名、排序、归档" },
-    { to: "/payment-methods", label: "支付方式", hint: "微信、支付宝、现金等" },
+    { to: "/payment-methods", label: "支付方式", hint: "微信、支付宝、银行卡、现金等" },
     { to: "/tags", label: "标签", hint: "出差、可报销等跨分类标记" },
     { to: "/books", label: "我的账本", hint: user.username },
+    { to: "/settings", label: "设置", hint: "默认币种、账号安全、显示与数据" },
   ];
 
   return (
     <TabPage active="/me" onNavigate={(to) => void navigate(to)}>
-      {/* Carries the accent colour the way the 明细 header does, so the two
-          main screens read as the same product rather than one coloured page
-          and one plain one. */}
-      <header className="flex items-center justify-between gap-4 bg-brand px-6 pt-8 pb-6 text-white">
-        <div className="min-w-0">
-          <p className="text-sm text-white/80">我的</p>
-          <h1 className="truncate text-2xl font-semibold tracking-tight">{user.displayName}</h1>
-          <p className="mt-1 text-xs text-white/75">账号编号 {user.accountNumber}</p>
-        </div>
-        <button
-          type="button"
-          aria-label="设置"
-          onClick={() => void navigate("/settings")}
-          className="shrink-0 text-white/85 transition hover:text-white"
-        >
-          <GearIcon />
-        </button>
+      {/* Taller than the other headers on purpose: it holds the mark and the
+          name, and gives the screen a place to belong before the list starts. */}
+      <header className="flex flex-col items-center gap-3 bg-brand px-6 pt-12 pb-10 text-white">
+        <DefaultAvatar />
+        <p className="mt-1 truncate text-xl font-semibold tracking-tight">{user.displayName}</p>
+        <p className="text-xs text-white/75">@{user.username}</p>
       </header>
-
-      <section className="px-6 pt-4">
-        <div className="rounded-card border border-line bg-surface p-5">
-          <dl className="grid grid-cols-[auto_1fr] items-baseline gap-x-6 gap-y-3 text-sm">
-            <dt className="text-muted">昵称</dt>
-            <dd className="text-right text-ink">{user.displayName}</dd>
-
-            <dt className="text-muted">用户名</dt>
-            <dd className="text-right text-ink">{user.username}</dd>
-
-            <dt className="text-muted">注册时间</dt>
-            <dd className="text-right text-ink">{formatDateTime(user.createdAt)}</dd>
-
-            <dt className="text-muted">账号编号</dt>
-            <dd className="text-right font-mono tracking-wide text-ink">{user.accountNumber}</dd>
-          </dl>
-
-          <p className="mt-5 border-t border-line pt-4 text-xs leading-relaxed text-muted">
-            用户名和账号编号可安全地分享给他人，以便对方将你添加为协作者。
-            <br />
-            请勿向任何人透露恢复码。恢复码应被妥善保管。
-          </p>
-        </div>
-      </section>
 
       <nav className="px-6 pt-5">
         <ul className="overflow-hidden rounded-card border border-line bg-surface">
@@ -99,8 +58,13 @@ export function MePage(): React.JSX.Element {
                 onClick={() => void navigate(link.to)}
                 className="flex w-full items-center justify-between gap-4 border-b border-line px-6 py-4 text-left transition last:border-b-0 hover:bg-canvas"
               >
-                <span className="text-sm text-ink">{link.label}</span>
-                <span className="text-base text-brand">›</span>
+                <span className="flex flex-col gap-0.5">
+                  <span className="text-sm text-ink">{link.label}</span>
+                  {link.hint === undefined ? null : (
+                    <span className="text-xs text-muted">{link.hint}</span>
+                  )}
+                </span>
+                <span className="shrink-0 text-base text-brand">›</span>
               </button>
             </li>
           ))}
