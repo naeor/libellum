@@ -34,16 +34,42 @@ function buildUrl(path: string, query: RequestOptions["query"]): string {
 }
 
 /**
+ * How long a request may hang before it counts as a network failure.
+ *
+ * Without a deadline, a request on a dying connection can stay pending for
+ * minutes: the save button sits on "保存中…" and the user learns nothing. A
+ * clear failure after twenty seconds is far better than silence.
+ */
+const REQUEST_TIMEOUT_MS = 20_000;
+
+/**
  * Thin wrapper around fetch.
  *
  * The session lives in an httpOnly cookie, so nothing here ever touches a
  * token — and `credentials: "same-origin"` is what makes the cookie travel.
  */
 export async function apiFetch<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  // Fail immediately when the browser already knows there is no network.
+  // Waiting for a timeout would leave the user staring at a spinner for
+  // twenty seconds to learn something the browser knew at once.
+  if (typeof navigator !== "undefined" && !navigator.onLine) {
+    throw new ApiRequestError(
+      0,
+      "offline",
+      "当前处于离线状态，无法与服务器同步。请恢复网络后重试。",
+    );
+  }
+
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => {
+    controller.abort();
+  }, REQUEST_TIMEOUT_MS);
+
   const init: RequestInit = {
     method: options.method ?? "GET",
     credentials: "same-origin",
     headers: { accept: "application/json" },
+    signal: controller.signal,
   };
 
   if (options.body !== undefined) {
@@ -51,7 +77,18 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
     init.body = JSON.stringify(options.body);
   }
 
-  const response = await fetch(buildUrl(path, options.query), init);
+  let response: Response;
+  try {
+    response = await fetch(buildUrl(path, options.query), init);
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new ApiRequestError(0, "timeout", "请求超时，请检查网络后重试。");
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timer);
+  }
+
   const raw = await response.text();
   // 204 has no body at all, and an empty body is not valid JSON.
   const payload: unknown = raw === "" ? undefined : JSON.parse(raw);
@@ -72,5 +109,5 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
 /** Turn any thrown value into something safe to show a user. */
 export function errorMessage(error: unknown): string {
   if (error instanceof ApiRequestError) return error.message;
-  return "网络连接异常，请稍后再试。";
+  return "网络连接异常，请检查网络后重试。";
 }

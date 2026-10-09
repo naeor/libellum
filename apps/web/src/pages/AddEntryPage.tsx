@@ -171,7 +171,7 @@ export function AddEntryPage(): React.JSX.Element {
           void save();
         }}
       >
-        <header className="flex flex-col gap-5 bg-brand px-5 pt-8 pb-6 text-white">
+        <header className="flex flex-col gap-5 bg-brand px-6 pt-8 pb-6 text-white">
           <div className="flex gap-2">
             {(["expense", "income"] as const).map((option) => (
               <button
@@ -224,18 +224,18 @@ export function AddEntryPage(): React.JSX.Element {
         </header>
 
         {savedCount > 0 ? (
-          <div className="px-5 pt-4">
+          <div className="px-6 pt-4">
             <Alert tone="success">已记录 {String(savedCount)} 笔，可以接着记下一笔。</Alert>
           </div>
         ) : null}
 
         {error ? (
-          <div className="px-5 pt-4">
+          <div className="px-6 pt-4">
             <Alert>{error}</Alert>
           </div>
         ) : null}
 
-        <section className="flex flex-col gap-2 px-5 pt-5">
+        <section className="flex flex-col gap-2 px-6 pt-5">
           <h2 className="text-xs text-muted">分类</h2>
 
           <div className="overflow-hidden rounded-field border border-line bg-surface">
@@ -321,7 +321,7 @@ export function AddEntryPage(): React.JSX.Element {
           <p className="text-xs text-muted">不选也可以保存，会记入「{UNCATEGORISED_LABEL}」。</p>
         </section>
 
-        <section className="flex flex-col gap-2 px-5 pt-5">
+        <section className="flex flex-col gap-2 px-6 pt-5">
           <h2 className="text-xs text-muted">支付方式</h2>
           <div className="flex flex-wrap gap-2">
             {paymentMethods.map((method) => (
@@ -343,7 +343,7 @@ export function AddEntryPage(): React.JSX.Element {
           </div>
         </section>
 
-        <section className="flex flex-col gap-2 px-5 pt-5">
+        <section className="flex flex-col gap-2 px-6 pt-5">
           <h2 className="text-xs text-muted">币种</h2>
           <div className="flex flex-wrap gap-2">
             {CURRENCIES.map((code) => (
@@ -366,7 +366,7 @@ export function AddEntryPage(): React.JSX.Element {
           </p>
         </section>
 
-        <section className="flex flex-col gap-2 px-5 pt-5">
+        <section className="flex flex-col gap-2 px-6 pt-5">
           <h2 className="text-xs text-muted">时间</h2>
           <input
             type="datetime-local"
@@ -376,11 +376,11 @@ export function AddEntryPage(): React.JSX.Element {
               const parsed = fromDateTimeLocalValue(event.target.value);
               if (parsed) setOccurredAt(parsed);
             }}
-            className="rounded-field border border-line bg-surface px-3.5 py-3 text-[15px] text-ink outline-none focus:border-brand focus:ring-4 focus:ring-brand-soft"
+            className="rounded-field border border-line bg-surface px-3.5 py-3 text-base text-ink outline-none focus:border-brand focus:ring-4 focus:ring-brand-soft"
           />
         </section>
 
-        <section className="flex flex-col gap-2 px-5 pt-5">
+        <section className="flex flex-col gap-2 px-6 pt-5">
           <h2 className="text-xs text-muted">备注</h2>
           <input
             value={note}
@@ -389,12 +389,12 @@ export function AddEntryPage(): React.JSX.Element {
             }}
             maxLength={200}
             placeholder="可不填"
-            className="rounded-field border border-line bg-surface px-3.5 py-3 text-[15px] text-ink outline-none placeholder:text-muted/60 focus:border-brand focus:ring-4 focus:ring-brand-soft"
+            className="rounded-field border border-line bg-surface px-3.5 py-3 text-base text-ink outline-none placeholder:text-muted/60 focus:border-brand focus:ring-4 focus:ring-brand-soft"
           />
         </section>
 
         {tags.length > 0 ? (
-          <section className="flex flex-col gap-2 px-5 pt-5">
+          <section className="flex flex-col gap-2 px-6 pt-5">
             <h2 className="text-xs text-muted">
               标签（最多 {String(MAX_TAGS_PER_TRANSACTION)} 个，已选 {String(tagIds.length)} 个）
             </h2>
@@ -427,7 +427,7 @@ export function AddEntryPage(): React.JSX.Element {
           </section>
         ) : null}
 
-        <div className="flex flex-col gap-3 px-5 py-6">
+        <div className="flex flex-col gap-3 px-6 py-6">
           <button
             type="submit"
             disabled={createEntry.isPending || amountText.trim() === ""}

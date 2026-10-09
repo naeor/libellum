@@ -257,7 +257,7 @@ export function EntryDetailPage(): React.JSX.Element {
                 const parsed = fromDateTimeLocalValue(event.target.value);
                 if (parsed) setOccurredAt(parsed);
               }}
-              className="rounded-field border border-line bg-surface px-3.5 py-3 text-[15px] text-ink outline-none focus:border-brand focus:ring-4 focus:ring-brand-soft"
+              className="rounded-field border border-line bg-surface px-3.5 py-3 text-base text-ink outline-none focus:border-brand focus:ring-4 focus:ring-brand-soft"
             />
           </section>
 
@@ -269,7 +269,7 @@ export function EntryDetailPage(): React.JSX.Element {
               onChange={(event) => {
                 setNote(event.target.value);
               }}
-              className="rounded-field border border-line bg-surface px-3.5 py-3 text-[15px] text-ink outline-none focus:border-brand focus:ring-4 focus:ring-brand-soft"
+              className="rounded-field border border-line bg-surface px-3.5 py-3 text-base text-ink outline-none focus:border-brand focus:ring-4 focus:ring-brand-soft"
             />
           </section>
 

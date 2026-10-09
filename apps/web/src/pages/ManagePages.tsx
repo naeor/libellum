@@ -59,7 +59,7 @@ function AddRow({
         onChange={(event) => {
           setName(event.target.value);
         }}
-        className="flex-1 rounded-field border border-line bg-surface px-3.5 py-3 text-[15px] text-ink outline-none placeholder:text-muted/60 focus:border-brand focus:ring-4 focus:ring-brand-soft"
+        className="flex-1 rounded-field border border-line bg-surface px-3.5 py-3 text-base text-ink outline-none placeholder:text-muted/60 focus:border-brand focus:ring-4 focus:ring-brand-soft"
       />
       <button
         type="submit"
@@ -384,7 +384,7 @@ export function TagsPage(): React.JSX.Element {
           onChange={(event) => {
             setName(event.target.value);
           }}
-          className="rounded-field border border-line bg-surface px-3.5 py-3 text-[15px] text-ink outline-none placeholder:text-muted/60 focus:border-brand focus:ring-4 focus:ring-brand-soft"
+          className="rounded-field border border-line bg-surface px-3.5 py-3 text-base text-ink outline-none placeholder:text-muted/60 focus:border-brand focus:ring-4 focus:ring-brand-soft"
         />
 
         <div className="flex items-center gap-2">

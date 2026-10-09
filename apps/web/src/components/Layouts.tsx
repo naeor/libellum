@@ -3,10 +3,15 @@ import { SyncBanner } from "./SyncBanner.js";
 import { useGoBack } from "../lib/connectivity.js";
 
 /**
- * Frame for the five tab destinations: content, then the fixed navigation.
+ * Frame for the five tab destinations.
  *
- * `pb-28` reserves room for the bar plus the raised entry button, so the last
- * row of a list is never trapped underneath it.
+ * The height is the **dynamic** viewport height and only the middle region
+ * scrolls, so the navigation bar is a flex sibling of the content rather than
+ * something pinned to the bottom of the document. That matters on a phone:
+ * with a document-scrolling layout, iOS Safari expands its own toolbar as soon
+ * as you scroll up and the app's navigation disappears underneath it, so the
+ * user has to scroll back down to reach the tabs. With the page itself never
+ * scrolling, there is nothing for that toolbar to react to.
  */
 export function TabPage({
   active,
@@ -20,9 +25,15 @@ export function TabPage({
   readonly className?: string;
 }): React.JSX.Element {
   return (
-    <div className="min-h-full pb-28">
+    <div className="flex h-dvh flex-col overflow-hidden">
       <SyncBanner />
-      <div className={`mx-auto flex w-full max-w-md flex-col ${className}`}>{children}</div>
+
+      <div className="flex-1 overflow-y-auto overscroll-contain">
+        {/* pb-24 leaves room for the raised entry button, which reaches up
+            above the bar and would otherwise cover the last row of a list. */}
+        <div className={`mx-auto flex w-full max-w-md flex-col pb-24 ${className}`}>{children}</div>
+      </div>
+
       <BottomNav active={active} onNavigate={onNavigate} />
     </div>
   );
@@ -58,26 +69,33 @@ export function InnerPage({
   const handleBack = onBack ?? goBack;
 
   return (
-    <main className="mx-auto flex min-h-full w-full max-w-md flex-col gap-6 px-5 py-8">
+    <>
       <SyncBanner />
-      <div className="flex items-start justify-between gap-4">
-        <button
-          type="button"
-          data-back-control
-          onClick={handleBack}
-          className="-mb-2 self-start text-sm text-muted transition hover:text-ink"
-        >
-          ← 返回
-        </button>
-        {actions}
-      </div>
+      <main className="mx-auto flex min-h-full w-full max-w-md flex-col gap-6 px-6 py-8">
+        <div className="flex items-start justify-between gap-4">
+          {/* Deliberately generous: this is the control a thumb reaches for on
+              a phone, and a small target means missed taps. */}
+          <button
+            type="button"
+            data-back-control
+            onClick={handleBack}
+            className="-mt-1 -ml-2 flex items-center gap-1.5 rounded-field px-2.5 py-2.5 text-base text-muted transition hover:bg-brand-soft hover:text-ink"
+          >
+            <span aria-hidden="true" className="text-lg leading-none">
+              ←
+            </span>
+            返回
+          </button>
+          {actions}
+        </div>
 
-      <header>
-        <h1 className="text-xl font-semibold tracking-tight text-ink">{title}</h1>
-        {subtitle ? <p className="mt-1.5 text-sm leading-relaxed text-muted">{subtitle}</p> : null}
-      </header>
+        <header>
+          <h1 className="text-xl font-semibold tracking-tight text-ink">{title}</h1>
+          {subtitle ? <p className="mt-1.5 text-sm leading-relaxed text-muted">{subtitle}</p> : null}
+        </header>
 
-      {children}
-    </main>
+        {children}
+      </main>
+    </>
   );
 }

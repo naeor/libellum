@@ -5,10 +5,11 @@
  * anything else, they are not navigating any more — they are stuck. Rather
  * than let them bounce between two screens, the fifth press goes home.
  *
- * Two things keep this from firing on normal use: the presses have to be close
- * together in time, and any press anywhere else on the page resets the count.
+ * The window is generous (five seconds between presses) because the target is
+ * a moving one on a phone: a thumb aiming at a back control misses, and five
+ * taps at a comfortable pace should still count.
  */
-const PRESS_WINDOW_MS = 1_500;
+const PRESS_WINDOW_MS = 5_000;
 const PRESS_THRESHOLD = 5;
 
 let presses = 0;

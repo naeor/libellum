@@ -97,7 +97,7 @@ export function DetailPage(): React.JSX.Element {
 
   return (
     <TabPage active="/" onNavigate={(to) => void navigate(to)}>
-      <header className="flex flex-col gap-4 bg-brand px-5 pt-8 pb-6 text-white">
+      <header className="flex flex-col gap-4 bg-brand px-6 pt-8 pb-6 text-white">
         <MonthSwitcher month={month} onChange={setMonth} />
 
         {summary.isPending ? (
@@ -132,7 +132,7 @@ export function DetailPage(): React.JSX.Element {
 
       {/* A segmented control, not two loose buttons: the track behind them is
           what says "pick one of these two" rather than "here are two actions". */}
-      <div className="px-5 pt-5">
+      <div className="px-6 pt-5">
         <div className="flex gap-1 rounded-field bg-line/70 p-1">
           {(["expense", "income"] as const).map((option) => (
             <button
@@ -172,7 +172,7 @@ export function DetailPage(): React.JSX.Element {
         />
       ) : null}
 
-      <div className="flex flex-col px-5 pt-4">
+      <div className="flex flex-col px-6 pt-4">
         {grouped.map(([day, dayEntries]) => (
           <section key={day}>
             <h2 className="py-2 text-xs text-muted">{formatDayLabel(day)}</h2>
@@ -216,7 +216,7 @@ export function DetailPage(): React.JSX.Element {
       </div>
 
       {list.hasNextPage ? (
-        <div className="px-5 py-4">
+        <div className="px-6 py-4">
           <button
             type="button"
             disabled={list.isFetchingNextPage}

@@ -50,7 +50,7 @@ export function MePage(): React.JSX.Element {
       {/* Carries the accent colour the way the 明细 header does, so the two
           main screens read as the same product rather than one coloured page
           and one plain one. */}
-      <header className="flex items-center justify-between gap-4 bg-brand px-5 pt-8 pb-6 text-white">
+      <header className="flex items-center justify-between gap-4 bg-brand px-6 pt-8 pb-6 text-white">
         <div className="min-w-0">
           <p className="text-sm text-white/80">我的</p>
           <h1 className="truncate text-2xl font-semibold tracking-tight">{user.displayName}</h1>
@@ -66,7 +66,7 @@ export function MePage(): React.JSX.Element {
         </button>
       </header>
 
-      <section className="px-5 pt-4">
+      <section className="px-6 pt-4">
         <div className="rounded-card border border-line bg-surface p-5">
           <dl className="grid grid-cols-[auto_1fr] items-baseline gap-x-6 gap-y-3 text-sm">
             <dt className="text-muted">昵称</dt>
@@ -88,14 +88,14 @@ export function MePage(): React.JSX.Element {
         </div>
       </section>
 
-      <nav className="px-5 pt-5">
+      <nav className="px-6 pt-5">
         <ul className="overflow-hidden rounded-card border border-line bg-surface">
           {links.map((link) => (
             <li key={link.to}>
               <button
                 type="button"
                 onClick={() => void navigate(link.to)}
-                className="flex w-full items-center justify-between gap-4 border-b border-line px-5 py-4 text-left transition last:border-b-0 hover:bg-canvas"
+                className="flex w-full items-center justify-between gap-4 border-b border-line px-6 py-4 text-left transition last:border-b-0 hover:bg-canvas"
               >
                 <span className="text-sm text-ink">{link.label}</span>
                 <span className="text-base text-brand">›</span>
@@ -105,7 +105,7 @@ export function MePage(): React.JSX.Element {
         </ul>
       </nav>
 
-      <div className="px-5 py-8">
+      <div className="px-6 py-8">
         <button
           type="button"
           onClick={() => {

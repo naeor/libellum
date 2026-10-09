@@ -79,9 +79,12 @@ export function BottomNav({
   readonly onNavigate: (to: string) => void;
 }): React.JSX.Element {
   return (
+    // Not `fixed`: the frame that owns this bar is the full dynamic viewport
+    // height and only scrolls its middle region, so the bar never ends up
+    // underneath a browser toolbar.
     <nav
       aria-label="主导航"
-      className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-surface pb-[env(safe-area-inset-bottom)]"
+      className="relative z-10 shrink-0 border-t border-line bg-surface pb-[env(safe-area-inset-bottom)]"
     >
       <ul className="mx-auto flex w-full max-w-md items-end justify-around px-2">
         {TABS.map((tab) => {

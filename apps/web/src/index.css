@@ -47,3 +47,20 @@ input[inputmode="numeric"],
 input[inputmode="decimal"] {
   font-variant-numeric: tabular-nums;
 }
+
+/*
+ * Never let a form control's text fall below 16px.
+ *
+ * iOS Safari magnifies the entire page when a control smaller than 16px
+ * receives focus, and it does not zoom back out — the app then stays magnified
+ * until the user pinches, and the magnification survives navigation. Keeping
+ * every control at 16px removes the cause entirely.
+ *
+ * A component can still ask for something larger: a class beats an element
+ * selector, so the amount field's larger size is unaffected.
+ */
+input,
+select,
+textarea {
+  font-size: 16px;
+}
