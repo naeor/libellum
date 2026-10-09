@@ -10,6 +10,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 
 import { Alert } from "../components/Alert.js";
+import { EntrySaved } from "../components/EntrySaved.js";
 import { InfoIcon } from "../components/InfoHint.js";
 import { TabPage } from "../components/Layouts.js";
 import { errorMessage } from "../lib/api.js";
@@ -66,7 +67,16 @@ export function AddEntryPage(): React.JSX.Element {
   const [note, setNote] = useState("");
   const [tagIds, setTagIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [savedCount, setSavedCount] = useState(0);
+  /**
+   * The entry just saved, or null while the form is showing.
+   *
+   * Held in component state rather than pushed to a route: the confirmation is
+   * the tail of this screen's flow, not a place with its own address. Coming
+   * back to /add must never resurrect a filled-in form.
+   */
+  const [saved, setSaved] = useState<Transaction | null>(null);
+  /** Set when the next render should put the cursor back in the amount field. */
+  const focusAfterReset = useRef(false);
 
   const categories = useMemo(
     () =>
@@ -140,7 +150,7 @@ export function AddEntryPage(): React.JSX.Element {
     }
 
     try {
-      await createEntry.mutateAsync({
+      const created = await createEntry.mutateAsync({
         id: uuidV7(),
         idempotencyKey: uuidV7(),
         kind,
@@ -155,16 +165,47 @@ export function AddEntryPage(): React.JSX.Element {
         tagIds,
       });
 
-      setSavedCount((count) => count + 1);
-      // Stay on the screen so a stack of receipts can be entered in a row.
-      setAmountText("");
-      setNote("");
-      setTagIds([]);
-      setOccurredAt(new Date());
-      amountRef.current?.focus();
+      setSaved(created);
     } catch (caught) {
       setError(errorMessage(caught));
     }
+  }
+
+  // Focus returns to the amount field for the next entry, but only after the
+  // form has actually been put back on screen.
+  useEffect(() => {
+    if (saved === null && focusAfterReset.current) {
+      focusAfterReset.current = false;
+      amountRef.current?.focus();
+    }
+  }, [saved]);
+
+  if (saved !== null) {
+    return (
+      <EntrySaved
+        entry={saved}
+        categoryName={
+          categories.find((category) => category.id === saved.categoryId)?.name ?? UNCATEGORISED_LABEL
+        }
+        paymentName={
+          paymentMethods.find((method) => method.id === saved.paymentMethodId)?.name ?? null
+        }
+        onHome={() => {
+          void navigate("/");
+        }}
+        onAgain={() => {
+          focusAfterReset.current = true;
+          setAmountText("");
+          setNote("");
+          setTagIds([]);
+          setError(null);
+          // The date is kept on purpose: entering an afternoon's worth of
+          // receipts should not mean setting the date again for each one.
+          // Opening the tab fresh still starts at now.
+          setSaved(null);
+        }}
+      />
+    );
   }
 
   return (
@@ -226,12 +267,6 @@ export function AddEntryPage(): React.JSX.Element {
             ))}
           </div>
         </header>
-
-        {savedCount > 0 ? (
-          <div className="px-6 pt-4">
-            <Alert tone="success">已记录 {String(savedCount)} 笔，可以接着记下一笔。</Alert>
-          </div>
-        ) : null}
 
         {error ? (
           <div className="px-6 pt-4">
@@ -439,16 +474,6 @@ export function AddEntryPage(): React.JSX.Element {
           >
             {createEntry.isPending ? "保存中…" : "保存"}
           </button>
-
-          {savedCount > 0 ? (
-            <button
-              type="button"
-              onClick={() => void navigate("/")}
-              className="w-full rounded-field bg-surface py-3 text-sm text-muted transition hover:text-ink"
-            >
-              完成，回到明细
-            </button>
-          ) : null}
         </div>
       </form>
     </TabPage>

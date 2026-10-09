@@ -5,6 +5,7 @@ import { CalendarHeatmap } from "../components/charts/CalendarHeatmap.js";
 import { CategoryDonut } from "../components/charts/CategoryDonut.js";
 import { ComparisonPanel, YearOverview } from "../components/charts/SummaryPanel.js";
 import { TrendChart } from "../components/charts/TrendChart.js";
+import { EntrySaved } from "../components/EntrySaved.js";
 
 /**
  * A development harness — **not a shipped feature**.
@@ -73,11 +74,39 @@ export function ChartLabPage(): React.JSX.Element {
   return (
     <main className="mx-auto flex min-h-full w-full max-w-md flex-col gap-8 px-4 py-8">
       <header>
-        <h1 className="text-xl font-semibold text-ink">图表组件 · 开发验证页</h1>
+        <h1 className="text-xl font-semibold text-ink">组件预览 · 开发验证页</h1>
         <p className="mt-1.5 text-sm leading-relaxed text-muted">
-          这个页面只在开发模式下存在，用来确认图表在异常数据下仍然可读。它不是产品功能，也不需要登录。
+          这个页面只在开发模式下存在，用来确认图表与完成页在异常数据下仍然可读。它不是产品功能，也不需要登录。
         </p>
       </header>
+
+      <Section title="记账完成页（保存后出现）">
+        <div className="-m-4 overflow-hidden rounded-card">
+          <EntrySaved
+            entry={{
+              id: "preview",
+              kind: "expense",
+              amountCents: 2000,
+              currency: "CNY",
+              categoryId: "c1",
+              categoryName: "餐饮",
+              categoryIsSystem: false,
+              paymentMethodId: "p1",
+              paymentMethodName: "微信",
+              occurredAt: "2026-10-09T04:00:00.000Z",
+              occurredLocalDate: "2026-10-09",
+              occurredTz: "Asia/Shanghai",
+              note: null,
+              tags: [],
+              version: 1,
+            }}
+            categoryName="餐饮"
+            paymentName="微信"
+            onHome={() => undefined}
+            onAgain={() => undefined}
+          />
+        </div>
+      </Section>
 
       <Section title="趋势折线（双系列，可触摸）">
         <TrendChart points={MONTHS} currency={CURRENCY} bucket="month" />
