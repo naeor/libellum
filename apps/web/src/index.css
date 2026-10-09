@@ -49,36 +49,6 @@ input[inputmode="decimal"] {
 }
 
 /*
- * Making room for the entry island.
- *
- * The island is fixed to the left edge, so a row scrolling past it would put
- * the island on top of the category name. Only the rows actually inside the
- * island's band get the extra inset — applied by an IntersectionObserver
- * rather than a scroll handler, so nothing is measured on the scroll thread.
- *
- * The inset is a **padding**, and the text it narrows is already a single
- * truncated line. That is the whole point: if that text could wrap, changing
- * its width would re-flow it and the row would visibly jump every time it
- * crossed the band. With one ellipsised line, only the truncation point moves,
- * and the transition carries it there.
- *
- * The amount is `shrink-0` and right-aligned, so it neither moves nor truncates.
- */
-.entry-row {
-  transition: padding-left 180ms ease;
-}
-
-.entry-row[data-avoid="true"] {
-  padding-left: 4.75rem;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .entry-row {
-    transition: none;
-  }
-}
-
-/*
  * Never let a form control's text fall below 16px.
  *
  * iOS Safari magnifies the entire page when a control smaller than 16px
