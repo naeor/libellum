@@ -46,7 +46,7 @@ export function ChangePasswordPage(): React.JSX.Element {
     <InnerPage
       title="更改密码"
       subtitle="修改成功后，其它设备上的登录状态将立即失效。"
-      onBack={() => void navigate("/settings")}
+      backTo="/settings"
     >
       <Card>
         <form className="flex flex-col gap-5" onSubmit={(event) => void submit(event)}>

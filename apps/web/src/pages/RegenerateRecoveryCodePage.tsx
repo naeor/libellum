@@ -43,7 +43,7 @@ export function RegenerateRecoveryCodePage(): React.JSX.Element {
 
   if (issuedCode) {
     return (
-      <InnerPage title="新的恢复码" subtitle="请立即保存。" onBack={() => void navigate("/settings")}>
+      <InnerPage title="新的恢复码" subtitle="请立即保存。" backTo="/settings">
         <RecoveryCodeCard code={issuedCode} onContinue={() => void navigate("/settings")} />
       </InnerPage>
     );
@@ -53,7 +53,7 @@ export function RegenerateRecoveryCodePage(): React.JSX.Element {
     <InnerPage
       title="生成新的恢复码"
       subtitle="生成后，原有的恢复码将立即失效。"
-      onBack={() => void navigate("/settings")}
+      backTo="/settings"
     >
       <Card>
         <form className="flex flex-col gap-5" onSubmit={(event) => void submit(event)}>

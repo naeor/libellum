@@ -69,7 +69,7 @@ export function EntryDetailPage(): React.JSX.Element {
 
   if (entry.isPending) {
     return (
-      <InnerPage title="记账详情" onBack={() => void navigate("/")}>
+      <InnerPage title="记账详情" backTo="/">
         <SkeletonRows rows={3} />
       </InnerPage>
     );
@@ -77,7 +77,7 @@ export function EntryDetailPage(): React.JSX.Element {
 
   if (entry.isError || !entry.data) {
     return (
-      <InnerPage title="记账详情" onBack={() => void navigate("/")}>
+      <InnerPage title="记账详情" backTo="/">
         <ErrorState
           message={errorMessage(entry.error)}
           onRetry={() => {

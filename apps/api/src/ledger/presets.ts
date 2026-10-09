@@ -36,7 +36,13 @@ export const INCOME_CATEGORIES: readonly CategoryPreset[] = [
   { name: "其他", description: "未归入以上类别的收入" },
 ];
 
-export const PAYMENT_METHOD_NAMES: readonly string[] = ["微信", "支付宝", "现金", "其他"];
+export const PAYMENT_METHOD_NAMES: readonly string[] = [
+  "微信",
+  "支付宝",
+  "银行卡",
+  "现金",
+  "其他",
+];
 
 export function categoriesFor(kind: TransactionKind): readonly CategoryPreset[] {
   return kind === "expense" ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;

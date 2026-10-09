@@ -190,7 +190,7 @@ describe("payment methods", () => {
       method: "POST",
       url: "/api/v1/payment-methods",
       headers: { cookie },
-      payload: { name: "银行卡" },
+      payload: { name: "信用卡" },
     });
     expect(created.statusCode).toBe(201);
     const id = (created.json() as { id: string }).id;
@@ -199,7 +199,7 @@ describe("payment methods", () => {
       method: "POST",
       url: "/api/v1/payment-methods",
       headers: { cookie },
-      payload: { name: "银行卡" },
+      payload: { name: "信用卡" },
     });
     expect(duplicate.statusCode).toBe(409);
 

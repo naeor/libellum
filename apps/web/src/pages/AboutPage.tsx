@@ -11,7 +11,7 @@ export function AboutPage(): React.JSX.Element {
   const navigate = useNavigate();
 
   return (
-    <InnerPage title="关于 Libellum" subtitle="the free, open ledger" onBack={() => void navigate("/settings")}>
+    <InnerPage title="关于 Libellum" subtitle="the free, open ledger" backTo="/settings">
       <div className="flex flex-col gap-5 text-sm leading-relaxed text-ink">
         <section className="rounded-card border border-line bg-surface p-5">
           <h2 className="font-medium">你的数据</h2>

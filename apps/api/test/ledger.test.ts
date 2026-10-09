@@ -129,6 +129,7 @@ describe("ledger bootstrap", () => {
     expect(ledger.paymentMethods.map((method) => method.name)).toEqual([
       "微信",
       "支付宝",
+      "银行卡",
       "现金",
       "其他",
     ]);

@@ -50,25 +50,13 @@ export function SettingsPage(): React.JSX.Element {
   const go = (to: string): void => void navigate(to);
 
   return (
-    <InnerPage title="设置" onBack={() => void navigate("/me")}>
+    <InnerPage title="设置" backTo="/me">
       <section className="flex flex-col gap-2">
         <h2 className="px-1 text-xs text-muted">账号安全</h2>
         <RowList
           rows={[
             { label: "更改密码", hint: "修改后其它设备的登录会失效", to: "/settings/password" },
             { label: "生成新的恢复码", hint: "旧的恢复码会立即失效", to: "/settings/recovery-code" },
-          ]}
-          onNavigate={go}
-        />
-      </section>
-
-      <section className="flex flex-col gap-2">
-        <h2 className="px-1 text-xs text-muted">记账设置</h2>
-        <RowList
-          rows={[
-            { label: "分类管理", hint: "新增、改名、排序、归档", to: "/categories" },
-            { label: "支付方式", hint: "微信、支付宝、现金等", to: "/payment-methods" },
-            { label: "标签", hint: "出差、可报销等跨分类标记", to: "/tags" },
           ]}
           onNavigate={go}
         />

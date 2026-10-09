@@ -1,5 +1,3 @@
-import { useNavigate } from "react-router";
-
 import { InnerPage } from "../components/Layouts.js";
 
 /**
@@ -13,21 +11,19 @@ function ComingSoon({
   title,
   description,
   planned,
-  onBack,
 }: {
   readonly title: string;
   readonly description: string;
   readonly planned: readonly string[];
-  readonly onBack: () => void;
 }): React.JSX.Element {
   return (
-    <InnerPage title={title} subtitle={description} onBack={onBack}>
+    <InnerPage title={title} subtitle={description} backTo="/">
       <div className="rounded-card border border-line bg-surface p-5">
         <h2 className="text-sm font-medium text-muted">计划包含</h2>
         <ul className="mt-3 flex flex-col gap-2 text-sm text-ink">
           {planned.map((item) => (
             <li key={item} className="flex gap-2">
-              <span className="text-muted" aria-hidden="true">
+              <span className="text-brand" aria-hidden="true">
                 ·
               </span>
               <span>{item}</span>
@@ -43,8 +39,6 @@ function ComingSoon({
 }
 
 export function StatsPage(): React.JSX.Element {
-  const navigate = useNavigate();
-
   return (
     <ComingSoon
       title="分析"
@@ -56,14 +50,11 @@ export function StatsPage(): React.JSX.Element {
         "年度总览",
         "每日花销日历热力图",
       ]}
-      onBack={() => void navigate("/")}
     />
   );
 }
 
 export function CollaboratorsPage(): React.JSX.Element {
-  const navigate = useNavigate();
-
   return (
     <ComingSoon
       title="协作者"
@@ -74,7 +65,6 @@ export function CollaboratorsPage(): React.JSX.Element {
         "邀请协作者加入同一本账",
         "以账本成员身份为唯一权限依据",
       ]}
-      onBack={() => void navigate("/")}
     />
   );
 }

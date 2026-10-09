@@ -97,9 +97,12 @@ export function BottomNav({
                     onNavigate(tab.to);
                   }}
                   aria-label={tab.label}
-                  className="mx-auto -mt-6 flex size-14 flex-col items-center justify-center rounded-full bg-brand text-white shadow-lg transition hover:bg-brand-dark"
+                  // Raised well above the bar and ringed in the bar's own
+                  // colour, so it reads as the one deliberate action rather
+                  // than a fifth destination.
+                  className="mx-auto -mt-8 mb-2 flex size-16 items-center justify-center rounded-full bg-brand text-white shadow-lg ring-4 ring-surface transition hover:bg-brand-dark"
                 >
-                  <Icon className="size-7" />
+                  <Icon className="size-8" />
                 </button>
               </li>
             );

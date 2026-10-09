@@ -22,7 +22,7 @@ export function BooksPage(): React.JSX.Element {
     <InnerPage
       title="我的账本"
       subtitle="一个账号对应一本账本。与他人共同记账的功能正在开发中。"
-      onBack={() => void navigate("/me")}
+      backTo="/me"
     >
       {ledger.isPending ? <SkeletonRows rows={2} /> : null}
 

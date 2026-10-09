@@ -130,23 +130,26 @@ export function DetailPage(): React.JSX.Element {
         )}
       </header>
 
-      <div className="flex gap-2 px-5 pt-5">
-        {(["expense", "income"] as const).map((option) => (
-          <button
-            key={option}
-            type="button"
-            onClick={() => {
-              setKind(option);
-            }}
-            className={`flex-1 rounded-field py-2.5 text-sm font-medium transition ${
-              kind === option
-                ? "bg-brand text-white"
-                : "bg-surface text-muted hover:text-ink"
-            }`}
-          >
-            {option === "expense" ? "支出" : "收入"}
-          </button>
-        ))}
+      {/* A segmented control, not two loose buttons: the track behind them is
+          what says "pick one of these two" rather than "here are two actions". */}
+      <div className="px-5 pt-5">
+        <div className="flex gap-1 rounded-field bg-line/70 p-1">
+          {(["expense", "income"] as const).map((option) => (
+            <button
+              key={option}
+              type="button"
+              aria-pressed={kind === option}
+              onClick={() => {
+                setKind(option);
+              }}
+              className={`flex-1 rounded-[0.7rem] py-2 text-sm font-medium transition ${
+                kind === option ? "bg-surface text-brand-dark shadow-sm" : "text-muted hover:text-ink"
+              }`}
+            >
+              {option === "expense" ? "支出" : "收入"}
+            </button>
+          ))}
+        </div>
       </div>
 
       {list.isPending ? <SkeletonRows /> : null}

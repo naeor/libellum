@@ -47,13 +47,20 @@ export function MePage(): React.JSX.Element {
 
   return (
     <TabPage active="/me" onNavigate={(to) => void navigate(to)}>
-      <header className="flex items-center justify-between gap-4 px-5 pt-8 pb-2">
-        <h1 className="text-2xl font-semibold tracking-tight text-ink">我的</h1>
+      {/* Carries the accent colour the way the 明细 header does, so the two
+          main screens read as the same product rather than one coloured page
+          and one plain one. */}
+      <header className="flex items-center justify-between gap-4 bg-brand px-5 pt-8 pb-6 text-white">
+        <div className="min-w-0">
+          <p className="text-sm text-white/80">我的</p>
+          <h1 className="truncate text-2xl font-semibold tracking-tight">{user.displayName}</h1>
+          <p className="mt-1 text-xs text-white/75">账号编号 {user.accountNumber}</p>
+        </div>
         <button
           type="button"
           aria-label="设置"
           onClick={() => void navigate("/settings")}
-          className="text-muted transition hover:text-ink"
+          className="shrink-0 text-white/85 transition hover:text-white"
         >
           <GearIcon />
         </button>
@@ -91,7 +98,7 @@ export function MePage(): React.JSX.Element {
                 className="flex w-full items-center justify-between gap-4 border-b border-line px-5 py-4 text-left transition last:border-b-0 hover:bg-canvas"
               >
                 <span className="text-sm text-ink">{link.label}</span>
-                <span className="text-xs text-muted">›</span>
+                <span className="text-base text-brand">›</span>
               </button>
             </li>
           ))}
