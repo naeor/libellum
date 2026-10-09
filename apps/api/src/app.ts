@@ -55,6 +55,12 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
    * The session cookie is SameSite=Lax, so a browser will not attach it to a
    * cross-site POST. This hook adds a second lock: a state-changing request
    * that carries an Origin header from somewhere else is rejected outright.
+   *
+   * "Somewhere else" is judged by comparing against the Host the request
+   * arrived on, not against a fixed URL. A request from this very server is
+   * same-origin by definition — which is what lets the app run on
+   * `localhost`, on a LAN address for phone testing, or behind a tunnel
+   * without teaching the server about each of those addresses in advance.
    */
   app.addHook("onRequest", async (request) => {
     if (request.method === "GET" || request.method === "HEAD" || request.method === "OPTIONS") {
@@ -62,8 +68,17 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     }
 
     const origin = request.headers.origin;
-    if (origin !== undefined && origin !== webOrigin) {
-      throw forbidden("origin_not_allowed", "请求来源不被允许");
+    if (origin === undefined) return;
+
+    let sameOrigin = false;
+    try {
+      sameOrigin = new URL(origin).host === request.headers.host;
+    } catch {
+      sameOrigin = false;
+    }
+
+    if (!sameOrigin && origin !== webOrigin) {
+      throw forbidden("origin_not_allowed", "请求来源不被允许。");
     }
   });
 
