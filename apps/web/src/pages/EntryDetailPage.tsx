@@ -1,4 +1,4 @@
-import { CURRENCIES, MAX_TAGS_PER_TRANSACTION, parseAmountToCents, type Currency } from "@libellum/shared";
+import { decimalsFor, CURRENCIES, MAX_TAGS_PER_TRANSACTION, type Currency } from "@libellum/shared";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 
@@ -15,7 +15,7 @@ import {
   toLocalDate,
   toLocalIso,
 } from "../lib/datetime.js";
-import { centsToInput, currencyName, formatMoney } from "../lib/format.js";
+import { currencyName, formatMoney, minorToInput, parseAmountInput } from "../lib/format.js";
 import {
   useDeleteTransaction,
   useLedger,
@@ -58,7 +58,7 @@ export function EntryDetailPage(): React.JSX.Element {
 
   useEffect(() => {
     if (!entry.data) return;
-    setAmountText(centsToInput(entry.data.amountCents));
+    setAmountText(minorToInput(entry.data.amountCents, entry.data.currency));
     setCategoryId(entry.data.categoryId);
     setPaymentMethodId(entry.data.paymentMethodId);
     setCurrency(entry.data.currency);
@@ -99,9 +99,13 @@ export function EntryDetailPage(): React.JSX.Element {
 
     let amountCents: number;
     try {
-      amountCents = parseAmountToCents(amountText);
+      amountCents = parseAmountInput(amountText, currency);
     } catch {
-      setError("请输入有效的金额，最多两位小数。");
+      setError(
+        decimalsFor(currency) === 0
+          ? `${currencyName(currency)}不支持小数，请输入整数金额。`
+          : `金额格式不正确，${currencyName(currency)}最多两位小数。`,
+      );
       return;
     }
 

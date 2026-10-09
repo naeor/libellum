@@ -1,11 +1,13 @@
-import { formatCents } from "@libellum/shared";
+import { decimalsFor, formatMinor, parseAmountToMinor } from "@libellum/shared";
 
 /**
- * Display helpers for money.
+ * Display and input helpers for money.
  *
  * Amounts stay integers all the way through; this file is one of only two
- * places that ever turns them into something a person reads (the other is the
- * amount input).
+ * places that turns them into something a person reads (the other is the
+ * amount field on the entry screen). Both consult `decimalsFor`, because the
+ * yen has no decimal places and a yen amount shown as `¥1000.00` would be
+ * both wrong and confusing.
  */
 
 const CURRENCY_SYMBOLS: Record<string, string> = {
@@ -39,26 +41,39 @@ function groupThousands(value: string): string {
 }
 
 /**
- * `1234` + `CNY` becomes `¥12.34`.
+ * `1234` + `CNY` becomes `¥12.34`; `1000` + `JPY` becomes `JP¥1,000`.
  *
  * `withCode` appends the ISO code, which is what makes a screen showing two
  * currencies unambiguous — ¥ alone could be yuan or yen.
  */
 export function formatMoney(
-  cents: number,
+  minor: number,
   currency: string,
   options: { withCode?: boolean } = {},
 ): string {
-  const plain = formatCents(cents);
+  const plain = formatMinor(minor, decimalsFor(currency));
   const negative = plain.startsWith("-");
-  const [whole = "0", fraction = "00"] = (negative ? plain.slice(1) : plain).split(".");
+  const [whole = "0", fraction] = (negative ? plain.slice(1) : plain).split(".");
 
-  const body = `${currencySymbol(currency)}${groupThousands(whole)}.${fraction}`;
+  const body =
+    fraction === undefined
+      ? `${currencySymbol(currency)}${groupThousands(whole)}`
+      : `${currencySymbol(currency)}${groupThousands(whole)}.${fraction}`;
 
   return `${negative ? "-" : ""}${body}${options.withCode === true ? ` ${currency}` : ""}`;
 }
 
-/** `1234` becomes `12.34` — for an input field, where symbols do not belong. */
-export function centsToInput(cents: number): string {
-  return cents === 0 ? "" : formatCents(cents);
+/** `1234` becomes `12.34`, and `1000` JPY becomes `1000` — for an input field. */
+export function minorToInput(minor: number, currency: string): string {
+  return minor === 0 ? "" : formatMinor(minor, decimalsFor(currency));
+}
+
+/** The placeholder an empty amount field shows, matching the currency. */
+export function amountPlaceholder(currency: string): string {
+  return decimalsFor(currency) === 0 ? "0" : "0.00";
+}
+
+/** Parse what the user typed, honouring the currency's precision. */
+export function parseAmountInput(input: string, currency: string): number {
+  return parseAmountToMinor(input, decimalsFor(currency));
 }

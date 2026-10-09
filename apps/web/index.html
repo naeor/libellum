@@ -1,8 +1,22 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      `interactive-widget=resizes-content` asks the browser to shrink the layout
+      viewport when the on-screen keyboard opens, instead of covering the page
+      with it. Together with the dynamic-viewport-height layout, that keeps the
+      bottom navigation reachable while typing, and avoids the gap Safari can
+      leave behind once the keyboard closes.
+
+      Zoom is deliberately NOT disabled: this app is used by people who may need
+      to magnify it, and blocking that to save ourselves a layout concern would
+      be the wrong trade.
+    -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content"
+    />
     <meta name="description" content="Libellum - the free, open ledger" />
     <title>Libellum</title>
   </head>

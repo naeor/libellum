@@ -1,7 +1,7 @@
 import {
   CURRENCIES,
   MAX_TAGS_PER_TRANSACTION,
-  parseAmountToCents,
+  decimalsFor,
   type Currency,
   type Transaction,
   type TransactionKind,
@@ -20,7 +20,7 @@ import {
   toLocalDate,
   toLocalIso,
 } from "../lib/datetime.js";
-import { centsToInput, currencyName } from "../lib/format.js";
+import { amountPlaceholder, currencyName, minorToInput, parseAmountInput } from "../lib/format.js";
 import { useCreateTransaction, useLedger, useQuickAmounts, useTransactions } from "../lib/queries.js";
 import { uuidV7 } from "../lib/uuid.js";
 
@@ -110,7 +110,7 @@ export function AddEntryPage(): React.JSX.Element {
   useEffect(() => {
     if (!copyFrom) return;
     setKind(copyFrom.kind);
-    setAmountText(centsToInput(copyFrom.amountCents));
+    setAmountText(minorToInput(copyFrom.amountCents, copyFrom.currency));
     setCategoryId(copyFrom.categoryId);
     setPaymentMethodId(copyFrom.paymentMethodId);
     setCurrency(copyFrom.currency);
@@ -124,9 +124,13 @@ export function AddEntryPage(): React.JSX.Element {
 
     let amountCents: number;
     try {
-      amountCents = parseAmountToCents(amountText);
+      amountCents = parseAmountInput(amountText, currency);
     } catch {
-      setError("请输入有效的金额，最多两位小数。");
+      setError(
+        decimalsFor(currency) === 0
+          ? `${currencyName(currency)}不支持小数，请输入整数金额。`
+          : `金额格式不正确，${currencyName(currency)}最多两位小数。`,
+      );
       return;
     }
 
@@ -199,7 +203,7 @@ export function AddEntryPage(): React.JSX.Element {
                 setAmountText(event.target.value);
               }}
               inputMode="decimal"
-              placeholder="0.00"
+              placeholder={amountPlaceholder(currency)}
               aria-label="金额"
               autoFocus
               className="w-full bg-transparent text-4xl font-semibold text-white outline-none placeholder:text-white/40"
@@ -213,11 +217,11 @@ export function AddEntryPage(): React.JSX.Element {
                 key={cents}
                 type="button"
                 onClick={() => {
-                  setAmountText(centsToInput(cents));
+                  setAmountText(minorToInput(cents, currency));
                 }}
                 className="rounded-full bg-white/15 px-3.5 py-1.5 text-sm text-white transition hover:bg-white/25"
               >
-                {centsToInput(cents)}
+                {minorToInput(cents, currency)}
               </button>
             ))}
           </div>
@@ -362,7 +366,7 @@ export function AddEntryPage(): React.JSX.Element {
             ))}
           </div>
           <p className="text-xs leading-relaxed text-muted">
-            所有币种均按两位小数记录；不同币种分开统计，不进行汇率换算。
+            金额按各币种自身的精度记录（例如日元没有小数）；不同币种分开统计，不进行汇率换算。
           </p>
         </section>
 
