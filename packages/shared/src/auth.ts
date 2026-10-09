@@ -21,11 +21,12 @@ export const passwordSchema = z
   .min(PASSWORD_MIN_LENGTH, `密码至少 ${String(PASSWORD_MIN_LENGTH)} 位`)
   .max(PASSWORD_MAX_LENGTH, `密码最多 ${String(PASSWORD_MAX_LENGTH)} 位`);
 
+/** The 昵称 shown in the interface. Not unique — only `username` is. */
 export const displayNameSchema = z
   .string()
   .trim()
-  .min(1, "请填写显示名称")
-  .max(DISPLAY_NAME_MAX_LENGTH, `显示名称最多 ${String(DISPLAY_NAME_MAX_LENGTH)} 个字符`);
+  .min(1, "请填写昵称")
+  .max(DISPLAY_NAME_MAX_LENGTH, `昵称最多 ${String(DISPLAY_NAME_MAX_LENGTH)} 个字符`);
 
 export const inviteCodeSchema = z.string().trim().min(4, "请填写邀请码");
 

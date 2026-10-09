@@ -1,11 +1,13 @@
 import type { ButtonHTMLAttributes } from "react";
 
-type Variant = "primary" | "secondary" | "ghost";
+type Variant = "primary" | "secondary" | "ghost" | "danger";
 
 const VARIANTS: Record<Variant, string> = {
   primary: "bg-brand text-white shadow-sm hover:bg-brand-dark",
   secondary: "bg-brand-soft text-brand-dark hover:bg-brand-soft/70",
   ghost: "bg-transparent text-muted hover:text-ink",
+  // The muted red from the palette, so it reads as "careful" without shouting.
+  danger: "bg-danger text-white shadow-sm hover:bg-danger-dark",
 };
 
 export function Button({

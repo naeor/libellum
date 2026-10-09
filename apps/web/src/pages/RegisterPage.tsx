@@ -96,7 +96,7 @@ export function RegisterPage(): React.JSX.Element {
 
         <TextField
           label="用户名"
-          hint="3–20 位字母、数字或下划线，用于登录"
+          hint="3–20 位字母、数字或下划线，用于登录，全站唯一"
           autoComplete="username"
           value={username}
           onChange={(event) => {
@@ -105,8 +105,8 @@ export function RegisterPage(): React.JSX.Element {
         />
 
         <TextField
-          label="显示名称"
-          hint={`在账目中展示的名称，最多 ${String(DISPLAY_NAME_MAX_LENGTH)} 个字符`}
+          label="昵称"
+          hint={`在应用内显示的名字，可以重复，最多 ${String(DISPLAY_NAME_MAX_LENGTH)} 个字符`}
           value={displayName}
           onChange={(event) => {
             setDisplayName(event.target.value);
