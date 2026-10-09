@@ -2,11 +2,14 @@ import cookie from "@fastify/cookie";
 import rateLimit from "@fastify/rate-limit";
 import Fastify, { type FastifyInstance, type FastifyServerOptions } from "fastify";
 
+import { createRequireAuth } from "./auth/guard.js";
 import { LoginThrottle, type LoginThrottleOptions } from "./auth/login-throttle.js";
 import type { PrismaClient } from "./db.js";
 import { forbidden, registerErrorHandlers } from "./lib/errors.js";
 import { registerAuthRoutes } from "./routes/auth.js";
 import { registerHealthRoute, type HealthDeps } from "./routes/health.js";
+import { registerLedgerRoutes } from "./routes/ledger.js";
+import { registerTransactionRoutes } from "./routes/transactions.js";
 
 export interface BuildAppOptions extends HealthDeps {
   readonly logger?: FastifyServerOptions["logger"];
@@ -66,11 +69,16 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   registerHealthRoute(app, options);
 
   if (options.prisma) {
+    const requireAuth = createRequireAuth(options.prisma);
+
     registerAuthRoutes(app, {
       prisma: options.prisma,
       throttle: new LoginThrottle(options.loginThrottleOptions ?? DEFAULT_THROTTLE),
       cookieSecure: options.cookieSecure ?? false,
     });
+
+    registerLedgerRoutes(app, { prisma: options.prisma, requireAuth });
+    registerTransactionRoutes(app, { prisma: options.prisma, requireAuth });
   }
 
   return app;

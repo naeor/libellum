@@ -41,6 +41,15 @@ function cookieFrom(headers: Record<string, unknown>): string {
 }
 
 async function resetDatabase(): Promise<void> {
+  // Ledger rows first: `transactions.category_id` is ON DELETE RESTRICT, so a
+  // cascade arriving at a category that still has entries would be refused.
+  await prisma.transactionTag.deleteMany();
+  await prisma.transaction.deleteMany();
+  await prisma.tag.deleteMany();
+  await prisma.category.deleteMany();
+  await prisma.paymentMethod.deleteMany();
+  await prisma.bookMember.deleteMany();
+  await prisma.book.deleteMany();
   await prisma.session.deleteMany();
   await prisma.registrationInvite.deleteMany();
   await prisma.user.deleteMany();

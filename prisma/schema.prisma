@@ -169,8 +169,15 @@ model Category {
   icon       String?
   sortOrder  Int             @default(0) @map("sort_order")
   isArchived Boolean         @default(false) @map("is_archived")
-  createdAt  DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt  DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  /// A system category is created with the book and managed by the server:
+  /// it cannot be renamed, archived or deleted, and it never appears in the
+  /// picker. `暂无分类` is the one that exists today — an entry whose author
+  /// did not choose a category is filed under it, so `transactions.category_id`
+  /// stays mandatory and every entry is still countable.
+  isSystem  Boolean  @default(false) @map("is_system")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   book         Book          @relation(fields: [bookId], references: [id], onDelete: Cascade)
   transactions Transaction[]
@@ -234,9 +241,9 @@ model Transaction {
   /// Who recorded it.
   userId String @map("user_id") @db.Uuid
 
-  /// Null means 无分类: the interface always shows a category, but a person is
-  /// never forced to pick one before saving.
-  categoryId      String? @map("category_id") @db.Uuid
+  /// Always set. An entry saved without a category is filed under the book's
+  /// system category 暂无分类, which is never shown in the picker.
+  categoryId      String @map("category_id") @db.Uuid
   paymentMethodId String? @map("payment_method_id") @db.Uuid
 
   /// Stored alongside the category so statistics stay correct even if the
@@ -269,7 +276,7 @@ model Transaction {
 
   book          Book           @relation(fields: [bookId], references: [id], onDelete: Cascade)
   user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  category      Category?      @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  category      Category       @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   paymentMethod PaymentMethod? @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull)
   tags          TransactionTag[]
 

@@ -11,6 +11,7 @@ import {
 } from "@libellum/shared";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
+import { createRequireAuth } from "../auth/guard.js";
 import { LoginThrottle } from "../auth/login-throttle.js";
 import { getDummyHash, hashPassword, verifyPassword } from "../auth/password.js";
 import {
@@ -26,6 +27,7 @@ import {
   sessionExpiryFrom,
 } from "../auth/session.js";
 import type { PrismaClient } from "../db.js";
+import { createDefaultLedger } from "../ledger/bootstrap.js";
 import { badRequest, conflict, tooManyRequests, unauthorized } from "../lib/errors.js";
 
 export interface AuthRouteOptions {
@@ -141,24 +143,7 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
     setSessionCookie(reply, token, cookieSecure);
   }
 
-  async function requireAuth(request: FastifyRequest): Promise<void> {
-    const token = request.cookies[SESSION_COOKIE_NAME];
-
-    if (!token) {
-      throw unauthorized("not_authenticated", "请先登录");
-    }
-
-    const session = await prisma.session.findUnique({
-      where: { tokenHash: hashSessionToken(token) },
-      include: { user: true },
-    });
-
-    if (!session || session.expiresAt.getTime() <= Date.now()) {
-      throw unauthorized("session_expired", "登录状态已过期，请重新登录");
-    }
-
-    request.currentUser = toSessionUser(session.user);
-  }
+  const requireAuth = createRequireAuth(prisma);
 
   async function assertNotThrottled(
     request: FastifyRequest,
@@ -207,6 +192,11 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
           recoveryCodeHash,
         },
       });
+
+      // The account is useless without a ledger, so it is created here, inside
+      // the same transaction: book, membership, preset categories and payment
+      // methods all exist, or the signup does not happen at all.
+      await createDefaultLedger(tx, created.id);
 
       // Claim the invite inside the same transaction: `usedAt: null` in the
       // filter means two simultaneous registrations cannot both consume it.

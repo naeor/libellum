@@ -36,6 +36,10 @@ export function conflict(code: string, message: string): AppError {
   return new AppError(409, code, message);
 }
 
+export function notFound(code: string, message: string): AppError {
+  return new AppError(404, code, message);
+}
+
 export function tooManyRequests(code: string, message: string): AppError {
   return new AppError(429, code, message);
 }
