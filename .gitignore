@@ -34,6 +34,10 @@ apps/ocr/__pycache__/
 # 测试用的仿真截图由 make_samples.py 生成，不必提交。
 # 真实截图绝不允许提交——那是别人的付款凭证。
 apps/ocr/samples/
+# 项目所有者提供的真实截图：含金额、姓名、卡号。
+# 绝不进仓库，也绝不上传到任何地方。
+apps/ocr/real-samples/*
+!apps/ocr/real-samples/README.md
 
 # ---- 日志与临时文件 ----
 *.log
@@ -63,3 +67,7 @@ docs/_c*.json
 # 如果你希望简历里直接看到 PDF，把下面两行删掉即可
 docs/*.docx
 docs/*.pdf
+
+# ---- 本地快捷方式 ----
+# 指向本机绝对路径（含用户名），对别人没有意义，也不该进公开仓库。
+docs/*.lnk
