@@ -310,23 +310,30 @@ function PickStep({
   readonly onManual: () => void;
 }): React.JSX.Element {
   const pickerRef = useRef<HTMLInputElement>(null);
+  const [pickerAsked, setPickerAsked] = useState(false);
+  const [pickerSilent, setPickerSilent] = useState(false);
 
   return (
     <div className="flex flex-col gap-5">
       {/*
-        A real button that clicks a hidden input, rather than a <label> wrapping
-        one. The label pattern is the tidier one and it is what the first
-        version used — on iOS Safari it did nothing at all: the screen flashed
-        and no picker appeared. A button calling click() on the input is the
-        pattern that works on every browser, so it is the one to use.
+        `sr-only`, not `hidden`. `display: none` is what the first two attempts
+        used, and iOS Safari is documented to ignore a programmatic click on a
+        file input that is not rendered at all. Clipping it off-screen keeps it
+        in the layout, which is the version that works everywhere.
+
+        No `capture` attribute: that is what lets the browser offer camera and
+        photo library in the same sheet, which is the choice the user needs.
+        Forcing `capture` would remove the library entirely.
       */}
       <input
         ref={pickerRef}
         type="file"
         accept="image/*"
         multiple
-        className="hidden"
+        className="sr-only"
         onChange={(event) => {
+          setPickerAsked(false);
+          setPickerSilent(false);
           onAdd(event.target.files);
           // Reset so choosing the same file twice still fires a change.
           event.target.value = "";
@@ -336,7 +343,15 @@ function PickStep({
       <button
         type="button"
         onClick={() => {
+          // A picker that never opens and a tap that never registered look
+          // identical from the outside. Saying what happened is the difference
+          // between "broken" and "I must have missed".
+          setPickerAsked(true);
+          setPickerSilent(false);
           pickerRef.current?.click();
+          window.setTimeout(() => {
+            setPickerSilent(true);
+          }, 3000);
         }}
         className="flex flex-col items-center justify-center gap-2 rounded-card border-2 border-dashed border-line bg-surface py-10 text-center transition hover:border-brand active:bg-canvas"
       >
@@ -346,6 +361,16 @@ function PickStep({
           微信 / 支付宝 / 银行的付款截图，最多 {MAX_RECOGNIZE_IMAGES} 张
         </span>
       </button>
+
+      {pickerAsked && pickerSilent ? (
+        <Alert tone="info">
+          没有收到图片。如果选择器一直打不开，可以先用
+          <button type="button" className="mx-1 underline" onClick={onManual}>
+            手动记账
+          </button>
+          ，功能不受影响。
+        </Alert>
+      ) : null}
 
       {files.length === 0 ? null : (
         <ul className="flex flex-wrap gap-3">
