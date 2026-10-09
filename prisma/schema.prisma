@@ -167,6 +167,12 @@ model Category {
   kind       TransactionKind
   /// Unused in v1 (no icons by decision), kept so adding them needs no migration.
   icon       String?
+  /// Plain-language explanation of what belongs in this category.
+  ///
+  /// Set for the presets so a new user can tell 服务 from 生活缴费. It is
+  /// cleared the moment the category is renamed: at that point it is the
+  /// user's own category, and an explanation they did not write is just noise.
+  description String?
   sortOrder  Int             @default(0) @map("sort_order")
   isArchived Boolean         @default(false) @map("is_archived")
 

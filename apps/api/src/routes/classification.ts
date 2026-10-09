@@ -21,6 +21,7 @@ const CATEGORY_FIELDS = {
   id: true,
   name: true,
   kind: true,
+  description: true,
   isSystem: true,
   isArchived: true,
   sortOrder: true,
@@ -103,7 +104,12 @@ export function registerClassificationRoutes(
     if (existing.isSystem) throw forbidden("category_system", "系统分类不可修改。");
 
     const data: Record<string, unknown> = {};
-    if (body.name !== undefined) data["name"] = body.name;
+    if (body.name !== undefined) {
+      data["name"] = body.name;
+      // The preset explanation belongs to the preset. Once the user renames a
+      // category it is theirs, and the ⓘ disappears with it.
+      data["description"] = null;
+    }
     if (body.sortOrder !== undefined) data["sortOrder"] = body.sortOrder;
     if (body.isArchived !== undefined) data["isArchived"] = body.isArchived;
 

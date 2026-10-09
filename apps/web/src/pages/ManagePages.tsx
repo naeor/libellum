@@ -76,6 +76,8 @@ interface Archivable {
   readonly id: string;
   readonly name: string;
   readonly isArchived: boolean;
+  /** Present only while this still carries the preset wording. */
+  readonly description?: string | null | undefined;
 }
 
 function ArchivableList({
@@ -95,14 +97,20 @@ function ArchivableList({
     <ul className="overflow-hidden rounded-card border border-line bg-surface">
       {items.map((item) => {
         const locked = lockedIds.includes(item.id);
+        const description = item.description ?? null;
 
         return (
           <li key={item.id}>
             <div className="flex items-center justify-between gap-4 border-b border-line px-5 py-3.5 last:border-b-0">
-              <span className="flex flex-col">
+              <span className="flex min-w-0 flex-col gap-0.5">
                 <span className={`text-sm ${item.isArchived ? "text-muted line-through" : "text-ink"}`}>
                   {item.name}
                 </span>
+                {/* The preset explanation, shown plainly here: this is the
+                    screen somebody opens precisely to read them. */}
+                {description ? (
+                  <span className="text-xs leading-relaxed text-muted">{description}</span>
+                ) : null}
                 {locked ? <span className="text-xs text-muted">系统分类，不可修改</span> : null}
                 {item.isArchived && !locked ? (
                   <span className="text-xs text-muted">已归档，历史记录仍显示</span>

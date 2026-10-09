@@ -39,6 +39,8 @@ export async function createDefaultLedger(client: Client, userId: string): Promi
       kind,
       sortOrder: index,
       isSystem: preset.name === UNCATEGORISED.name,
+      // The hidden fallback needs no explanation; the presets do.
+      description: preset.name === UNCATEGORISED.name ? null : preset.description,
     }));
   });
 

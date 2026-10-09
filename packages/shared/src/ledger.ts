@@ -68,6 +68,12 @@ export const categorySchema = z.object({
   id: z.string(),
   name: z.string(),
   kind: transactionKindSchema,
+  /**
+   * Plain-language explanation, shown behind the ⓘ next to a preset. Null for
+   * categories the user made or renamed — they do not need to be told what
+   * their own category means.
+   */
+  description: z.string().nullable(),
   /** System categories are server-managed and hidden from the picker. */
   isSystem: z.boolean(),
   isArchived: z.boolean(),

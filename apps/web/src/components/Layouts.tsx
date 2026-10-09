@@ -63,6 +63,7 @@ export function InnerPage({
       <div className="flex items-start justify-between gap-4">
         <button
           type="button"
+          data-back-control
           onClick={handleBack}
           className="-mb-2 self-start text-sm text-muted transition hover:text-ink"
         >

@@ -81,6 +81,7 @@ export interface LedgerMeta {
     id: string;
     name: string;
     kind: string;
+    description: string | null;
     isSystem: boolean;
     isArchived: boolean;
   }[];

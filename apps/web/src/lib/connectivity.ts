@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 
+import { recordBackPress } from "./backFallback.js";
+
 /**
  * Whether the browser currently believes it has a network.
  *
@@ -51,6 +53,14 @@ export function useGoBack(fallback: string): () => void {
   const location = useLocation();
 
   return useCallback(() => {
+    // Five presses in a row with nothing else touched: the user is stuck
+    // rather than navigating, so send them somewhere real instead of letting
+    // them bounce between two screens.
+    if (recordBackPress()) {
+      void navigate("/", { replace: true });
+      return;
+    }
+
     if (location.key !== "default") {
       void navigate(-1);
       return;

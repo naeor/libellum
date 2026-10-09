@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router";
 
 import { AuthProvider, useAuth } from "./auth/AuthProvider.js";
+import { ErrorBoundary } from "./components/ErrorBoundary.js";
 import { UndoProvider } from "./components/UndoProvider.js";
 import { AboutPage } from "./pages/AboutPage.js";
 import { AddEntryPage } from "./pages/AddEntryPage.js";
@@ -131,14 +132,16 @@ function AppRoutes(): React.JSX.Element {
 
 export default function App(): React.JSX.Element {
   return (
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <UndoProvider>
-          <BrowserRouter>
-            <AppRoutes />
-          </BrowserRouter>
-        </UndoProvider>
-      </AuthProvider>
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <UndoProvider>
+            <BrowserRouter>
+              <AppRoutes />
+            </BrowserRouter>
+          </UndoProvider>
+        </AuthProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 }

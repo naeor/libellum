@@ -28,7 +28,15 @@ export function registerLedgerRoutes(app: FastifyInstance, options: LedgerRouteO
       prisma.category.findMany({
         where: { bookId },
         orderBy: [{ kind: "asc" }, { sortOrder: "asc" }],
-        select: { id: true, name: true, kind: true, isSystem: true, isArchived: true, sortOrder: true },
+        select: {
+          id: true,
+          name: true,
+          kind: true,
+          description: true,
+          isSystem: true,
+          isArchived: true,
+          sortOrder: true,
+        },
       }),
       prisma.paymentMethod.findMany({
         where: { bookId },

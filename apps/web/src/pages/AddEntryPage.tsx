@@ -10,6 +10,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 
 import { Alert } from "../components/Alert.js";
+import { InfoIcon } from "../components/InfoHint.js";
 import { TabPage } from "../components/Layouts.js";
 import { errorMessage } from "../lib/api.js";
 import {
@@ -57,6 +58,8 @@ export function AddEntryPage(): React.JSX.Element {
   const [amountText, setAmountText] = useState("");
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [categoryOpen, setCategoryOpen] = useState(false);
+  /** Which category's ⓘ explanation is open, if any. */
+  const [hintCategoryId, setHintCategoryId] = useState<string | null>(null);
   const [paymentMethodId, setPaymentMethodId] = useState<string | null>(null);
   const [currency, setCurrency] = useState<Currency>("CNY");
   const [occurredAt, setOccurredAt] = useState(() => new Date());
@@ -268,20 +271,47 @@ export function AddEntryPage(): React.JSX.Element {
                     {UNCATEGORISED_LABEL}
                   </button>
                 </li>
+
                 {categories.map((category) => (
-                  <li key={category.id}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCategoryId(category.id);
-                        setCategoryOpen(false);
-                      }}
-                      className={`w-full border-t border-line px-4 py-3 text-left text-sm transition hover:bg-brand-soft ${
-                        category.id === categoryId ? "text-brand-dark" : "text-ink"
-                      }`}
-                    >
-                      {category.name}
-                    </button>
+                  <li key={category.id} className="border-t border-line">
+                    <div className="flex items-stretch">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCategoryId(category.id);
+                          setCategoryOpen(false);
+                        }}
+                        className={`flex-1 px-4 py-3 text-left text-sm transition hover:bg-brand-soft ${
+                          category.id === categoryId ? "text-brand-dark" : "text-ink"
+                        }`}
+                      >
+                        {category.name}
+                      </button>
+
+                      {/* The explanation belongs to the preset, so it only
+                          exists until the category is renamed. */}
+                      {category.description ? (
+                        <button
+                          type="button"
+                          aria-label={`${category.name}包含哪些支出`}
+                          aria-expanded={hintCategoryId === category.id}
+                          onClick={() => {
+                            setHintCategoryId((current) =>
+                              current === category.id ? null : category.id,
+                            );
+                          }}
+                          className="shrink-0 px-4 text-muted transition hover:text-brand-dark"
+                        >
+                          <InfoIcon />
+                        </button>
+                      ) : null}
+                    </div>
+
+                    {hintCategoryId === category.id && category.description ? (
+                      <p className="px-4 pb-3 text-xs leading-relaxed text-muted">
+                        {category.description}
+                      </p>
+                    ) : null}
                   </li>
                 ))}
               </ul>

@@ -163,6 +163,27 @@ describe("categories", () => {
     expect(remove.statusCode).toBe(403);
   });
 
+  it("carries a plain-language explanation for presets, and drops it on rename", async () => {
+    const cookie = await signUp(app, "mama");
+    const ledger = await ledgerOf(app, cookie);
+    const dining = findCategory(ledger, "餐饮", "expense");
+
+    // The preset explains itself, which is the whole point of the ⓘ.
+    expect(dining?.description).toBe("日常用餐与饮品支出");
+
+    const renamed = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/categories/${String(dining?.id)}`,
+      headers: { cookie },
+      payload: { name: "吃饭" },
+    });
+
+    expect(renamed.statusCode).toBe(200);
+    // Once it is the user's own category, an explanation they did not write is
+    // noise — and the ⓘ disappears with it.
+    expect((renamed.json() as { description: string | null }).description).toBeNull();
+  });
+
   it("keeps one account's categories out of another's reach", async () => {
     const mama = await signUp(app, "mama");
     const baba = await signUp(app, "baba");
