@@ -27,6 +27,14 @@ backups/
 # ---- 上传的小票图片（本地开发）----
 uploads/
 
+# ---- OCR 服务：Python 虚拟环境与模型（本地安装，约 260MB）----
+# 依赖由 requirements.txt 声明；虚拟环境本身永远不进仓库。
+apps/ocr/.venv/
+apps/ocr/__pycache__/
+# 测试用的仿真截图由 make_samples.py 生成，不必提交。
+# 真实截图绝不允许提交——那是别人的付款凭证。
+apps/ocr/samples/
+
 # ---- 日志与临时文件 ----
 *.log
 *.err

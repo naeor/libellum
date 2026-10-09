@@ -1,0 +1,13 @@
+# OCR service dependencies.
+#
+# Deliberately tiny. rapidocr-onnxruntime carries PaddleOCR's recognition models
+# converted to ONNX, so there is no PaddlePaddle or PyTorch framework to install
+# — about 260 MB in the virtual environment instead of well over a gigabyte, and
+# it runs on CPU.
+#
+# It is a separate Python environment rather than a Node package because the
+# recogniser is Python-only. The alternative was a cloud OCR API, which would
+# mean uploading somebody's payment screenshot to a third party; screenshots
+# carry account numbers, balances and transaction ids, so they stay here.
+rapidocr-onnxruntime==1.4.4
+Pillow>=12.0.0
