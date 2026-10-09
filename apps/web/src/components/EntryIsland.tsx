@@ -1,55 +1,102 @@
 import { useNavigate } from "react-router";
 
+export type IslandOrientation = "horizontal" | "vertical";
+
 /**
- * The entry island.
+ * The entry island: three ways to record something, in one control.
  *
- * Three ways to record something, floating over the list: by hand, by camera,
- * by voice. It exists because the bottom tab bar can only hold so much, and
- * because two of the three ways are not "go to a page and fill in a form" —
- * they are "point the phone at the thing and be done".
+ * It has two shapes and three sizes, and they are all the same component:
  *
- * Currently a **fixed** control on the right edge. The owner's design has it
- * expand while the list is being scrolled and collapse when it stops, and lets
- * the user drag it to either wall; both are recorded in the backlog and
- * deliberately not built yet, because the three actions have to work before
- * their animation is worth anything.
+ *  * **horizontal** — three white circles on a green base, sitting inside the
+ *    green summary at the foot of the ledger screen
+ *  * **vertical** — the same three circles stacked in a capsule fixed to the
+ *    left edge, for when the summary has scrolled away
+ *  * **collapsed** — a single translucent circle with a `+`, shown only while
+ *    the list is moving so it does not compete with the content
  *
- * The bottom tab bar's add button stays for now. The owner asked for the island
- * to be added alongside it rather than replace it, until it is clear how the
- * island should behave on the other tabs — those four screens have not been
- * designed yet, and removing a working entry point to replace it with an
- * undecided one would be a step backwards.
+ * Collapsed is a *state of the island*, not a fourth way to record anything:
+ * pressing it reopens the three choices rather than opening the pen. That was
+ * the owner's explicit requirement, and it is the right call — a control that
+ * means "record by hand" when compressed and "choose how to record" otherwise
+ * would be a different control wearing the same icon.
+ *
+ * Voice and camera are marked unavailable rather than hidden, and they say so
+ * when pressed. A button that looks ready and does nothing is worse than one
+ * that admits it is not.
  */
-export function EntryIsland(): React.JSX.Element {
+export function EntryIsland({
+  orientation,
+  collapsed = false,
+  onExpand,
+}: {
+  readonly orientation: IslandOrientation;
+  readonly collapsed?: boolean;
+  readonly onExpand?: () => void;
+}): React.JSX.Element {
   const navigate = useNavigate();
+
+  const actions = {
+    voice: { label: "语音记账", available: false, hint: "即将开放" },
+    manual: { label: "手动记账", available: true },
+    camera: { label: "拍照记账", available: false, hint: "即将开放" },
+  } as const;
+
+  if (collapsed) {
+    return (
+      <button
+        type="button"
+        onClick={onExpand}
+        aria-label="展开记账方式"
+        className="flex size-14 items-center justify-center rounded-full bg-brand/85 text-white shadow-md backdrop-blur-[2px] transition active:scale-95"
+      >
+        <PlusIcon />
+      </button>
+    );
+  }
+
+  const buttons = (
+    <>
+      <IslandButton
+        {...actions.voice}
+        onClick={(): void => undefined}
+        disabled
+      />
+      <IslandButton
+        {...actions.manual}
+        onClick={(): void => {
+          void navigate("/add");
+        }}
+      />
+      <IslandButton
+        {...actions.camera}
+        onClick={(): void => undefined}
+        disabled
+      />
+    </>
+  );
+
+  if (orientation === "horizontal") {
+    return (
+      // The base is part of the green summary rather than a card floating over
+      // it: same colour, no shadow, and the right end curves away into the
+      // white below so the two areas meet instead of stacking.
+      <div
+        className="flex items-center gap-3 rounded-full bg-black/12 p-2"
+        role="group"
+        aria-label="记账方式"
+      >
+        {buttons}
+      </div>
+    );
+  }
 
   return (
     <div
-      className="fixed top-1/2 right-3 z-30 flex -translate-y-1/2 flex-col gap-1 rounded-full bg-brand/92 p-1.5 shadow-lg backdrop-blur-sm"
+      className="flex flex-col items-center gap-2.5 rounded-full bg-brand/95 px-2 py-3 shadow-sm"
       role="group"
       aria-label="记账方式"
     >
-      <IslandButton
-        label="语音记账"
-        hint="即将开放"
-        onClick={() => undefined}
-        disabled
-        icon={<MicrophoneIcon />}
-      />
-      <IslandButton
-        label="手动记账"
-        onClick={() => {
-          void navigate("/add");
-        }}
-        icon={<PenIcon />}
-      />
-      <IslandButton
-        label="拍照记账"
-        hint="即将开放"
-        onClick={() => undefined}
-        disabled
-        icon={<CameraIcon />}
-      />
+      {buttons}
     </div>
   );
 }
@@ -57,31 +104,43 @@ export function EntryIsland(): React.JSX.Element {
 function IslandButton({
   label,
   hint,
+  available,
   onClick,
-  icon,
   disabled = false,
 }: {
   readonly label: string;
   readonly hint?: string;
+  readonly available: boolean;
   readonly onClick: () => void;
-  readonly icon: React.ReactNode;
   readonly disabled?: boolean;
 }): React.JSX.Element {
+  const description = available ? label : `${label}，${hint ?? "即将开放"}`;
+
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
-      // 44px: the smallest target a thumb hits reliably. These are the only
-      // controls on the screen that float over content, so a miss is costly.
-      className={`flex size-11 items-center justify-center rounded-full text-white transition ${
-        disabled ? "opacity-45" : "hover:bg-white/15 active:bg-white/25"
+      title={description}
+      aria-label={description}
+      // 44px: the smallest target a thumb hits reliably. These float over
+      // content, so a miss costs more than it would in a list.
+      className={`flex size-11 items-center justify-center rounded-full bg-white text-brand transition ${
+        disabled ? "opacity-55" : "active:scale-95"
       }`}
-      title={hint === undefined ? label : `${label}（${hint}）`}
-      aria-label={hint === undefined ? label : `${label}，${hint}`}
     >
-      {icon}
+      {label.startsWith("语音") ? <MicrophoneIcon /> : null}
+      {label.startsWith("手动") ? <PenIcon /> : null}
+      {label.startsWith("拍照") ? <CameraIcon /> : null}
     </button>
+  );
+}
+
+export function PlusIcon(): React.JSX.Element {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="size-7" aria-hidden="true">
+      <path d="M12 5v14M5 12h14" strokeLinecap="round" />
+    </svg>
   );
 }
 
@@ -106,7 +165,10 @@ function PenIcon(): React.JSX.Element {
 function CameraIcon(): React.JSX.Element {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="size-6" aria-hidden="true">
-      <path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z" strokeLinejoin="round" />
+      <path
+        d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z"
+        strokeLinejoin="round"
+      />
       <circle cx="12" cy="13" r="3.4" />
     </svg>
   );
