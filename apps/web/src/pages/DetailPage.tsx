@@ -155,14 +155,23 @@ export function DetailPage(): React.JSX.Element {
         {summaryHeader}
 
         {/*
-          The island sits at the foot of the green area rather than floating
-          over it, and the compact toggle shares its row. Reserved space means
-          the summary can grow later — a chart, a spending overview — without
-          this row having to move.
+          The island straddles the bottom edge of the green area.
+
+          Its base is the same green as the summary, so where it overlaps the
+          green it disappears entirely and the two read as one shape; only the
+          part hanging over the white below is visible, as a capsule with a
+          rounded end. That is the "soft transition" the design asks for, and
+          it is why the base is not a tinted card — a tinted card would look
+          like something floating on top rather than something growing out of
+          the summary.
         */}
-        <div className="flex items-center justify-between gap-3 pt-1">
-          <EntryIsland orientation="horizontal" />
-          <KindToggle kind={kind} onChange={setKind} variant="inline" />
+        <div className="-mb-9 flex items-end justify-between gap-3 pt-1">
+          <div className="-ml-2 rounded-full bg-brand py-1.5 pr-1.5 pl-1.5">
+            <EntryIsland orientation="horizontal" />
+          </div>
+          <div className="mb-9">
+            <KindToggle kind={kind} onChange={setKind} variant="inline" />
+          </div>
         </div>
       </header>
 

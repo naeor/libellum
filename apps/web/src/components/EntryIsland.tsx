@@ -77,14 +77,11 @@ export function EntryIsland({
 
   if (orientation === "horizontal") {
     return (
-      // The base is part of the green summary rather than a card floating over
-      // it: same colour, no shadow, and the right end curves away into the
-      // white below so the two areas meet instead of stacking.
-      <div
-        className="flex items-center gap-3 rounded-full bg-black/12 p-2"
-        role="group"
-        aria-label="记账方式"
-      >
+      // No background of its own: the wrapper in the summary supplies it, so
+      // the base can match the green exactly and merge with it where they
+      // overlap. A capsule with its own tint would read as a card resting on
+      // the summary rather than a part of it.
+      <div className="flex items-center gap-3" role="group" aria-label="记账方式">
         {buttons}
       </div>
     );
