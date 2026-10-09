@@ -99,6 +99,75 @@ export const ledgerMetaResponseSchema = z.object({
 export type LedgerMetaResponse = z.infer<typeof ledgerMetaResponseSchema>;
 
 // ---------------------------------------------------------------------------
+// Managing categories, payment methods and tags
+// ---------------------------------------------------------------------------
+
+const sortOrderSchema = z.number().int().min(0).max(9_999);
+
+export const categoryNameSchema = z
+  .string()
+  .trim()
+  .min(1, "请填写分类名称")
+  .max(20, "分类名称最多 20 个字符");
+
+export const createCategorySchema = z.object({
+  name: categoryNameSchema,
+  kind: transactionKindSchema,
+  sortOrder: sortOrderSchema.optional(),
+});
+export type CreateCategoryInput = z.infer<typeof createCategorySchema>;
+
+export const updateCategorySchema = z.object({
+  name: categoryNameSchema.optional(),
+  sortOrder: sortOrderSchema.optional(),
+  /** Archiving hides it from the picker; restoring brings it back. */
+  isArchived: z.boolean().optional(),
+});
+export type UpdateCategoryInput = z.infer<typeof updateCategorySchema>;
+
+export const paymentMethodNameSchema = z
+  .string()
+  .trim()
+  .min(1, "请填写支付方式名称")
+  .max(20, "支付方式名称最多 20 个字符");
+
+export const createPaymentMethodSchema = z.object({
+  name: paymentMethodNameSchema,
+  sortOrder: sortOrderSchema.optional(),
+});
+export type CreatePaymentMethodInput = z.infer<typeof createPaymentMethodSchema>;
+
+export const updatePaymentMethodSchema = z.object({
+  name: paymentMethodNameSchema.optional(),
+  sortOrder: sortOrderSchema.optional(),
+  isArchived: z.boolean().optional(),
+});
+export type UpdatePaymentMethodInput = z.infer<typeof updatePaymentMethodSchema>;
+
+export const tagNameSchema = z
+  .string()
+  .trim()
+  .min(1, "请填写标签名称")
+  .max(12, "标签名称最多 12 个字符");
+
+/** `#RRGGBB` only: a fixed shape keeps the list readable and the input simple. */
+export const tagColorSchema = z
+  .string()
+  .regex(/^#[0-9a-fA-F]{6}$/, "颜色格式应为 #RRGGBB");
+
+export const createTagSchema = z.object({
+  name: tagNameSchema,
+  color: tagColorSchema,
+});
+export type CreateTagInput = z.infer<typeof createTagSchema>;
+
+export const updateTagSchema = z.object({
+  name: tagNameSchema.optional(),
+  color: tagColorSchema.optional(),
+});
+export type UpdateTagInput = z.infer<typeof updateTagSchema>;
+
+// ---------------------------------------------------------------------------
 // Entries
 // ---------------------------------------------------------------------------
 

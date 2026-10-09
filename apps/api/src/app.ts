@@ -7,6 +7,7 @@ import { LoginThrottle, type LoginThrottleOptions } from "./auth/login-throttle.
 import type { PrismaClient } from "./db.js";
 import { forbidden, registerErrorHandlers } from "./lib/errors.js";
 import { registerAuthRoutes } from "./routes/auth.js";
+import { registerClassificationRoutes } from "./routes/classification.js";
 import { registerHealthRoute, type HealthDeps } from "./routes/health.js";
 import { registerLedgerRoutes } from "./routes/ledger.js";
 import { registerTransactionRoutes } from "./routes/transactions.js";
@@ -79,6 +80,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
 
     registerLedgerRoutes(app, { prisma: options.prisma, requireAuth });
     registerTransactionRoutes(app, { prisma: options.prisma, requireAuth });
+    registerClassificationRoutes(app, { prisma: options.prisma, requireAuth });
   }
 
   return app;

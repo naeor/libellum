@@ -3,6 +3,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { buildApp } from "../src/app.js";
 import { createPrismaClient } from "../src/db.js";
+import { resetDatabase as resetAllTables } from "./support.js";
 
 const prisma = createPrismaClient(process.env["DATABASE_URL"] ?? "");
 
@@ -40,19 +41,12 @@ function cookieFrom(headers: Record<string, unknown>): string {
   return value.split(";")[0] ?? "";
 }
 
+/**
+ * Delegates to the shared reset so a new table can never be forgotten in one
+ * suite but not another.
+ */
 async function resetDatabase(): Promise<void> {
-  // Ledger rows first: `transactions.category_id` is ON DELETE RESTRICT, so a
-  // cascade arriving at a category that still has entries would be refused.
-  await prisma.transactionTag.deleteMany();
-  await prisma.transaction.deleteMany();
-  await prisma.tag.deleteMany();
-  await prisma.category.deleteMany();
-  await prisma.paymentMethod.deleteMany();
-  await prisma.bookMember.deleteMany();
-  await prisma.book.deleteMany();
-  await prisma.session.deleteMany();
-  await prisma.registrationInvite.deleteMany();
-  await prisma.user.deleteMany();
+  await resetAllTables();
 }
 
 async function seedInvite(code: string = INVITE_CODE): Promise<void> {
