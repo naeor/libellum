@@ -36,6 +36,13 @@ model User {
   passwordHash String   @map("password_hash")
   displayName  String   @map("display_name")
   isDemo       Boolean  @default(false) @map("is_demo")
+
+  /// The currency this account treats as primary. It sorts first in every
+  /// currency list, and once exchange rates exist it is what other currencies
+  /// will be converted into. Stored per account rather than per book because it
+  /// is a preference about how the owner thinks about money, not about a ledger.
+  defaultCurrency String @default("CNY") @map("default_currency") @db.VarChar(3)
+
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 

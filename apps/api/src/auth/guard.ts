@@ -1,4 +1,4 @@
-import type { SessionUser } from "@libellum/shared";
+import { currencySchema, type SessionUser } from "@libellum/shared";
 import type { FastifyRequest } from "fastify";
 
 import type { PrismaClient } from "../db.js";
@@ -37,6 +37,11 @@ export function createRequireAuth(
       username: session.user.username,
       displayName: session.user.displayName,
       isDemo: session.user.isDemo,
+      // The column is a varchar, so its TypeScript type is wider than the set
+      // of currencies the app supports. Writes are validated, so a value
+      // outside that set can only come from a manual edit — falling back is
+      // better than refusing to sign the owner in.
+      defaultCurrency: currencySchema.catch("CNY").parse(session.user.defaultCurrency),
       createdAt: session.user.createdAt.toISOString(),
     };
 

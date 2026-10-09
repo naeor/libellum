@@ -1,5 +1,6 @@
 import type { CurrencySummary, Transaction } from "@libellum/shared";
 import { useMemo, useState } from "react";
+import { useSearchParams } from "react-router";
 import { useNavigate } from "react-router";
 
 import { EmptyState, ErrorState, SkeletonRows } from "../components/States.js";
@@ -7,7 +8,7 @@ import { TabPage } from "../components/Layouts.js";
 import { errorMessage } from "../lib/api.js";
 import { currencyName, formatMoney } from "../lib/format.js";
 import { currentMonth, formatDayLabel, formatMonthLabel, formatTimeInZone, shiftMonth } from "../lib/datetime.js";
-import { useSummary, useTransactions } from "../lib/queries.js";
+import { useLedger, useSummary, useTransactions } from "../lib/queries.js";
 
 /** At most two currencies get their own block; the rest fold into one row. */
 const VISIBLE_CURRENCIES = 2;
@@ -67,12 +68,38 @@ function CurrencyBlock({ summary }: { readonly summary: CurrencySummary }): Reac
 
 export function DetailPage(): React.JSX.Element {
   const navigate = useNavigate();
-  const [month, setMonth] = useState(currentMonth());
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  /**
+   * Filters can arrive in the address.
+   *
+   * The analysis screen links here with a category and a month already chosen,
+   * so a slice of the ring is one tap away from the entries behind it — a
+   * number on its own is never what the user wanted to see. Reading the
+   * initial value from the query string, rather than mirroring state into it,
+   * keeps the URL meaningful without turning every month tap into a history
+   * entry.
+   */
+  const [month, setMonth] = useState(() => searchParams.get("month") ?? currentMonth());
   const [kind, setKind] = useState<"expense" | "income">("expense");
   const [showAllCurrencies, setShowAllCurrencies] = useState(false);
 
+  const categoryId = searchParams.get("categoryId");
+
+  const clearCategoryFilter = (): void => {
+    const next = new URLSearchParams(searchParams);
+    next.delete("categoryId");
+    setSearchParams(next, { replace: true });
+  };
+
   const summary = useSummary(month);
-  const list = useTransactions({ month, kind });
+  const ledger = useLedger();
+  const list = useTransactions({ month, kind, categoryId: categoryId ?? undefined });
+
+  const filteredCategory =
+    categoryId === null
+      ? undefined
+      : ledger.data?.categories.find((category) => category.id === categoryId);
 
   const currencies = summary.data?.currencies ?? [];
   const visible = showAllCurrencies ? currencies : currencies.slice(0, VISIBLE_CURRENCIES);
@@ -99,6 +126,27 @@ export function DetailPage(): React.JSX.Element {
     <TabPage active="/" onNavigate={(to) => void navigate(to)}>
       <header className="flex flex-col gap-4 bg-brand px-6 pt-8 pb-6 text-white">
         <MonthSwitcher month={month} onChange={setMonth} />
+
+        {/*
+          The filter is visible and removable. Arriving from a chart with a
+          category already applied and no way to see or clear it would look
+          like the ledger had lost most of its entries.
+        */}
+        {categoryId === null ? null : (
+          <div className="flex items-center gap-2 self-start rounded-full bg-white/15 px-3 py-1.5 text-xs text-white">
+            <span>
+              已筛选分类：{filteredCategory?.name ?? "载入中…"}
+            </span>
+            <button
+              type="button"
+              onClick={clearCategoryFilter}
+              aria-label="清除分类筛选"
+              className="rounded-full px-1.5 text-white/80 transition hover:text-white"
+            >
+              ✕
+            </button>
+          </div>
+        )}
 
         {summary.isPending ? (
           <div className="h-20 animate-pulse rounded-field bg-white/15" />

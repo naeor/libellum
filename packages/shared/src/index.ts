@@ -8,9 +8,12 @@ export {
 
 export {
   MAX_STATS_DAYS,
+  RANGE_LABELS,
   STATS_BUCKETS,
+  STATS_RANGES,
   addDays,
   averagePerDay,
+  bucketForPreset,
   calendarDateSchema,
   comparisonRangeFor,
   daysBetween,
@@ -19,9 +22,11 @@ export {
   isEndOfMonth,
   isFirstOfMonth,
   periodTotalsSchema,
+  rangeForPreset,
   startOfMonth,
   statsBucketSchema,
   statsQuerySchema,
+  statsRangeSchema,
   statsResponseSchema,
 } from "./stats.js";
 
@@ -32,6 +37,7 @@ export type {
   StatsBucket,
   StatsComparison,
   StatsQuery,
+  StatsRangeKey,
   StatsResponse,
   StatsSeriesPoint,
 } from "./stats.js";
@@ -56,12 +62,14 @@ export {
   regenerateRecoveryCodeRequestSchema,
   registerRequestSchema,
   sessionUserSchema,
+  updatePreferencesRequestSchema,
   usernameSchema,
   type ApiError,
   type AuthResponse,
   type MeResponse,
   type RecoveryCodeResponse,
   type SessionUser,
+  type UpdatePreferencesRequest,
 } from "./auth.js";
 
 export {

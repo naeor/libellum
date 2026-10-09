@@ -73,3 +73,27 @@ function trim(value: number): string {
 
   return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
 }
+
+/**
+ * A short label for one point on a time axis.
+ *
+ * Short because the axis is narrow and its labels are thinned; a full date
+ * would be truncated into nonsense rather than shortened into meaning.
+ */
+export function bucketLabel(bucket: string, kind: "day" | "month"): string {
+  if (kind === "month") {
+    // "2026-10" reads as "10月"; the year is in the range label above the chart.
+    return `${String(Number(bucket.slice(5, 7)))}月`;
+  }
+
+  return `${String(Number(bucket.slice(5, 7)))}/${String(Number(bucket.slice(8, 10)))}`;
+}
+
+/** A full date for a tooltip, where there is room to be unambiguous. */
+export function bucketFullLabel(bucket: string, kind: "day" | "month"): string {
+  if (kind === "month") {
+    return `${bucket.slice(0, 4)} 年 ${String(Number(bucket.slice(5, 7)))} 月`;
+  }
+
+  return `${bucket.slice(0, 4)}-${bucket.slice(5, 7)}-${bucket.slice(8, 10)}`;
+}

@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { currencySchema } from "./ledger.js";
+
 /**
  * Account rules live in the shared package so the browser and the API enforce
  * exactly the same constraints — the client for fast feedback, the server
@@ -65,10 +67,22 @@ export const sessionUserSchema = z.object({
   username: z.string(),
   displayName: z.string(),
   isDemo: z.boolean(),
+  /**
+   * The currency this account treats as primary: it leads every currency list,
+   * and it is what other currencies will be converted into once exchange rates
+   * exist. Defaults to CNY.
+   */
+  defaultCurrency: currencySchema,
   createdAt: z.string(),
 });
 
 export type SessionUser = z.infer<typeof sessionUserSchema>;
+
+export const updatePreferencesRequestSchema = z.object({
+  defaultCurrency: currencySchema,
+});
+
+export type UpdatePreferencesRequest = z.infer<typeof updatePreferencesRequestSchema>;
 
 export const meResponseSchema = z.object({ user: sessionUserSchema });
 export type MeResponse = z.infer<typeof meResponseSchema>;

@@ -4,11 +4,15 @@ import {
   type CreateTagInput,
   type CreateTransactionInput,
   type LedgerMetaResponse,
+  type MeResponse,
+  type StatsQuery,
+  type StatsResponse,
   type SummaryResponse,
   type Transaction,
   type TransactionListResponse,
   type UpdateCategoryInput,
   type UpdatePaymentMethodInput,
+  type UpdatePreferencesRequest,
   type UpdateTagInput,
   type UpdateTransactionInput,
 } from "@libellum/shared";
@@ -21,6 +25,7 @@ import {
 } from "@tanstack/react-query";
 import { useMemo } from "react";
 
+import { useAuth } from "../auth/AuthProvider.js";
 import { apiFetch } from "./api.js";
 
 /**
@@ -36,6 +41,7 @@ export const queryKeys = {
   summary: (month: string) => ["summary", month] as const,
   transactions: (filters: TransactionFilters) => ["transactions", filters] as const,
   transaction: (id: string) => ["transaction", id] as const,
+  stats: (query: StatsQuery) => ["stats", query] as const,
 };
 
 export interface TransactionFilters {
@@ -48,6 +54,26 @@ export interface TransactionFilters {
 // ---------------------------------------------------------------------------
 // Reads
 // ---------------------------------------------------------------------------
+
+/**
+ * Account preferences: the default currency, for now.
+ *
+ * The signed-in user is cached by the auth provider, so the response replaces
+ * that rather than a query key here — otherwise the currency would change in
+ * settings while every other screen kept the old one until a reload.
+ */
+export function useUpdatePreferences() {
+  const client = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: UpdatePreferencesRequest) =>
+      apiFetch<MeResponse>("/auth/me", { method: "PATCH", body: input }),
+    onSuccess: (data) => {
+      client.setQueryData(["me"], data);
+      void client.invalidateQueries({ queryKey: ["me"] });
+    },
+  });
+}
 
 export function useLedger() {
   return useQuery({
@@ -89,6 +115,32 @@ export function useTransaction(id: string) {
     queryKey: queryKeys.transaction(id),
     queryFn: () => apiFetch<Transaction>(`/transactions/${id}`),
     enabled: id !== "",
+  });
+}
+
+/**
+ * Everything the analysis screen draws, in one request.
+ *
+ * The range is already expanded from whatever preset the user picked — this
+ * hook and the endpoint both deal in concrete dates, so adding a custom date
+ * picker later changes nothing here.
+ */
+export function useStats(query: StatsQuery) {
+  return useQuery({
+    queryKey: queryKeys.stats(query),
+    queryFn: () =>
+      apiFetch<StatsResponse>("/stats", {
+        query: {
+          from: query.from,
+          to: query.to,
+          bucket: query.bucket,
+          currency: query.currency,
+          compareFrom: query.compareFrom,
+          compareTo: query.compareTo,
+        },
+      }),
+    // A statistic is derived from entries; when none change, it cannot change.
+    staleTime: 60_000,
   });
 }
 

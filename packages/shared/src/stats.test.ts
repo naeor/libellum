@@ -3,12 +3,14 @@ import { describe, expect, it } from "vitest";
 import {
   addDays,
   averagePerDay,
+  bucketForPreset,
   comparisonRangeFor,
   daysBetween,
   endOfMonth,
   fillSeriesGaps,
   isEndOfMonth,
   isFirstOfMonth,
+  rangeForPreset,
   startOfMonth,
   statsQuerySchema,
 } from "./stats.js";
@@ -178,5 +180,38 @@ describe("averagePerDay", () => {
     expect(
       averagePerDay({ expenseMinor: 900, incomeMinor: 0, netMinor: -900, count: 0, largestExpenseMinor: 0 }, 0),
     ).toBe(0);
+  });
+});
+
+describe("range presets", () => {
+  it("counts today as one of the days", () => {
+    // "The last 7 days" ending today covers today and the six before it. An
+    // off-by-one here would silently drop today's spending from every chart.
+    expect(rangeForPreset("7d", "2026-10-09")).toEqual({ from: "2026-10-03", to: "2026-10-09" });
+    expect(daysBetween(...(Object.values(rangeForPreset("30d", "2026-10-09")) as [string, string]))).toBe(30);
+  });
+
+  it("spans a year without arithmetic surprises", () => {
+    expect(rangeForPreset("365d", "2026-10-09")).toEqual({ from: "2025-10-10", to: "2026-10-09" });
+  });
+
+  it("crosses a year boundary", () => {
+    expect(rangeForPreset("7d", "2027-01-03")).toEqual({ from: "2026-12-28", to: "2027-01-03" });
+  });
+
+  it("draws long periods by month and short ones by day", () => {
+    // 365 daily points on a phone is a smear, not a trend.
+    expect(bucketForPreset("7d")).toBe("day");
+    expect(bucketForPreset("30d")).toBe("day");
+    expect(bucketForPreset("90d")).toBe("day");
+    expect(bucketForPreset("365d")).toBe("month");
+  });
+
+  it("expands to a plain range, which is all any chart receives", () => {
+    // The presets are a convenience in the interface; nothing downstream is
+    // allowed to know they exist.
+    const range = rangeForPreset("90d", "2026-10-09");
+
+    expect(Object.keys(range).sort()).toEqual(["from", "to"]);
   });
 });

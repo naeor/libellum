@@ -1,6 +1,7 @@
 import {
   authResponseSchema,
   changePasswordRequestSchema,
+  currencySchema,
   loginRequestSchema,
   meResponseSchema,
   recoverRequestSchema,
@@ -8,6 +9,7 @@ import {
   regenerateRecoveryCodeRequestSchema,
   registerRequestSchema,
   type SessionUser,
+  updatePreferencesRequestSchema,
 } from "@libellum/shared";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
@@ -48,6 +50,7 @@ type UserRow = {
   username: string;
   displayName: string;
   isDemo: boolean;
+  defaultCurrency: string;
   createdAt: Date;
 };
 
@@ -58,6 +61,9 @@ function toSessionUser(user: UserRow): SessionUser {
     username: user.username,
     displayName: user.displayName,
     isDemo: user.isDemo,
+    // See the guard: the column type is wider than the supported set, and only
+    // a manual database edit could put anything else in it.
+    defaultCurrency: currencySchema.catch("CNY").parse(user.defaultCurrency),
     createdAt: user.createdAt.toISOString(),
   };
 }
@@ -267,6 +273,31 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
   // ---------------------------------------------------------------------------
   app.get("/api/v1/auth/me", { preHandler: requireAuth }, async (request) => {
     return meResponseSchema.parse({ user: request.currentUser });
+  });
+
+  // ---------------------------------------------------------------------------
+  // PATCH /api/v1/auth/me
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Account-level preferences.
+   *
+   * Only the default currency for now. It lives on the user rather than the
+   * book because it describes how the owner thinks about money, not how a
+   * particular ledger is kept.
+   */
+  app.patch("/api/v1/auth/me", { preHandler: requireAuth }, async (request) => {
+    const body = updatePreferencesRequestSchema.parse(request.body);
+    const userId = request.currentUser!.id;
+
+    const updated = await prisma.user.update({
+      where: { id: userId },
+      data: { defaultCurrency: body.defaultCurrency },
+    });
+
+    return meResponseSchema.parse({
+      user: toSessionUser(updated),
+    });
   });
 
   // ---------------------------------------------------------------------------

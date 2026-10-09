@@ -305,3 +305,56 @@ export function averagePerDay(totals: PeriodTotals, days: number): number {
 
   return Math.round(totals.expenseMinor / days);
 }
+
+// ---------------------------------------------------------------------------
+// Ranges
+// ---------------------------------------------------------------------------
+
+/**
+ * The shortcuts offered in the interface.
+ *
+ * These are **shortcuts, not a model**. A preset is expanded into a concrete
+ * `{ from, to }` before anything else sees it, and every chart and query takes
+ * that range. Supporting "the two months I was renovating" later then means
+ * adding a way to pick dates, not rewriting the five charts — which is exactly
+ * why the four buttons are not what the drawing code receives.
+ */
+export const STATS_RANGES = ["7d", "30d", "90d", "365d"] as const;
+export const statsRangeSchema = z.enum(STATS_RANGES);
+export type StatsRangeKey = z.infer<typeof statsRangeSchema>;
+
+const RANGE_DAYS: Readonly<Record<StatsRangeKey, number>> = {
+  "7d": 7,
+  "30d": 30,
+  "90d": 90,
+  "365d": 365,
+};
+
+export const RANGE_LABELS: Readonly<Record<StatsRangeKey, string>> = {
+  "7d": "近 7 天",
+  "30d": "近 30 天",
+  "90d": "近 90 天",
+  "365d": "近一年",
+};
+
+/**
+ * Expand a preset into a range ending today, inclusive of both ends.
+ *
+ * `today` is passed in rather than read from the clock: it is the **phone's**
+ * calendar date, and the server must never decide what day it is for somebody
+ * else.
+ */
+export function rangeForPreset(preset: StatsRangeKey, today: string): DateRange {
+  return { from: addDays(today, -(RANGE_DAYS[preset] - 1)), to: today };
+}
+
+/**
+ * The bucket a preset is drawn in.
+ *
+ * A year of daily points is 365 marks on a chart 350 pixels wide — a smear,
+ * not a trend. Longer periods are summarised by month, which is also how
+ * people talk about them.
+ */
+export function bucketForPreset(preset: StatsRangeKey): StatsBucket {
+  return RANGE_DAYS[preset] > 120 ? "month" : "day";
+}
