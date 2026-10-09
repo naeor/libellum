@@ -41,9 +41,13 @@ export function MePage(): React.JSX.Element {
 
   return (
     <TabPage active="/me" onNavigate={(to) => void navigate(to)}>
-      {/* Taller than the other headers on purpose: it holds the mark and the
-          name, and gives the screen a place to belong before the list starts. */}
-      <header className="flex flex-col items-center gap-3 bg-brand px-6 pt-12 pb-10 text-white">
+      {/*
+        The band is taller than its contents and centres them, rather than
+        hanging the mark off the top edge with all the slack left underneath.
+        The min-height is what keeps the visual weight in the middle of the
+        colour instead of at its top.
+      */}
+      <header className="flex min-h-64 flex-col items-center justify-center gap-3 bg-brand px-6 py-10 text-white">
         <DefaultAvatar />
         <p className="mt-1 truncate text-xl font-semibold tracking-tight">{user.displayName}</p>
         <p className="text-xs text-white/75">@{user.username}</p>

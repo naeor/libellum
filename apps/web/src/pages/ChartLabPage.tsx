@@ -83,7 +83,7 @@ export function ChartLabPage(): React.JSX.Element {
 
       <Section title="「账户」页头部（头像 + 名字）">
         <div className="-m-4 overflow-hidden rounded-card">
-          <div className="flex flex-col items-center gap-3 bg-brand px-6 pt-12 pb-10 text-white">
+          <div className="flex min-h-64 flex-col items-center justify-center gap-3 bg-brand px-6 py-10 text-white">
             <DefaultAvatar />
             <p className="mt-1 text-xl font-semibold tracking-tight">Tao</p>
             <p className="text-xs text-white/75">@naeor</p>
