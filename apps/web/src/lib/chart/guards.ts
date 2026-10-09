@@ -79,20 +79,22 @@ export function canCompare(previous: number | null | undefined): boolean {
 /**
  * Copy for a chart that has no data to show.
  *
- * Returned as a table so a chart can print a reason rather than a blank box:
- * "no entries yet" and "every day was zero" are different situations and lead
- * to different actions.
+ * A chart with nothing in it still owes the reader a reason: "no entries in
+ * this period" and "entries that all came to zero" are different facts and
+ * lead to different actions. The wording states the fact plainly and in the
+ * register of a statement from the product, not a remark from a person — a
+ * ledger is a record, and the text around it should sound like one.
  */
 export function emptyStateMessage(state: ChartState, subject: string): string | null {
   switch (state) {
     case "empty":
-      return `这个时间段还没有${subject}记录。`;
+      return `所选时段暂无${subject}记录。`;
 
     case "all-zero":
-      return `这个时间段有记录，但金额都是 0。`;
+      return "所选时段已有记录，但金额均为零。";
 
     case "single":
-      return `这个时间段只有一项${subject}，占比图暂时没有意义。`;
+      return `所选时段仅有一项${subject}，占比分析暂不适用。`;
 
     case "ready":
     default:

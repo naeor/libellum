@@ -230,9 +230,27 @@ describe("canCompare and emptyStateMessage", () => {
   });
 
   it("explains why a chart is blank instead of leaving it blank", () => {
-    expect(emptyStateMessage("empty", "支出")).toContain("还没有");
-    expect(emptyStateMessage("all-zero", "支出")).toContain("0");
-    expect(emptyStateMessage("single", "支出")).toContain("只有一项");
+    expect(emptyStateMessage("empty", "支出")).toContain("暂无支出记录");
+    expect(emptyStateMessage("all-zero", "支出")).toContain("金额均为零");
+    expect(emptyStateMessage("single", "支出")).toContain("仅有一项支出");
     expect(emptyStateMessage("ready", "支出")).toBeNull();
+  });
+
+  it("phrases empty states as statements, not remarks", () => {
+    // The owner's note: "金额都是 0" reads like a person talking. A ledger's
+    // surrounding text should sound like the product stating a fact.
+    const messages = [
+      emptyStateMessage("empty", "支出"),
+      emptyStateMessage("all-zero", "支出"),
+      emptyStateMessage("single", "支出"),
+    ];
+
+    for (const message of messages) {
+      expect(message).toMatch(/。(?:$)/);
+      expect(message).toContain("所选时段");
+      for (const colloquial of ["都是", "还没有", "没什么", "暂时没有意义"]) {
+        expect(message).not.toContain(colloquial);
+      }
+    }
   });
 });

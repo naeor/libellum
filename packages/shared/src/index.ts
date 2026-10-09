@@ -6,6 +6,36 @@ export {
   sumMinor,
 } from "./money.js";
 
+export {
+  MAX_STATS_DAYS,
+  STATS_BUCKETS,
+  addDays,
+  averagePerDay,
+  calendarDateSchema,
+  comparisonRangeFor,
+  daysBetween,
+  endOfMonth,
+  fillSeriesGaps,
+  isEndOfMonth,
+  isFirstOfMonth,
+  periodTotalsSchema,
+  startOfMonth,
+  statsBucketSchema,
+  statsQuerySchema,
+  statsResponseSchema,
+} from "./stats.js";
+
+export type {
+  CategoryTotal,
+  DateRange,
+  PeriodTotals,
+  StatsBucket,
+  StatsComparison,
+  StatsQuery,
+  StatsResponse,
+  StatsSeriesPoint,
+} from "./stats.js";
+
 export { healthResponseSchema, type HealthResponse } from "./health.js";
 
 export {
