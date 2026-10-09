@@ -8,11 +8,12 @@ import {
   type Transaction,
   type TransactionKind,
 } from "@libellum/shared";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 
 import { Alert } from "../components/Alert.js";
 import { Button } from "../components/Button.js";
+import { CameraIcon } from "../components/BottomNav.js";
 import { EntrySaved } from "../components/EntrySaved.js";
 import { InnerPage } from "../components/Layouts.js";
 import { SkeletonRows } from "../components/States.js";
@@ -308,30 +309,43 @@ function PickStep({
   readonly onStart: () => void;
   readonly onManual: () => void;
 }): React.JSX.Element {
+  const pickerRef = useRef<HTMLInputElement>(null);
+
   return (
     <div className="flex flex-col gap-5">
       {/*
-        One input, no `capture` attribute: that is what lets the browser offer
-        camera and photo library in the same sheet, which is exactly the choice
-        the user needs. Forcing `capture` would remove the library.
+        A real button that clicks a hidden input, rather than a <label> wrapping
+        one. The label pattern is the tidier one and it is what the first
+        version used — on iOS Safari it did nothing at all: the screen flashed
+        and no picker appeared. A button calling click() on the input is the
+        pattern that works on every browser, so it is the one to use.
       */}
-      <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-card border-2 border-dashed border-line bg-surface py-10 text-center transition hover:border-brand">
-        <input
-          type="file"
-          accept="image/*"
-          multiple
-          className="sr-only"
-          onChange={(event) => {
-            onAdd(event.target.files);
-            // Reset so choosing the same file twice still fires a change.
-            event.target.value = "";
-          }}
-        />
+      <input
+        ref={pickerRef}
+        type="file"
+        accept="image/*"
+        multiple
+        className="hidden"
+        onChange={(event) => {
+          onAdd(event.target.files);
+          // Reset so choosing the same file twice still fires a change.
+          event.target.value = "";
+        }}
+      />
+
+      <button
+        type="button"
+        onClick={() => {
+          pickerRef.current?.click();
+        }}
+        className="flex flex-col items-center justify-center gap-2 rounded-card border-2 border-dashed border-line bg-surface py-10 text-center transition hover:border-brand active:bg-canvas"
+      >
+        <CameraIcon />
         <span className="text-sm text-ink">选择截图</span>
         <span className="text-xs text-muted">
           微信 / 支付宝 / 银行的付款截图，最多 {MAX_RECOGNIZE_IMAGES} 张
         </span>
-      </label>
+      </button>
 
       {files.length === 0 ? null : (
         <ul className="flex flex-wrap gap-3">

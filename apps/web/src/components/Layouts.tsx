@@ -59,7 +59,7 @@ export function TabPage({
       <div
         aria-hidden="true"
         className={`shrink-0 transition-[height] duration-200 ease-out ${
-          entryOpen ? "h-32" : "h-0"
+          entryOpen ? "h-[100px]" : "h-0"
         }`}
       />
 

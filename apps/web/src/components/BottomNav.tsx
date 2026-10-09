@@ -65,7 +65,7 @@ function PenIcon({ className }: IconProps): React.JSX.Element {
   );
 }
 
-function CameraIcon({ className }: IconProps): React.JSX.Element {
+export function CameraIcon({ className }: IconProps): React.JSX.Element {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className}>
       <path
@@ -159,12 +159,12 @@ export function BottomNav({
         }`}
       >
         {/*
-          pb-10 rather than a small gap: the cross button is raised 32px above
-          the bar, so a row that sits close to the bar would collide with it.
-          This clears the button's top by about 8px, which is also what makes
-          the row look deliberately placed rather than crammed in.
+          pb-[26px]: the row sits a little lower than it first did. The cross
+          button is raised 32px above the bar, so the cards' lower edge comes
+          within a few pixels of its top — close, but the owner asked for the
+          row to sit lower and the two do not actually touch.
         */}
-        <ul className="mx-auto flex w-full max-w-md items-end justify-center gap-3 px-6 pb-10">
+        <ul className="mx-auto flex w-full max-w-md items-end justify-center gap-3 px-6 pb-[26px]">
           {ENTRY_ACTIONS.map((action) => (
             <li key={action.label}>
               <button
