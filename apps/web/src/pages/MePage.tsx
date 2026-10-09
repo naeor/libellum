@@ -83,7 +83,9 @@ export function MePage(): React.JSX.Element {
           </dl>
 
           <p className="mt-5 border-t border-line pt-4 text-xs leading-relaxed text-muted">
-            用户名与账号编号都可以安全地提供给他人，用来把你添加为协作者；恢复码必须保密。
+            用户名和账号编号可安全地分享给他人，以便对方将你添加为协作者。
+            <br />
+            请勿向任何人透露恢复码。恢复码应被妥善保管。
           </p>
         </div>
       </section>

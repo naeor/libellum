@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { formatAxisAmount, formatChange, formatCompactNumber, formatPercent } from "./format.js";
-import { canCompare, emptyStateMessage, summariseSeries } from "./guards.js";
+import { canCompare, chartNotice, emptyStateMessage, summariseSeries } from "./guards.js";
 import {
   bucketOf,
   bucketThresholds,
@@ -218,6 +218,30 @@ describe("summariseSeries", () => {
 
   it("notices negative values", () => {
     expect(summariseSeries([100, -50]).hasNegative).toBe(true);
+  });
+});
+
+describe("chartNotice", () => {
+  it("says 'no entries' when a currency has never been used", () => {
+    // The bug this exists for: series are gap-filled, so a currency nobody has
+    // ever recorded in arrives as a row of zeroes. Reporting that as "the
+    // amounts were all zero" tells the user something untrue about their money
+    // — and they had not spent anything in it at all.
+    expect(chartNotice(false, [0, 0, 0, 0], "收支")).toBe("所选时段暂无收支记录。");
+  });
+
+  it("only blames zeroes when there really are entries", () => {
+    expect(chartNotice(true, [0, 0, 0], "收支")).toBe("所选时段已有记录，但金额均为零。");
+  });
+
+  it("stays quiet when there is something to draw", () => {
+    expect(chartNotice(true, [0, 500, 0], "收支")).toBeNull();
+  });
+
+  it("prefers 'no entries' over any other reading", () => {
+    // Even with values present, an empty total means nothing was recorded —
+    // the values can only be gap-fill.
+    expect(chartNotice(false, [0, 500], "收支")).toBe("所选时段暂无收支记录。");
   });
 });
 

@@ -165,7 +165,7 @@ export function CategoriesPage(): React.JSX.Element {
   return (
     <InnerPage
       title="分类管理"
-      subtitle="归档后不再出现在记账选项里，历史记录仍会显示它的名字，随时可以恢复。"
+      subtitle="归档后不再出现在记账选项中。已有记录仍会显示该分类的名称，可随时恢复。"
       backTo="/settings"
     >
       {error ? <Alert>{error}</Alert> : null}
@@ -276,7 +276,7 @@ export function PaymentMethodsPage(): React.JSX.Element {
   return (
     <InnerPage
       title="支付方式"
-      subtitle="记录这笔钱是从哪里付的。归档后不再出现在记账选项里，历史记录不受影响。"
+      subtitle="记录款项的支付渠道。归档后不再出现在记账选项中，已有记录不受影响。"
       backTo="/settings"
     >
       {error ? <Alert>{error}</Alert> : null}
@@ -371,7 +371,7 @@ export function TagsPage(): React.JSX.Element {
   return (
     <InnerPage
       title="标签"
-      subtitle="标签用于跨分类标注，例如「出差」「可报销」。一笔账最多可以加 10 个标签。"
+      subtitle="标签用于跨分类标注，例如「出差」「可报销」。每条记录最多添加 10 个标签。"
       backTo="/settings"
     >
       {error ? <Alert>{error}</Alert> : null}

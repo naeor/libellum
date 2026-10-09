@@ -31,26 +31,10 @@ function ComingSoon({
           ))}
         </ul>
         <p className="mt-5 border-t border-line pt-4 text-xs leading-relaxed text-muted">
-          该功能尚未开放。在此之前，你记录的所有数据都已妥善保存。
+          该功能尚未开放。已记录的账目不受影响。
         </p>
       </div>
     </InnerPage>
-  );
-}
-
-export function StatsPage(): React.JSX.Element {
-  return (
-    <ComingSoon
-      title="分析"
-      description="把账目变成看得懂的图。"
-      planned={[
-        "月度收支趋势折线",
-        "分类占比饼图",
-        "环比与同比对比",
-        "年度总览",
-        "每日花销日历热力图",
-      ]}
-    />
   );
 }
 
@@ -58,7 +42,7 @@ export function CollaboratorsPage(): React.JSX.Element {
   return (
     <ComingSoon
       title="协作者"
-      description="和他人一起维护同一本账。"
+      description="邀请他人一同管理账目。"
       planned={[
         "按用户名或账号编号查找他人",
         "发送协作申请，对方同意后建立关系",

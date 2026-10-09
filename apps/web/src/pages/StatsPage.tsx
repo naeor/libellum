@@ -101,7 +101,7 @@ export function StatsPage(): React.JSX.Element {
       <header className="bg-brand px-6 pt-8 pb-6 text-white">
         <h1 className="text-xl font-semibold tracking-tight">分析</h1>
         <p className="mt-1.5 text-sm leading-relaxed text-white/80">
-          把账目变成看得懂的图。
+          以下结果由已记录的账目计算得出。
         </p>
       </header>
 
@@ -141,7 +141,7 @@ export function StatsPage(): React.JSX.Element {
         </div>
 
         <p className="text-xs leading-relaxed text-muted">
-          {range.from} 至 {range.to}，按{currencyName(currencyInUse)}统计。不同币种分开统计，不进行汇率换算。
+          {range.from} 至 {range.to}，币种为{currencyName(currencyInUse)}。
         </p>
       </section>
 
@@ -160,7 +160,12 @@ export function StatsPage(): React.JSX.Element {
       {main.data ? (
         <>
           <Section title="收支趋势">
-            <TrendChart points={main.data.series} currency={currencyInUse} bucket={bucket} />
+            <TrendChart
+              points={main.data.series}
+              currency={currencyInUse}
+              bucket={bucket}
+              hasEntries={main.data.totals.count > 0}
+            />
           </Section>
 
           <Section title="分类占比">
@@ -233,7 +238,11 @@ export function StatsPage(): React.JSX.Element {
           ))}
         </div>
         {heatStats.data ? (
-          <CalendarHeatmap days={heatStats.data.series} currency={currencyInUse} />
+          <CalendarHeatmap
+            days={heatStats.data.series}
+            currency={currencyInUse}
+            hasEntries={heatStats.data.totals.count > 0}
+          />
         ) : (
           <SkeletonRows rows={2} />
         )}

@@ -77,13 +77,43 @@ export function canCompare(previous: number | null | undefined): boolean {
 }
 
 /**
+ * Which notice a chart should show, if any.
+ *
+ * `hasEntries` cannot be worked out from the values, and this is the bug that
+ * taught us so: a series is gap-filled, so every day of the period is present
+ * with a zero. A currency that has never been used therefore arrives as a row
+ * of zeroes — identical in shape to a period in which nothing was spent. Only
+ * the totals know which of the two happened, so the caller has to say.
+ *
+ * A currency nobody has ever recorded in must say "no entries", not "the
+ * amounts were all zero". The second sentence tells the user they spent
+ * nothing, which is a claim about their money and is not true.
+ */
+export function chartNotice(
+  hasEntries: boolean,
+  values: readonly number[],
+  subject: string,
+): string | null {
+  if (!hasEntries) return `所选时段暂无${subject}记录。`;
+
+  const summary = summariseSeries(values);
+
+  if (summary.state === "all-zero") return "所选时段已有记录，但金额均为零。";
+
+  return null;
+}
+
+/**
  * Copy for a chart that has no data to show.
  *
- * A chart with nothing in it still owes the reader a reason: "no entries in
- * this period" and "entries that all came to zero" are different facts and
- * lead to different actions. The wording states the fact plainly and in the
- * register of a statement from the product, not a remark from a person — a
- * ledger is a record, and the text around it should sound like one.
+ * A chart with nothing in it still owes the reader a reason, and "nothing was
+ * recorded" and "everything came to zero" are different facts. The wording
+ * states the fact plainly, in the register of a statement from the product
+ * rather than a remark from a person — a ledger is a record, and the text
+ * around it should sound like one.
+ *
+ * Use `chartNotice` where the values have been gap-filled; this one is for
+ * data that naturally has no rows when there is nothing to show.
  */
 export function emptyStateMessage(state: ChartState, subject: string): string | null {
   switch (state) {

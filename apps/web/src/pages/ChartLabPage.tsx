@@ -109,7 +109,7 @@ export function ChartLabPage(): React.JSX.Element {
       </Section>
 
       <Section title="趋势折线（双系列，可触摸）">
-        <TrendChart points={MONTHS} currency={CURRENCY} bucket="month" />
+        <TrendChart points={MONTHS} currency={CURRENCY} bucket="month" hasEntries />
       </Section>
 
       <Section title="分类占比（点分类下钻）">
@@ -162,6 +162,7 @@ export function ChartLabPage(): React.JSX.Element {
         <CalendarHeatmap
           days={range === "7d" ? SPIKY_DAYS.slice(-7) : SPIKY_DAYS}
           currency={CURRENCY}
+          hasEntries
         />
       </Section>
 
@@ -169,7 +170,22 @@ export function ChartLabPage(): React.JSX.Element {
         <div className="flex flex-col gap-6">
           <div>
             <p className="mb-2 text-xs text-ink">没有任何数据</p>
-            <TrendChart points={[]} currency={CURRENCY} bucket="day" />
+            <TrendChart points={[]} currency={CURRENCY} bucket="day" hasEntries={false} />
+          </div>
+          <div>
+            <p className="mb-2 text-xs text-ink">
+              没有数据，但序列被补过零（**这是本次修掉的 bug**：以前会误报"金额均为零"）
+            </p>
+            <TrendChart
+              points={Array.from({ length: 7 }, (_, index) => ({
+                bucket: `2026-10-0${String(index + 1)}`,
+                expenseMinor: 0,
+                incomeMinor: 0,
+              }))}
+              currency="HKD"
+              bucket="day"
+              hasEntries={false}
+            />
           </div>
           <div>
             <p className="mb-2 text-xs text-ink">有记录但全为零</p>
@@ -177,6 +193,7 @@ export function ChartLabPage(): React.JSX.Element {
               points={[{ bucket: "2026-10-01", expenseMinor: 0, incomeMinor: 0 }]}
               currency={CURRENCY}
               bucket="day"
+              hasEntries
             />
           </div>
           <div>
@@ -212,6 +229,7 @@ export function ChartLabPage(): React.JSX.Element {
               ]}
               currency="JPY"
               bucket="month"
+              hasEntries
             />
           </div>
         </div>

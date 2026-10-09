@@ -13,7 +13,7 @@ import {
   formatAxisAmount,
   formatExactAmount,
 } from "../../lib/chart/format.js";
-import { emptyStateMessage, summariseSeries } from "../../lib/chart/guards.js";
+import { chartNotice, summariseSeries } from "../../lib/chart/guards.js";
 import { currencyName, formatMoney } from "../../lib/format.js";
 
 /** Expense is the thing people come to look at, so it leads and is filled. */
@@ -34,10 +34,13 @@ export function TrendChart({
   points,
   currency,
   bucket,
+  hasEntries,
 }: {
   readonly points: readonly StatsSeriesPoint[];
   readonly currency: string;
   readonly bucket: StatsBucket;
+  /** Whether any entry exists in this currency and period — see `chartNotice`. */
+  readonly hasEntries: boolean;
 }): React.JSX.Element {
   const [active, setActive] = useState<number | null>(null);
   const dragging = useRef(false);
@@ -72,7 +75,7 @@ export function TrendChart({
         height={PLOT_HEIGHT}
         padding={{ top: 14, right: 12, bottom: 26, left: 42 }}
         title={`${currencyName(currency)}收支趋势`}
-        notice={emptyStateMessage(summary.state, "收支")}
+        notice={chartNotice(hasEntries, [...expenses, ...incomes], "收支")}
       >
         {(layout) => {
           const all = [...expenses, ...incomes];

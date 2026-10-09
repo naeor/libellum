@@ -21,7 +21,7 @@ export function BooksPage(): React.JSX.Element {
   return (
     <InnerPage
       title="我的账本"
-      subtitle="一个账号对应一本账本。与他人共同记账的功能正在开发中。"
+      subtitle="一个账号对应一本账本。多人共同记账功能尚未开放。"
       backTo="/me"
     >
       {ledger.isPending ? <SkeletonRows rows={2} /> : null}

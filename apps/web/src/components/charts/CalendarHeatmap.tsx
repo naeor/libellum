@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { bucketOf, bucketThresholds } from "../../lib/chart/scales.js";
 import { heatColor } from "../../lib/chart/theme.js";
 import { formatExactAmount } from "../../lib/chart/format.js";
+import { chartNotice } from "../../lib/chart/guards.js";
 import { currencyName, formatMoney } from "../../lib/format.js";
 
 const LEVELS = 4;
@@ -27,9 +28,12 @@ const WEEKDAYS = ["一", "二", "三", "四", "五", "六", "日"] as const;
 export function CalendarHeatmap({
   days,
   currency,
+  hasEntries,
 }: {
   readonly days: readonly StatsSeriesPoint[];
   readonly currency: string;
+  /** Whether any entry exists in this period — the series is gap-filled. */
+  readonly hasEntries: boolean;
 }): React.JSX.Element {
   const [selected, setSelected] = useState<string | null>(null);
 
@@ -38,28 +42,24 @@ export function CalendarHeatmap({
     [days],
   );
 
+  const notice = chartNotice(
+    hasEntries,
+    days.map((day) => day.expenseMinor),
+    "支出",
+  );
+
+  if (notice !== null) {
+    return (
+      <p className="rounded-field bg-canvas px-4 py-3 text-xs leading-relaxed text-muted">{notice}</p>
+    );
+  }
+
   const total = days.reduce((sum, day) => sum + day.expenseMinor, 0);
   const spentDays = days.filter((day) => day.expenseMinor > 0).length;
   const peak = days.reduce(
     (best, day) => (day.expenseMinor > best.expenseMinor ? day : best),
     days[0] ?? { bucket: "", expenseMinor: 0, incomeMinor: 0 },
   );
-
-  if (days.length === 0) {
-    return (
-      <p className="rounded-field bg-canvas px-4 py-3 text-xs leading-relaxed text-muted">
-        所选时段暂无记录。
-      </p>
-    );
-  }
-
-  if (total === 0) {
-    return (
-      <p className="rounded-field bg-canvas px-4 py-3 text-xs leading-relaxed text-muted">
-        所选时段已有记录，但金额均为零。
-      </p>
-    );
-  }
 
   return (
     <div className="flex flex-col gap-3">

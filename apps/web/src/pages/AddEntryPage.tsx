@@ -401,7 +401,7 @@ export function AddEntryPage(): React.JSX.Element {
             ))}
           </div>
           <p className="text-xs leading-relaxed text-muted">
-            金额按各币种自身的精度记录（例如日元没有小数）；不同币种分开统计，不进行汇率换算。
+            金额按各币种自身的精度记录，例如日元不保留小数。
           </p>
         </section>
 

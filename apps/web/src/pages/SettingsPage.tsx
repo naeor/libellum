@@ -72,7 +72,7 @@ export function SettingsPage(): React.JSX.Element {
           <div className="flex flex-col gap-1">
             <span className="text-sm text-ink">默认币种</span>
             <span className="text-xs leading-relaxed text-muted">
-              它会排在所有币种列表的最前面。将来的汇率折算也会默认折算成这种货币。
+              该币种将排在所有币种列表的最前。汇率折算功能开放后，其它币种默认折算为该币种。
             </span>
           </div>
 
@@ -106,10 +106,10 @@ export function SettingsPage(): React.JSX.Element {
 
         <RowList
           rows={[
-            { label: "大键盘输入金额", hint: "使用自绘的大号数字键盘" },
-            { label: "沿用上一笔", hint: "新建时自动带入上次的分类等信息" },
-            { label: "登录后直接开始记账" },
-            { label: "币种显示顺序", hint: "默认币种已固定排在最前" },
+            { label: "大键盘输入金额", hint: "使用应用内的大号数字键盘" },
+            { label: "沿用上一笔", hint: "新建记录时自动填入上次使用的分类等信息" },
+            { label: "登录后直接开始记账", hint: "跳过明细页，直接进入记账界面" },
+            { label: "币种显示顺序", hint: "默认币种固定排在最前" },
             { label: "主界面按钮位置", hint: "左手 / 右手" },
           ]}
           onNavigate={go}
@@ -122,7 +122,7 @@ export function SettingsPage(): React.JSX.Element {
           rows={[
             { label: "语言", hint: "中文 / English" },
             { label: "主题色" },
-            { label: "汇率折算", hint: "把各币种折算成一种货币统计" },
+            { label: "汇率折算", hint: "将各币种折算为一种货币后统计" },
             { label: "导出数据", hint: "CSV / Excel" },
             { label: "导入历史账", hint: "从 CSV 批量导入" },
           ]}
@@ -134,8 +134,8 @@ export function SettingsPage(): React.JSX.Element {
         <h2 className="px-1 text-xs text-muted">账号安全</h2>
         <RowList
           rows={[
-            { label: "更改密码", hint: "修改后其它设备的登录会失效", to: "/settings/password" },
-            { label: "生成新的恢复码", hint: "旧的恢复码会立即失效", to: "/settings/recovery-code" },
+            { label: "更改密码", hint: "修改后，其它设备上的登录状态将失效", to: "/settings/password" },
+            { label: "生成新的恢复码", hint: "生成后，原有恢复码将立即失效", to: "/settings/recovery-code" },
           ]}
           onNavigate={go}
         />
