@@ -9,6 +9,7 @@ import { errorMessage } from "../lib/api.js";
 import { currencyName, formatMoney } from "../lib/format.js";
 import { currentMonth, formatDayLabel, formatMonthLabel, formatTimeInZone, shiftMonth } from "../lib/datetime.js";
 import { useLedger, useSummary, useTransactions } from "../lib/queries.js";
+import { EntryIsland } from "../components/EntryIsland.js";
 
 /** At most two currencies get their own block; the rest fold into one row. */
 const VISIBLE_CURRENCIES = 2;
@@ -124,6 +125,10 @@ export function DetailPage(): React.JSX.Element {
 
   return (
     <TabPage active="/" onNavigate={(to) => void navigate(to)}>
+      {/* Floats over the list. The list below carries extra bottom padding so
+          the last row can never end up underneath it. */}
+      <EntryIsland />
+
       <header className="flex flex-col gap-4 bg-brand px-6 pt-8 pb-6 text-white">
         <MonthSwitcher month={month} onChange={setMonth} />
 
