@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Link } from "react-router";
 
 interface IconProps {
   readonly className?: string;
@@ -165,28 +166,40 @@ export function BottomNav({
           row to sit lower and the two do not actually touch.
         */}
         <ul className="mx-auto flex w-full max-w-md items-end justify-center gap-3 px-6 pb-[26px]">
-          {ENTRY_ACTIONS.map((action) => (
-            <li key={action.label}>
-              <button
-                type="button"
-                disabled={!action.available}
-                tabIndex={expanded ? 0 : -1}
-                onClick={() => {
-                  if (action.to !== undefined) onNavigate(action.to);
-                }}
-                title={action.available ? action.label : `${action.label}记账，${action.hint ?? ""}`}
-                aria-label={
-                  action.available ? `${action.label}记账` : `${action.label}记账，${action.hint ?? "即将开放"}`
-                }
-                className={`flex w-[4.5rem] flex-col items-center gap-0.5 rounded-2xl bg-brand-soft py-2 text-brand-dark shadow-sm transition ${
-                  action.available ? "active:bg-brand-soft/70" : "opacity-60"
-                }`}
-              >
-                {action.icon}
-                <span className="text-[11px]">{action.label}</span>
-              </button>
-            </li>
-          ))}
+          {ENTRY_ACTIONS.map((action) => {
+            const shape =
+              "flex w-[4.5rem] flex-col items-center gap-0.5 rounded-2xl bg-brand-soft py-2 text-brand-dark shadow-sm transition";
+
+            // A real link, not a button that calls navigate(). If the router's
+            // own navigation ever fails, an <a href> still works — the browser
+            // does it — and it can be long-pressed and copied, which a button
+            // cannot.
+            if (action.to !== undefined) {
+              return (
+                <li key={action.label}>
+                  <Link to={action.to} aria-label={`${action.label}记账`} className={`${shape} active:bg-brand-soft/70`}>
+                    {action.icon}
+                    <span className="text-[11px]">{action.label}</span>
+                  </Link>
+                </li>
+              );
+            }
+
+            return (
+              <li key={action.label}>
+                <button
+                  type="button"
+                  disabled
+                  tabIndex={expanded ? 0 : -1}
+                  aria-label={`${action.label}记账，${action.hint ?? "即将开放"}`}
+                  className={`${shape} opacity-60`}
+                >
+                  {action.icon}
+                  <span className="text-[11px]">{action.label}</span>
+                </button>
+              </li>
+            );
+          })}
         </ul>
       </div>
 
