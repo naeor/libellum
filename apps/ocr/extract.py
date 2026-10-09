@@ -1,17 +1,23 @@
 """Extract the fields a bookkeeping entry needs, from OCR output.
 
-The lesson this file exists to demonstrate: **recognition and extraction are
-different problems.** The recogniser turned the pixels into text almost
-perfectly - confidence 0.97 to 1.00 on every sample - and the first version of
-this file still failed to find two of the three amounts, because it looked for
-a currency mark *immediately* before the digits. The recogniser had put the ¥
-on its own line, and on one sample had read it as 夫.
+Rewritten after the owner supplied real screenshots. Every rule below exists
+because a real screenshot broke an earlier version of it, and the reasons are
+recorded next to each one - the field names and layouts are not documented
+anywhere, so this file is the documentation.
 
-So the extraction does not rely on the text alone. It uses what the screenshot
-layout tells us: the amount is the **largest** text on the screen, and the time
-is next to the word 时间. Both facts survive an imperfect reading of the
-smaller print, which is exactly the property we need - the recogniser does not
-have to be perfect, only good enough on the few fields that matter.
+What the fixtures got wrong (they were drawn by the same person who wrote the
+reader, so they agreed with it):
+
+  * amounts carry a sign or a currency mark - `¥0.10`, `-328.00`, `+50.00` -
+    and requiring bare digits found almost none of them
+  * the phone's status bar clock is the first `H:MM` on the screen, so the
+    entry was dated to the moment the screenshot was taken
+  * WeChat writes `2026年9月21日16:55:23` and Alipay writes
+    `2026-10-08 12:29:31`; only the first was understood
+  * Alipay's bill screen is mostly advertisements, and a `5` from a coupon
+    ("5元 天天秒杀") was read as the amount - a wrong number, which is worse
+    than no number, because a wrong number gets confirmed
+  * a refund is not an expense, and its field names are all different
 """
 
 from __future__ import annotations
@@ -20,29 +26,59 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-# Digits with optional thousands separators and up to two decimals. The
-# currency mark is deliberately NOT part of this: it is often read as its own
-# token, or as another character entirely.
+# Digits, optional thousands separators, optional decimals. Signs and currency
+# marks are stripped first rather than matched, because the recogniser puts
+# them wherever it likes - sometimes on their own line, sometimes reading ¥ as 夫.
 NUMBER = re.compile(r"^[0-9][0-9,]*(?:\.[0-9]{1,2})?$")
 
-DATE = re.compile(r"(20\d{2})\s*年?\s*[-\/]?\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日?")
-CLOCK = re.compile(r"(\d{1,2})\s*[:：]\s*(\d{2})")
+# Everything a currency mark or sign might have been recognised as.
+TRIM = " \t¥￥$€£+-－—–·.,:："
+
+# Both shapes, because the two apps disagree. The 月/日 form is WeChat, the
+# dashed form is Alipay; a missing space between date and time
+# (`2026-10-0809:08:35`) also occurs, so the clock is matched separately.
+DATE_WITH_MARKERS = re.compile(r"(20\d{2})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日")
+DATE_DASHED = re.compile(r"(20\d{2})\s*[-/]\s*(\d{1,2})\s*[-/]\s*(\d{1,2})")
+
+CLOCK = re.compile(r"(\d{1,2})\s*[:：]\s*(\d{2})(?:\s*[:：]\s*(\d{2}))?")
 
 # Long digit strings are serial numbers, never amounts.
 SERIAL_LENGTH = 10
 
-# Which payment channel a screenshot came from, by the words it shows. Order
-# matters: the first match wins, so the more specific patterns come first.
-CHANNELS: tuple[tuple[str, str], ...] = (
-    ("微信", "WECHAT"),
-    ("支付宝", "ALIPAY"),
-    ("银行", "BANK"),
-    ("转账", "BANK"),
-)
+# The status bar sits at the very top. Its clock is a time, but it is the time
+# the screenshot was taken, not the time of the transaction.
+STATUS_BAR_FRACTION = 0.08
 
-# Whether the money came in or went out.
-INCOME_HINTS = ("收款成功", "已到账", "收款方", "对方已收")
-EXPENSE_HINTS = ("支付成功", "已支付", "付款", "转账成功")
+# What the two apps call things. Labels are matched exactly because the
+# recogniser is reliable on these - they are short, large and unadorned.
+LABEL_AMOUNT_ROW = ("支付时间", "创建时间", "退款时间", "转账时间", "交易时间")
+LABEL_COUNTERPARTY_OUT = ("收款方", "商户全称", "收款方全称", "收款账户")
+LABEL_COUNTERPARTY_IN = ("付款方", "付款账户", "转账方")
+LABEL_NOTE = ("商品", "商品说明", "备注", "转账说明", "说明")
+
+# A refund puts money back, whatever the original entry was.
+REFUND_MARKERS = ("退款状态", "退款成功", "已退款", "退款方式", "退款单号")
+
+# Words that mean money came in.
+#
+# Deliberately NOT 收款方 or 收款账户. Those name the counterparty, and which
+# side that is depends on the direction: on a payment, 收款方 is the merchant
+# you paid; on money received, 付款方 is the person who paid you. Reading them
+# as a direction made an Alipay payment to a game company look like income,
+# because its bill screen has a field called 收款方全称.
+INCOME_MARKERS = ("收款成功", "已到账", "对方已收", "收款到账")
+
+# Distinctive strings no other app prints. Relying on the word 转账 was wrong:
+# it appears in a WeChat refund titled 转账-退款.
+CHANNEL_MARKERS: tuple[tuple[str, str], ...] = (
+    ("财付通", "WECHAT"),
+    ("微信支付", "WECHAT"),
+    ("对订单有疑惑", "WECHAT"),
+    ("支付宝", "ALIPAY"),
+    ("芝麻", "ALIPAY"),
+    ("账单管理", "ALIPAY"),
+    ("计入收支", "ALIPAY"),
+)
 
 
 @dataclass
@@ -57,7 +93,7 @@ class Line:
 
     @property
     def numeric(self) -> bool:
-        return bool(NUMBER.match(self.text.strip()))
+        return bool(NUMBER.match(self.text.strip().strip(TRIM)))
 
 
 @dataclass
@@ -74,6 +110,7 @@ class Draft:
     counterparty: str | None = None
     note: str | None = None
     serial: str | None = None
+    is_refund: bool = False
     warnings: list[str] = field(default_factory=list)
 
 
@@ -96,71 +133,114 @@ def to_lines(result: list[Any]) -> list[Line]:
     return lines
 
 
+def _row_value(lines: list[Line], label: str) -> str | None:
+    """The text to the right of a label, on the same row."""
+    anchor = next((line for line in lines if line.text == label), None)
+    if anchor is None:
+        return None
+
+    candidates = [
+        other
+        for other in lines
+        if abs(other.top - anchor.top) < max(anchor.height * 0.9, 6) and other.left > anchor.left
+    ]
+    if not candidates:
+        return None
+
+    return min(candidates, key=lambda other: other.left).text
+
+
+def _first_of(lines: list[Line], labels: tuple[str, ...]) -> str | None:
+    for label in labels:
+        value = _row_value(lines, label)
+        if value is not None:
+            return value
+    return None
+
+
 def extract(lines: list[Line]) -> Draft:
     draft = Draft()
     joined = "\n".join(line.text for line in lines)
 
+    # The status bar is the top strip; its clock is not a transaction time.
+    tallest = max((line.height for line in lines), default=0)
+    lowest = max((line.top for line in lines), default=0)
+    status_floor = lowest * STATUS_BAR_FRACTION
+
+    body = [line for line in lines if line.top > status_floor]
+
+    # --- what kind of thing is this? ---------------------------------------
+    # Refunds are checked first: a refund screen also says 支付 in places, and
+    # the direction of the money is the opposite of what that suggests.
+    if any(marker in joined for marker in REFUND_MARKERS):
+        draft.is_refund = True
+        draft.kind = "income"
+    elif any(hint in joined for hint in INCOME_MARKERS):
+        draft.kind = "income"
+    else:
+        draft.kind = "expense"
+
     # --- amount -------------------------------------------------------------
-    # The amount is the largest number on the screen. Size is a far more
-    # reliable signal than the currency mark, which is small, thin and easily
-    # confused with other characters.
-    numbers = [line for line in lines if line.numeric and len(line.text) < SERIAL_LENGTH]
+    # The amount is the largest number on the screen, once signs and currency
+    # marks are stripped. Size beats position: the balance line and the coupon
+    # amounts further down are smaller, and a coupon's face value is a real
+    # number that must never be mistaken for the amount paid.
+    numbers = [
+        line
+        for line in body
+        if line.numeric and len(line.text.strip().strip(TRIM)) < SERIAL_LENGTH
+    ]
 
     if numbers:
         biggest = max(numbers, key=lambda line: line.height)
-        draft.amount = biggest.text.replace(",", "")
+        draft.amount = biggest.text.strip().strip(TRIM).replace(",", "")
     else:
         draft.warnings.append("未能识别金额，请手动填写。")
 
     # --- date and time ------------------------------------------------------
-    date = DATE.search(joined)
-    if date:
-        draft.occurred_local_date = (
-            f"{date.group(1)}-{int(date.group(2)):02d}-{int(date.group(3)):02d}"
-        )
-    else:
+    for pattern in (DATE_WITH_MARKERS, DATE_DASHED):
+        match = pattern.search(joined)
+        if match:
+            draft.occurred_local_date = (
+                f"{match.group(1)}-{int(match.group(2)):02d}-{int(match.group(3)):02d}"
+            )
+            break
+
+    if draft.occurred_local_date is None:
         draft.warnings.append("未能识别日期，已按今天填写。")
 
-    clock = CLOCK.search(joined)
+    # Prefer a time printed next to a label. Failing that, prefer one with
+    # seconds - the status bar never shows seconds.
+    labelled = _first_of(lines, LABEL_AMOUNT_ROW)
+    clock = CLOCK.search(labelled) if labelled else None
+
+    if clock is None:
+        with_seconds = [
+            match
+            for line in body
+            for match in [CLOCK.search(line.text)]
+            if match and match.group(3) is not None
+        ]
+        clock = with_seconds[0] if with_seconds else None
+
     if clock:
         draft.occurred_time = f"{int(clock.group(1)):02d}:{clock.group(2)}"
 
-    # --- channel and direction ---------------------------------------------
-    for needle, channel in CHANNELS:
+    # --- channel ------------------------------------------------------------
+    # Left unset when nothing distinctive is present. Guessing "bank" from the
+    # word 转账 was wrong on a WeChat refund, and a wrong channel is a silent
+    # error the user has no reason to check.
+    for needle, channel in CHANNEL_MARKERS:
         if needle in joined:
             draft.channel = channel
             break
 
-    if any(hint in joined for hint in INCOME_HINTS):
-        draft.kind = "income"
-    elif any(hint in joined for hint in EXPENSE_HINTS):
-        draft.kind = "expense"
-
     # --- counterparty -------------------------------------------------------
-    # Which label holds the counterparty depends on the direction: for money
-    # going out it is whoever received it, for money coming in it is whoever
-    # sent it. Taking whichever label happens to appear first gets the payer's
-    # own account number on a transfer, which is worse than showing nothing -
-    # it looks like a real answer.
-    labels = (
-        ("收款方", "收款账户", "商户全称")
-        if draft.kind == "expense"
-        else ("付款方", "付款账户", "转账方")
-    )
-
-    for label in labels:
-        match = next((line for line in lines if line.text == label), None)
-        if match is None:
-            continue
-
-        same_row = [
-            other
-            for other in lines
-            if abs(other.top - match.top) < match.height * 0.8 and other.left > match.left
-        ]
-        if same_row:
-            draft.counterparty = min(same_row, key=lambda other: other.left).text
-            break
+    labels = LABEL_COUNTERPARTY_OUT if draft.kind == "expense" else LABEL_COUNTERPARTY_IN
+    value = _first_of(lines, labels)
+    if value is None:
+        value = _first_of(lines, LABEL_COUNTERPARTY_OUT + LABEL_COUNTERPARTY_IN)
+    draft.counterparty = value
 
     # --- serial number, for spotting the same screenshot twice --------------
     for line in lines:
@@ -170,16 +250,7 @@ def extract(lines: list[Line]) -> Draft:
             break
 
     # --- note ---------------------------------------------------------------
-    for line in lines:
-        if line.text in ("备注", "转账说明", "商品", "说明"):
-            same_row = [
-                other
-                for other in lines
-                if abs(other.top - line.top) < line.height * 0.8 and other.left > line.left
-            ]
-            if same_row:
-                draft.note = min(same_row, key=lambda other: other.left).text
-            break
+    draft.note = _first_of(lines, LABEL_NOTE)
 
     return draft
 
@@ -187,7 +258,7 @@ def extract(lines: list[Line]) -> Draft:
 def describe(draft: Draft) -> str:
     rows = [
         ("金额", draft.amount),
-        ("类型", "收入" if draft.kind == "income" else "支出"),
+        ("类型", ("退款" if draft.is_refund else "收入" if draft.kind == "income" else "支出")),
         ("渠道", draft.channel),
         ("日期", draft.occurred_local_date),
         ("时间", draft.occurred_time),
