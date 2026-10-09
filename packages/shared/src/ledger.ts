@@ -224,7 +224,8 @@ export const transactionSchema = z.object({
   id: z.string(),
   kind: transactionKindSchema,
   amountCents: z.number(),
-  currency: z.string(),
+  /** Always one of the supported currencies — entries are validated on write. */
+  currency: currencySchema,
   categoryId: z.string(),
   categoryName: z.string(),
   categoryIsSystem: z.boolean(),

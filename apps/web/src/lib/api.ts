@@ -17,6 +17,20 @@ export class ApiRequestError extends Error {
 interface RequestOptions {
   readonly method?: "GET" | "POST" | "PATCH" | "DELETE";
   readonly body?: unknown;
+  /** Query parameters; `undefined` values are dropped. */
+  readonly query?: Record<string, string | number | undefined>;
+}
+
+function buildUrl(path: string, query: RequestOptions["query"]): string {
+  if (!query) return `/api/v1${path}`;
+
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined && value !== "") search.set(key, String(value));
+  }
+
+  const suffix = search.toString();
+  return suffix === "" ? `/api/v1${path}` : `/api/v1${path}?${suffix}`;
 }
 
 /**
@@ -37,8 +51,9 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
     init.body = JSON.stringify(options.body);
   }
 
-  const response = await fetch(`/api/v1${path}`, init);
+  const response = await fetch(buildUrl(path, options.query), init);
   const raw = await response.text();
+  // 204 has no body at all, and an empty body is not valid JSON.
   const payload: unknown = raw === "" ? undefined : JSON.parse(raw);
 
   if (!response.ok) {

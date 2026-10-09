@@ -4,7 +4,7 @@ import { useNavigate } from "react-router";
 import { Alert } from "../components/Alert.js";
 import { Button } from "../components/Button.js";
 import { Card } from "../components/Card.js";
-import { InnerPage } from "../components/InnerPage.js";
+import { InnerPage } from "../components/Layouts.js";
 import { RecoveryCodeCard } from "../components/RecoveryCodeCard.js";
 import { TextField } from "../components/TextField.js";
 import { apiFetch, errorMessage } from "../lib/api.js";
@@ -43,8 +43,8 @@ export function RegenerateRecoveryCodePage(): React.JSX.Element {
 
   if (issuedCode) {
     return (
-      <InnerPage title="新的恢复码" subtitle="请立即保存。" onBack={() => void navigate("/")}>
-        <RecoveryCodeCard code={issuedCode} onContinue={() => void navigate("/")} />
+      <InnerPage title="新的恢复码" subtitle="请立即保存。" onBack={() => void navigate("/settings")}>
+        <RecoveryCodeCard code={issuedCode} onContinue={() => void navigate("/settings")} />
       </InnerPage>
     );
   }
@@ -53,7 +53,7 @@ export function RegenerateRecoveryCodePage(): React.JSX.Element {
     <InnerPage
       title="生成新的恢复码"
       subtitle="生成后，原有的恢复码将立即失效。"
-      onBack={() => void navigate("/")}
+      onBack={() => void navigate("/settings")}
     >
       <Card>
         <form className="flex flex-col gap-5" onSubmit={(event) => void submit(event)}>

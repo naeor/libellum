@@ -5,7 +5,7 @@ import { useNavigate } from "react-router";
 import { Alert } from "../components/Alert.js";
 import { Button } from "../components/Button.js";
 import { Card } from "../components/Card.js";
-import { InnerPage } from "../components/InnerPage.js";
+import { InnerPage } from "../components/Layouts.js";
 import { TextField } from "../components/TextField.js";
 import { apiFetch, errorMessage } from "../lib/api.js";
 
@@ -46,7 +46,7 @@ export function ChangePasswordPage(): React.JSX.Element {
     <InnerPage
       title="更改密码"
       subtitle="修改成功后，其它设备上的登录状态将立即失效。"
-      onBack={() => void navigate("/")}
+      onBack={() => void navigate("/settings")}
     >
       <Card>
         <form className="flex flex-col gap-5" onSubmit={(event) => void submit(event)}>

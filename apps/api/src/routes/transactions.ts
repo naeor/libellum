@@ -4,6 +4,7 @@ import {
   transactionListResponseSchema,
   updateTransactionSchema,
   type Transaction as TransactionDto,
+  type Currency,
   type TransactionKind,
 } from "@libellum/shared";
 import type { FastifyInstance, FastifyRequest } from "fastify";
@@ -125,7 +126,9 @@ function toDto(row: TransactionRow): TransactionDto {
     // Stored as bigint, handed out as a number: the amount ceiling in the
     // shared schema keeps every value inside the safe integer range.
     amountCents: Number(row.amountCents),
-    currency: row.currency,
+    // Every row is written through `createTransactionSchema`, which only accepts
+    // the supported currencies, so the column cannot hold anything else.
+    currency: row.currency as Currency,
     categoryId: row.categoryId,
     categoryName: row.category.name,
     categoryIsSystem: row.category.isSystem,
@@ -460,5 +463,42 @@ export function registerTransactionRoutes(
 
     reply.status(204);
     return null;
+  });
+
+  // -------------------------------------------------------------------------
+  // POST /api/v1/transactions/:id/restore
+  // -------------------------------------------------------------------------
+  /**
+   * Un-delete.
+   *
+   * The other half of "delete with undo": because removal is a tombstone rather
+   * than a real delete, undoing it restores the *same* row with the same id —
+   * not a copy. Anything already synchronised stays consistent.
+   */
+  app.post("/api/v1/transactions/:id/restore", { preHandler: requireAuth }, async (request) => {
+    const userId = request.currentUser!.id;
+    const bookId = await currentBookId(prisma, userId);
+    const { id } = request.params as { id: string };
+
+    // Note: no `deletedAt: null` filter here — a deleted row is exactly what
+    // this endpoint is looking for.
+    const existing = await prisma.transaction.findFirst({
+      where: { id, bookId },
+      select: { id: true, version: true, deletedAt: true },
+    });
+
+    if (!existing) throw notFound("transaction_missing", "找不到这笔记账。");
+
+    if (existing.deletedAt === null) {
+      throw conflict("transaction_not_deleted", "这笔记账没有被删除。");
+    }
+
+    const restored = await prisma.transaction.update({
+      where: { id },
+      data: { deletedAt: null, version: existing.version + 1 },
+      include: TRANSACTION_INCLUDE,
+    });
+
+    return toDto(restored);
   });
 }
