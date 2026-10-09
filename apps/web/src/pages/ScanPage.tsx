@@ -355,7 +355,9 @@ function PickStep({
         }}
         className="flex flex-col items-center justify-center gap-2 rounded-card border-2 border-dashed border-line bg-surface py-10 text-center transition hover:border-brand active:bg-canvas"
       >
-        <CameraIcon />
+        {/* An SVG with no size fills its container, which is how this ended up
+            the size of the whole drop zone. */}
+        <CameraIcon className="size-8 text-muted" />
         <span className="text-sm text-ink">选择截图</span>
         <span className="text-xs text-muted">
           微信 / 支付宝 / 银行的付款截图，最多 {MAX_RECOGNIZE_IMAGES} 张
