@@ -1,26 +1,28 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { useOfflineFillStatus } from "../lib/offline/fillContext.js";
-import { formatBytes, requestPersistentStorage, storageReport } from "../lib/offline/persistence.js";
 
 /**
  * The download notice: while it is happening, and for ten seconds after.
  *
- * ⚠️ **It used to be permanent**, and the owner was right that this was wrong on
- * two counts: "不仅不太美观，用户平时也可能看不见" — a bar that is always there stops
- * being read, so the one time it matters it is invisible. His design is a notice
- * that appears when there is news, lingers briefly so it can be read, and then gets
- * out of the way, with the details living somewhere the user chooses to look.
+ * ⚠️ **Two corrections from the owner, and both were my mistakes.**
  *
- * So:
+ * **It used to appear again on every screen.** The ten seconds were owned by this
+ * component, so every mount started a fresh countdown: open the ledger, see the
+ * notice; go to the analysis screen, see it again; come back, see it again. He
+ * described it exactly — "会在每一次打开账户和分析页面时出现，十秒后消失".
  *
- *  * **while downloading** it stays, on every screen, with the month count;
- *  * **for ten seconds after finishing** it stays, showing what was stored;
- *  * then it withdraws;
- *  * and it says where the detail is — the download manager on the account screen.
+ * The window belongs to the **download**, not to whoever happens to be looking at it,
+ * so it is now computed from the moment the fill finished: "less than ten seconds
+ * ago" is true on every screen at once and false on every screen at once.
  *
- * A failure is the exception: "the browser will not keep this" is not news that
- * expires, so that line stays until it is no longer true.
+ * **And it was not on every screen.** He asked for it "在明细，分析，账户等所有页面都作为
+ * 上方弹窗出现" — which is what `TabPage` already gave it, except that the timer bug
+ * made it look like something else. With the timestamp it now behaves as he described:
+ * a strip at the top of whatever page is open, for ten seconds, once.
+ *
+ * A failure is the exception: a fill that stopped early says so for the whole ten
+ * seconds, because the user needs to know the month list is incomplete.
  *
  * It **reads** the fill rather than starting one — see `OfflineFillProvider` — and
  * takes whether anybody is signed in from that provider rather than from the auth
@@ -31,89 +33,47 @@ const LINGER_MS = 10_000;
 export function OfflineStatus(): React.JSX.Element | null {
   const { fill, ready } = useOfflineFillStatus();
 
-  const [persisted, setPersisted] = useState<boolean | null>(null);
-  const [usage, setUsage] = useState<number | null>(null);
-
   /**
-   * Whether the finishing summary is still on screen.
+   * A ticking clock, so the strip disappears on its own.
    *
-   * Held separately from the fill's own state because the fill is finished the
-   * moment it is finished, and this is about how long the *news* stays. Copying
-   * "done" into a second piece of state would be the bug where the bar never goes
-   * away because something keeps re-setting it.
+   * One interval for the whole component rather than a timeout per render: the state
+   * it produces is exactly "what time is it", and every screen derives the same
+   * answer from the same timestamp. When the window closes, `now` moves past it and
+   * the strip stops rendering — no cleanup to get wrong, and nothing to reset.
    */
-  const [lingering, setLingering] = useState(false);
-
-  useEffect(() => {
-    if (!ready) return;
-
-    let cancelled = false;
-
-    void (async () => {
-      await requestPersistentStorage();
-      const report = await storageReport();
-      if (cancelled) return;
-
-      setPersisted(report.persisted);
-      setUsage(report.usageBytes);
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [ready]);
+  const [now, setNow] = useState(() => Date.now());
 
   const running = fill?.running ?? false;
-
-  /**
-   * ⚠️ **Counted from the moment it stops running**, not from a mount.
-   *
-   * A timer started when the component first rendered would withdraw the notice
-   * while the download was still going — the one thing it exists to show. The
-   * effect depends on `running`, so each transition into "finished" starts its own
-   * ten seconds.
-   */
-  useEffect(() => {
-    if (!running) return;
-
-    // Downloading again: the summary from the last run is no longer the news.
-    setLingering(false);
-
-    return undefined;
-  }, [running]);
+  const justFinishedAt = fill?.justFinishedAt ?? null;
 
   useEffect(() => {
-    const stopped = fill?.stopped ?? null;
-    const done = fill?.done ?? 0;
+    if (running || justFinishedAt === null) return;
 
-    if (running || (done === 0 && stopped === null) || fill?.skippedMetered === true) return;
+    // Nothing to count down any more.
+    if (Date.now() - justFinishedAt >= LINGER_MS) return;
 
-    setLingering(true);
-    const timer = window.setTimeout(() => {
-      setLingering(false);
-    }, LINGER_MS);
+    setNow(Date.now());
+
+    const timer = window.setInterval(() => {
+      setNow(Date.now());
+    }, 500);
 
     return () => {
-      window.clearTimeout(timer);
+      window.clearInterval(timer);
     };
-  }, [running, fill?.done, fill?.stopped, fill?.skippedMetered]);
+  }, [running, justFinishedAt]);
+
+  if (!ready || fill === null) return null;
 
   /**
-   * ⚠️ **The "the browser will not keep this" line used to live here, and no
-   * longer does.** The owner asked for it to move: "把这个弹窗挪到下载管理界面以及下载
-   * 管理的每个子界面." He is right, and for the same reason the download notice itself
-   * was cut back — a warning that follows the user everywhere stops being read. It is
-   * a fact about storage, so it belongs where storage is the subject.
+   * ⚠️ **Derived, not stored.** A `lingering` boolean would be a second copy of the
+   * same fact, and it would be the copy that goes stale — which is how the notice came
+   * to reappear on every screen in the first place.
    */
+  const lingering = !running && justFinishedAt !== null && now - justFinishedAt < LINGER_MS;
+  const visible = running || lingering || fill.skippedMetered;
 
-  const visible = useMemo(() => {
-    if (fill === null) return false;
-    if (running || lingering) return true;
-
-    return fill.skippedMetered;
-  }, [fill, running, lingering]);
-
-  if (!ready || fill === null || !visible) return null;
+  if (!visible) return null;
 
   return (
     <div
@@ -129,19 +89,18 @@ export function OfflineStatus(): React.JSX.Element | null {
         </>
       ) : null}
 
-      {!running && lingering && fill.stopped === null ? (
+      {lingering && fill.stopped === null ? (
         <>
           <p>
-            历史记录已存到本机（{fill.total} 个月
-            {usage === null ? "" : `，占用 ${formatBytes(usage)}`}），离线时也能查看。
+            历史记录已存到本机（{fill.total} 个月），离线时也能查看。
           </p>
           <p>可以在「账户 → 下载管理」里查看和调整。</p>
         </>
       ) : null}
 
-      {!running && lingering && fill.stopped !== null ? <p>{fill.stopped}</p> : null}
+      {lingering && fill.stopped !== null ? <p>{fill.stopped}</p> : null}
 
-      {fill.skippedMetered ? (
+      {!running && !lingering && fill.skippedMetered ? (
         <p>当前是流量网络，暂时没有下载历史记录。连上 Wi-Fi 后会自动继续。</p>
       ) : null}
     </div>

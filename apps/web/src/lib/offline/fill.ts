@@ -107,6 +107,15 @@ export function isMeteredConnection(): boolean {
  */
 const FILL_PAGE_SIZE = 100;
 
+/**
+ * How many pages one month may need.
+ *
+ * A guard rather than a calculation: a month is a few pages at the API's ceiling, and
+ * the only thing this protects against is a server that keeps offering a cursor and
+ * would otherwise spin for ever on somebody's phone.
+ */
+const MAX_FILL_PAGES = 40;
+
 export interface OfflineFill {
   /** Months finished, and how many were planned. */
   readonly done: number;
@@ -116,6 +125,21 @@ export interface OfflineFill {
   readonly stopped: string | null;
   /** Whether it skipped itself because the connection is metered. */
   readonly skippedMetered: boolean;
+  /**
+   * When the last run finished, or `null` if none has.
+   *
+   * ⚠️ **A timestamp rather than a boolean, and that is what fixes the notice.**
+   *
+   * The owner reported: "下载完成弹窗会在每一次打开账户和分析页面时出现，十秒后消失".
+   * The cause is that the *component* owned the ten seconds — so every screen mount
+   * started a fresh countdown, and the notice reappeared for ever as the user moved
+   * around. **The window belongs to the download, not to whoever is looking at it.**
+   *
+   * With a timestamp, every screen computes the same answer from the same fact:
+   * "less than ten seconds ago" is true everywhere at once, and false everywhere at
+   * once.
+   */
+  readonly justFinishedAt: number | null;
   /**
    * Fetch months into the local copy.
    *
@@ -133,6 +157,14 @@ export interface OfflineFill {
  * after the first time — which is what makes it safe to leave switched on rather
  * than something the user has to remember to press.
  */
+/**
+ * Whether this page load has already started the automatic fill.
+ *
+ * Module scope rather than a ref: the guard has to survive a remount, and a ref does
+ * not. Cleared only by a reload, which is the same thing as "once per visit".
+ */
+let autoFillStarted = false;
+
 export function useOfflineFill(options: { readonly enabled: boolean }): OfflineFill {
   const queryClient = useQueryClient();
   const [done, setDone] = useState(0);
@@ -140,6 +172,7 @@ export function useOfflineFill(options: { readonly enabled: boolean }): OfflineF
   const [running, setRunning] = useState(false);
   const [stopped, setStopped] = useState<string | null>(null);
   const [skippedMetered, setSkippedMetered] = useState(false);
+  const [justFinishedAt, setJustFinishedAt] = useState<number | null>(null);
 
   /**
    * A ref as well as state, because `start` must not depend on the render it was
@@ -221,35 +254,65 @@ export function useOfflineFill(options: { readonly enabled: boolean }): OfflineF
         const key = queryKeys.transactions(filters);
 
         /**
-         * Already here: skipped, and counted as done.
+         * ⚠️ **The month is fetched page by page, in a loop of our own.**
          *
-         * `getQueryData` rather than `fetchQuery`, so a month that is already cached
-         * costs nothing — no request, no stale refetch. This is what makes the second
-         * and later launches nearly free.
+         * `fetchInfiniteQuery` resolves after the **first** page — pagination is driven
+         * by the *screen* calling `fetchNextPage` when somebody presses "载入更多".
+         * `QueryClient` has no `fetchNextPage` at all. So the first version of this
+         * fetched one page, at most a hundred entries, and called the month done:
+         * everything past that page was never on the device, which is exactly what the
+         * owner saw — a month reported as downloaded that could not be read offline.
+         *
+         * **That was the defect behind "下载全部点了没有反应", and it took a test that
+         * counted the requests to find it** (`fillPagination.test.ts`).
          */
-        if (queryClient.getQueryData(key) === undefined) {
-          /**
-           * `fetchInfiniteQuery`, not `fetchQuery` — and the shape is the point.
-           *
-           * The screen reads this key with `useInfiniteQuery`, whose cached value is
-           * `{ pages, pageParams }`. Handing it a plain array would leave it unable
-           * to read its own cache: it would find *something* under the key and treat
-           * it as the wrong shape. `fetchInfiniteQuery` builds exactly what the
-           * screen expects, **including every page**, so a month with more entries
-           * than one request returns is fetched completely rather than in part.
-           *
-           * `getNextPageParam` is the same rule the screen uses: follow the cursor
-           * until the server stops giving one.
-           */
-          await queryClient.fetchInfiniteQuery({
-            queryKey: key,
-            queryFn: ({ pageParam }) =>
-              apiFetch<TransactionListResponse>("/transactions", {
-                query: { ...filters, limit: FILL_PAGE_SIZE, cursor: pageParam as string | undefined },
-              }),
-            initialPageParam: undefined as string | undefined,
-            getNextPageParam: (last: TransactionListResponse) => last.nextCursor ?? undefined,
-          });
+        type Cached = { readonly pages?: readonly TransactionListResponse[] };
+
+        const existing = queryClient.getQueryData<Cached>(key);
+
+        /**
+         * ⚠️ **"Has data" is not the same as "has all of it".**
+         *
+         * `fetchInfiniteQuery` — and any check of the form "is it cached" — resolves
+         * immediately when *some* data exists under the key. So a month ever cached
+         * with only its first page stayed half-downloaded for ever: the fill saw data,
+         * did nothing, and reported success. That is the second half of the same
+         * complaint.
+         *
+         * Only a **finished** fetch counts as done, and finishing is visible in the
+         * data: the last page stops asking for a cursor.
+         */
+        const alreadyComplete =
+          existing?.pages !== undefined &&
+          existing.pages.length > 0 &&
+          existing.pages[existing.pages.length - 1]?.nextCursor === null;
+
+        if (!alreadyComplete) {
+          const pages: TransactionListResponse[] = [];
+          let cursor: string | undefined;
+
+          for (let page = 0; page < MAX_FILL_PAGES; page += 1) {
+            const fetched = await apiFetch<TransactionListResponse>("/transactions", {
+              query: { ...filters, limit: FILL_PAGE_SIZE, cursor },
+            });
+
+            pages.push(fetched);
+
+            /**
+             * Written after **each** request, in the `{ pages, pageParams }` shape the
+             * screen reads. Two reasons: an interrupted fill keeps what it did get, so
+             * the next launch continues rather than starting over; and the screen can
+             * read a half-finished month rather than finding nothing.
+             */
+            queryClient.setQueryData(key, {
+              pages: [...pages],
+              pageParams: pages.map(() => cursor),
+            });
+
+            if (fetched.nextCursor === null) break;
+
+            cursor = fetched.nextCursor;
+          }
         }
 
         finished += 1;
@@ -271,6 +334,11 @@ export function useOfflineFill(options: { readonly enabled: boolean }): OfflineF
       } finally {
         runningRef.current = false;
         setRunning(false);
+        /**
+         * Stamped once, where the work actually ends — so every screen that reads it
+         * agrees about when "ten seconds" started.
+         */
+        setJustFinishedAt(Date.now());
       }
     },
     [queryClient],
@@ -284,10 +352,22 @@ export function useOfflineFill(options: { readonly enabled: boolean }): OfflineF
     }
 
     /**
+     * ⚠️ **Once per page load, not once per mount.**
+     *
+     * The provider is mounted once, so this is belt and braces — but the cost of being
+     * wrong is high: a fill that re-runs on every mount walks sixty months of cache
+     * lookups each time the user changes screen, and one that re-*fetches* is a
+     * download nobody asked for. The module-level flag makes it impossible either way,
+     * and survives a remount that React does for its own reasons.
+     */
+    if (autoFillStarted) return;
+    autoFillStarted = true;
+
+    /**
      * After the first paint, and never as part of it.
      *
-     * This is sixty requests; starting it while the screen is drawing would make
-     * the app feel slow for a reason the user cannot see.
+     * This is sixty requests; starting it while the screen is drawing would make the
+     * app feel slow for a reason the user cannot see.
      */
     const timer = window.setTimeout(() => void start(), 1_500);
 
@@ -296,5 +376,5 @@ export function useOfflineFill(options: { readonly enabled: boolean }): OfflineF
     };
   }, [options.enabled, start]);
 
-  return { done, total, running, stopped, skippedMetered, start };
+  return { done, total, running, stopped, skippedMetered, justFinishedAt, start };
 }

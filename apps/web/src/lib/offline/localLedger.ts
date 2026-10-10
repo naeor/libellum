@@ -156,3 +156,61 @@ export function localCountForMonth(transactions: readonly Transaction[], month: 
 
   return count;
 }
+
+/** What a screen is asking for. Mirrors `TransactionFilters`. */
+export interface LocalFilters {
+  readonly month?: string | undefined;
+  readonly kind?: "income" | "expense" | undefined;
+  readonly categoryId?: string | undefined;
+  readonly currency?: string | undefined;
+}
+
+/**
+ * The entries that match what a screen is asking for.
+ *
+ * ⚠️ **This is what makes a *filtered* view work offline, and it was missing.**
+ *
+ * The fill downloads each month in full — one entry per row, not per view — but the
+ * screens do not all ask the same question. The spending tab and the income tab are
+ * different queries with different keys, and a category filter is a third. So even
+ * with every month on the device, switching to 收入 or opening 分析 asked a question
+ * the cache had never been asked and got nothing back.
+ *
+ * **Filtering the local copy answers all of them from one download**, which is the
+ * point: the data is not per-view, so the answers should not be either.
+ *
+ * The rules mirror the server's `where` clause: the month by `occurredLocalDate`, then
+ * kind, category and currency exactly. Deleted entries need no check — the list
+ * endpoint never sends them, so they were never stored.
+ */
+export function filterLocally(
+  transactions: readonly Transaction[],
+  filters: LocalFilters,
+): readonly Transaction[] {
+  return transactions.filter((transaction) => {
+    if (filters.month !== undefined && transaction.occurredLocalDate.slice(0, 7) !== filters.month) {
+      return false;
+    }
+
+    if (filters.kind !== undefined && transaction.kind !== filters.kind) return false;
+    if (filters.categoryId !== undefined && transaction.categoryId !== filters.categoryId) return false;
+    if (filters.currency !== undefined && transaction.currency !== filters.currency) return false;
+
+    return true;
+  });
+}
+
+/**
+ * The local entries, shaped like a page of the list endpoint.
+ *
+ * ⚠️ **`nextCursor: null` is not a placeholder.** Everything the device has is handed
+ * over in one page, because there is no server to page through and the screen's
+ * "载入更多" would be asking for data that is already here. Reporting a cursor would
+ * make the screen offer a button that fetches nothing.
+ *
+ * Order is whatever was stored, which is the server's own order — it was stored as it
+ * arrived — and the screen groups by day from there.
+ */
+export function asLocalPage(transactions: readonly Transaction[]): TransactionListResponse {
+  return { items: [...transactions], nextCursor: null };
+}

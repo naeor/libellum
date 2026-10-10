@@ -202,7 +202,7 @@ export function MonthDownloadPage(): React.JSX.Element {
                 });
             }}
           >
-            {running ? "正在下载…" : "现在下载这个月"}
+            {running ? "正在下载…" : "下载当月数据"}
           </Button>
         )}
 

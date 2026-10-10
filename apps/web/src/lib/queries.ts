@@ -33,7 +33,12 @@ import { useMemo } from "react";
 
 import { useAuth } from "../auth/AuthProvider.js";
 import { ApiRequestError, apiFetch, apiFetchFile } from "./api.js";
-import { findLocalTransaction, readLocalTransactions } from "./offline/localLedger.js";
+import {
+  asLocalPage,
+  filterLocally,
+  findLocalTransaction,
+  readLocalTransactions,
+} from "./offline/localLedger.js";
 import { computeStats, monthRange, summaryFor } from "./offline/localStats.js";
 import { uuidV7 } from "./uuid.js";
 
@@ -173,8 +178,24 @@ export function useTransactions(given: TransactionFilters) {
 
   return useInfiniteQuery({
     queryKey: queryKeys.transactions(filters),
-    queryFn: ({ pageParam }) =>
-      apiFetch<TransactionListResponse>("/transactions", {
+    queryFn: async ({ pageParam }) => {
+      /**
+       * ⚠️ **Filtered views are answered from the device too.**
+       *
+       * The spending tab, the income tab and any category filter are *different
+       * queries with different keys* — so even with every month downloaded, switching
+       * to 收入 asked something the cache had never been asked and got nothing. The
+       * owner saw exactly that: "切换到收入界面……什么都看不到".
+       *
+       * The stored copy is not per-view, so the answer does not have to be either:
+       * filter it here and hand back one page, with no cursor, because everything the
+       * device has is already in hand.
+       */
+      if (isOffline()) {
+        return asLocalPage(filterLocally(await readLocalTransactions(), filters));
+      }
+
+      return apiFetch<TransactionListResponse>("/transactions", {
         query: {
           month: filters.month,
           kind: filters.kind,
@@ -182,7 +203,8 @@ export function useTransactions(given: TransactionFilters) {
           currency: filters.currency,
           cursor: pageParam,
         },
-      }),
+      });
+    },
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.nextCursor ?? undefined,
   });
