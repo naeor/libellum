@@ -1,0 +1,143 @@
+/*
+ * The ledger screen's two shapes, driven by one number.
+ *
+ * `--p` runs 0 (display) to 1 (list) and is written to the DOM by a
+ * requestAnimationFrame loop — never by React. Everything here derives from
+ * it with calc(), so the whole screen moves on one clock instead of each part
+ * deciding for itself when to change.
+ *
+ * Elements are staggered: each gets its own slice of `--p` through a derived
+ * variable. That is what lets the title finish leaving before the month starts
+ * travelling, without any of them being aware of the others.
+ *
+ * Only two things animate a layout size — the green area and the main card.
+ * Everything else moves with transform and opacity, which the compositor can
+ * handle without re-laying out the page. The owner accepted the small reflow
+ * involved and asked for smoothness above all, so this is the trade: two
+ * contained reflows rather than a page of them.
+ */
+
+.detail-root {
+  --p: 0;
+
+  /*
+   * The two ends of each animated size, named rather than inlined so they can
+   * be tuned on a real phone without hunting through calc() expressions.
+   */
+  --hero-tall: 336px;
+  --hero-short: 138px;
+  --card-tall: 128px;
+  --card-short: 44px;
+  --secondary-tall: 74px;
+  --secondary-short: 38px;
+  --heading-h: 44px;
+
+  /* Each element's own slice of the timeline. clamp keeps them in 0..1. */
+  --p-title: clamp(0, calc(var(--p) / 0.35), 1);
+  --p-month: clamp(0, calc((var(--p) - 0.3) / 0.45), 1);
+  --p-arrows: clamp(0, calc((var(--p) - 0.6) / 0.3), 1);
+  --p-tools: clamp(0, calc((var(--p) - 0.4) / 0.45), 1);
+  --p-cards: clamp(0, calc((var(--p) - 0.15) / 0.65), 1);
+  --p-secondary: clamp(0, calc((var(--p) - 0.4) / 0.6), 1);
+  --p-toggle: clamp(0, calc((var(--p) - 0.2) / 0.65), 1);
+  --p-body: clamp(0, calc(var(--p) / 0.9), 1);
+}
+
+/* A. The green area. One contained reflow, at the very top of the page. */
+.detail-hero {
+  contain: layout paint style;
+  height: calc(var(--hero-tall) - var(--p) * (var(--hero-tall) - var(--hero-short)));
+  overflow: visible;
+}
+
+/* B. The wordmark leaves first, so the month has somewhere to travel to. */
+.detail-title {
+  opacity: calc(1 - var(--p-title));
+  transform: translate3d(0, calc(var(--p-title) * -16px), 0);
+}
+
+/*
+ * C. The month.
+ *
+ * It starts against the left edge and has to end up centred, and the distance
+ * depends on how wide the text is and how wide the screen is — neither of which
+ * is known here. So it is done in two moves that need no measurement at all:
+ * the full-width wrapper travels half the *container*, and the month inside
+ * travels back half of *itself*.
+ *
+ *   wrapper: +W/2          month: -w/2
+ *   ------------------------------------
+ *   result:  (W - w)/2   = exactly centred, from a left-aligned start
+ */
+.detail-month-track {
+  transform: translate3d(calc(var(--p-month) * 50%), 0, 0);
+}
+
+.detail-month {
+  transform: translate3d(calc(var(--p-month) * -50%), 0, 0);
+}
+
+/* The caret belongs to the display state; the arrows belong to the list state. */
+.detail-caret {
+  opacity: calc(1 - var(--p-arrows));
+  transform: rotate(calc(var(--p-arrows) * -90deg));
+}
+
+.detail-arrows {
+  opacity: var(--p-arrows);
+  pointer-events: none;
+}
+
+.detail-arrows[data-active="true"] {
+  pointer-events: auto;
+}
+
+/* D. The main card. Shrinks in place rather than being swapped for a new one. */
+.detail-main-card {
+  height: calc(var(--card-tall) - var(--p-cards) * (var(--card-tall) - var(--card-short)));
+  contain: layout paint style;
+}
+
+/* Its smaller print steps aside rather than being re-wrapped mid-flight. */
+.detail-main-detail {
+  opacity: calc(1 - clamp(0, calc((var(--p-cards) - 0.35) / 0.35), 1));
+}
+
+/* E. The secondary cards lose height and padding together. */
+.detail-secondary-card {
+  height: calc(var(--secondary-tall) - var(--p-secondary) * (var(--secondary-tall) - var(--secondary-short)));
+}
+
+/* F. The tool buttons only move; a rotating button would say nothing. */
+.detail-tools {
+  transform: translate3d(0, calc(var(--p-tools) * -10px), 0) scale(calc(1 - var(--p-tools) * 0.15));
+  transform-origin: right top;
+}
+
+/* G. The toggle slides up under the compact bar. Its selection is untouched. */
+.detail-toggle-bar {
+  transform: translate3d(0, calc(var(--p-toggle) * -6px), 0);
+}
+
+/* H. The white area rises. Transform, not margin, so the list never re-flows. */
+.detail-body {
+  transform: translate3d(0, calc(var(--p-body) * -4px), 0);
+}
+
+/* The "recent entries" heading belongs to the display state only. */
+.detail-recent-heading {
+  opacity: calc(1 - clamp(0, calc(var(--p) / 0.3), 1));
+  height: calc(var(--heading-h) - clamp(0, calc(var(--p) / 0.3), 1) * var(--heading-h));
+  overflow: hidden;
+}
+
+/*
+ * Where the reader has asked for less motion, none of this runs. The two ends
+ * still exist and still work — they simply stop being animated, which is a
+ * shorter transition than any of the numbers above, not a slower one.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .detail-root * {
+    transition: none !important;
+  }
+}

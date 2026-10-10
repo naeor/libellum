@@ -20,11 +20,22 @@ export function TabPage({
   onNavigate,
   children,
   className = "",
+  scrollRef,
+  rootRef,
+  rootClassName = "",
 }: {
   readonly active: string;
   readonly onNavigate: (to: string) => void;
   readonly children: React.ReactNode;
   readonly className?: string;
+  /**
+   * Exposed so a screen can follow its own scroll position. Only the ledger
+   * needs it — it is the one screen whose layout changes as the reader moves.
+   */
+  readonly scrollRef?: React.RefObject<HTMLDivElement | null>;
+  /** The outermost element, for a screen that drives its own animation. */
+  readonly rootRef?: React.RefObject<HTMLDivElement | null>;
+  readonly rootClassName?: string;
 }): React.JSX.Element {
   /**
    * Whether the three recording cards above the bar are showing.
@@ -41,10 +52,10 @@ export function TabPage({
   const [entryOpen, setEntryOpen] = useState(true);
 
   return (
-    <div className="flex h-dvh flex-col overflow-hidden">
+    <div ref={rootRef} className={`flex h-dvh flex-col overflow-hidden ${rootClassName}`}>
       <SyncBanner />
 
-      <div className="flex-1 overflow-y-auto overscroll-contain">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto overscroll-contain">
         {/* pb-24 leaves room for the raised entry button, which reaches up
             above the bar and would otherwise cover the last row of a list. */}
         <div className={`mx-auto flex w-full max-w-md flex-col pb-24 ${className}`}>{children}</div>
