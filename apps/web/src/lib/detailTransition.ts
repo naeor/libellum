@@ -203,6 +203,13 @@ export function useDetailTransition(initial: number): DetailTransition {
     const scroller = scrollRef.current;
     if (root === null || scroller === null) return;
 
+    let tracking = false;
+    let startY = 0;
+    let startProgress = 0;
+    let lastY = 0;
+    let lastTime = 0;
+    let flick = 0;
+
     /**
      * Which zone the finger landed in decides what the gesture means.
      *
