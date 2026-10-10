@@ -1,0 +1,207 @@
+import { useCallback, useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+
+import { Alert } from "../components/Alert.js";
+import { Button } from "../components/Button.js";
+import { InnerPage } from "../components/Layouts.js";
+import { cacheFootprint, describeKey, type CacheFootprint } from "../lib/offline/downloadManager.js";
+import { clearOfflineLog, readOfflineLog, type LogEntry } from "../lib/offline/diagnostics.js";
+import { formatBytes, storageBreakdown, type StorageBreakdown } from "../lib/offline/persistence.js";
+import { readValue } from "../lib/offline/storage.js";
+
+/**
+ * The diagnostics screen, behind a "more" button.
+ *
+ * ⚠️ **The owner asked for it to move, and gave the reason with the request**: the download
+ * log and the storage breakdown had been on the download manager's home screen, where they
+ * are noise for anybody who is not chasing a problem. "把下载记录和存储明细……都不显示在下载
+ * 管理主页。主页右上角新增一个更多按钮（三个点图标）."
+ *
+ * **And he asked for one thing more, which is the important part**: "还有一个按钮提供一键复制
+ * 到剪贴板，底下写上小字提示用户如果碰到bug可以复制这些内容并提交给开发者."
+ *
+ * That turns the screen from something to *read* into something to *send*. Every round of
+ * this offline work has been slowed down by the same gap — the person holding the phone
+ * could see the problem and the developer could not — and a button that puts the whole state
+ * on the clipboard is the shortest path between them.
+ */
+export function DownloadMorePage(): React.JSX.Element {
+  const queryClient = useQueryClient();
+
+  const [log, setLog] = useState<readonly LogEntry[]>([]);
+  const [footprint, setFootprint] = useState<CacheFootprint | null>(null);
+  const [storage, setStorage] = useState<StorageBreakdown | null>(null);
+  const [queries, setQueries] = useState<readonly string[]>([]);
+  const [copied, setCopied] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+
+    try {
+      const [entries, measured, breakdown] = await Promise.all([
+        readOfflineLog(),
+        cacheFootprint(queryClient),
+        storageBreakdown(),
+      ]);
+
+      setLog(entries);
+      setFootprint(measured);
+      setStorage(breakdown);
+
+      /**
+       * The stored keys, listed so the clipboard text can be read without this app.
+       *
+       * `describeKey` prints the **field count** as well as the values, because "four fields
+       * or three" is exactly what distinguishes a leftover entry from a live one — and it
+       * is invisible if only the values are shown.
+       */
+      const raw = await readValue<{ clientState?: { queries?: readonly { queryKey?: unknown }[] } }>(
+        "query-cache",
+      );
+
+      setQueries((raw?.clientState?.queries ?? []).map((query) => describeKey(query.queryKey)));
+    } finally {
+      setLoading(false);
+    }
+  }, [queryClient]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  /** Everything a developer would need, as plain text. */
+  const report = [
+    "Libellum · 离线诊断",
+    `时间：${new Date().toISOString()}`,
+    `页面：${window.location.href}`,
+    "",
+    "== 占用构成 ==",
+    storage === null
+      ? "(未读取)"
+      : [
+          `总计：${formatBytes(storage.totalBytes)}`,
+          `账本数据：${formatBytes(storage.queryCacheBytes)}`,
+          `应用本体：${formatBytes(storage.shellCacheBytes)}`,
+          `运行记录：${formatBytes(storage.diagnosticsBytes)}`,
+          `浏览器其它：${formatBytes(storage.otherBytes)}`,
+        ].join("\n"),
+    "",
+    "== 缓存条目 ==",
+    footprint === null
+      ? "(未读取)"
+      : `共 ${String(footprint.queryCount)} 条，其中 ${String(footprint.liveQueryCount)} 条当前版本会读`,
+    ...(footprint?.heaviest ?? []).map(
+      (entry) => `  ${entry.label} — ${formatBytes(entry.bytes)}`,
+    ),
+    "",
+    `== 全部存储键（${String(queries.length)} 条） ==`,
+    ...queries,
+    "",
+    `== 运行记录（${String(log.length)} 条，最新在前） ==`,
+    ...log.map((entry) => `${new Date(entry.at).toISOString()} ${entry.what}${entry.detail === undefined ? "" : ` — ${entry.detail}`}`),
+    "",
+  ].join("\n");
+
+  return (
+    <InnerPage title="下载管理 · 更多" subtitle="下载记录与存储明细。" backTo="/downloads">
+      <section className="flex flex-col gap-3">
+        <Button
+          onClick={() => {
+            void navigator.clipboard.writeText(report).then(() => {
+              setCopied(true);
+              window.setTimeout(() => {
+                setCopied(false);
+              }, 3_000);
+            });
+          }}
+        >
+          {copied ? "已复制到剪贴板" : "复制诊断信息"}
+        </Button>
+
+        <p className="text-xs leading-relaxed text-muted">
+          如果遇到问题，点上面的按钮复制这些内容，发给开发者就能定位。
+        </p>
+      </section>
+
+      {storage === null ? null : (
+        <section className="flex flex-col gap-1.5 rounded-card border border-line bg-surface px-4 py-3 text-sm">
+          <h2 className="text-xs text-muted">占用构成</h2>
+          <p className="text-ink">总计 {formatBytes(storage.totalBytes)}</p>
+          <ul className="flex flex-col gap-0.5 text-[11px] text-muted">
+            <li>账本数据 {formatBytes(storage.queryCacheBytes)}</li>
+            <li>应用本体（HTML / JS / CSS）{formatBytes(storage.shellCacheBytes)}</li>
+            <li>运行记录 {formatBytes(storage.diagnosticsBytes)}</li>
+            <li>浏览器其它 {formatBytes(storage.otherBytes)}</li>
+          </ul>
+          {/*
+            ⚠️ **The honest note about the remainder.**
+
+            "浏览器其它" is the biggest number on the screen and it is **not ours to clear**:
+            `storage.estimate()` counts the whole origin, including data Chrome may hold
+            before writing it to disk. Saying what it is stops the ledger taking the blame,
+            and stops a "free up space" button being expected where none can exist.
+          */}
+          <p className="text-[11px] leading-relaxed text-muted">
+            「浏览器其它」由浏览器自己记账，可能包含还没写到磁盘的数据，应用无法直接清除。
+          </p>
+        </section>
+      )}
+
+      {footprint === null ? null : (
+        <section className="flex flex-col gap-1.5 rounded-card border border-line bg-surface px-4 py-3 text-sm">
+          <h2 className="text-xs text-muted">缓存条目</h2>
+          <p className="text-ink">
+            共 {footprint.queryCount} 条，其中 {footprint.liveQueryCount} 条当前版本会读取
+          </p>
+          <ul className="flex flex-col gap-0.5 text-[11px] text-muted">
+            {footprint.heaviest.map((entry) => (
+              <li key={entry.label} className="flex justify-between gap-3">
+                <span className="min-w-0 truncate font-mono">{entry.label}</span>
+                <span className="shrink-0">{formatBytes(entry.bytes)}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      <section className="flex flex-col gap-2">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xs text-muted">运行记录（{log.length} 条）</h2>
+          <button
+            type="button"
+            onClick={() => {
+              void clearOfflineLog().then(() => load());
+            }}
+            className="text-[11px] text-muted underline"
+          >
+            清空
+          </button>
+        </div>
+
+        {loading ? (
+          <p className="text-sm text-muted">正在读取…</p>
+        ) : log.length === 0 ? (
+          <p className="text-sm text-muted">还没有记录。</p>
+        ) : (
+          <ul className="flex flex-col gap-1 rounded-card border border-line bg-surface px-4 py-3">
+            {log.map((entry, index) => (
+              <li
+                key={`${String(entry.at)}-${String(index)}`}
+                className="text-[11px] leading-relaxed"
+              >
+                <span className="font-mono text-muted">{new Date(entry.at).toLocaleTimeString()}</span>{" "}
+                <span className="text-ink">{entry.what}</span>
+                {entry.detail === undefined ? null : (
+                  <span className="text-muted"> — {entry.detail}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {copied ? <Alert tone="info">已复制。可以直接粘贴给开发者。</Alert> : null}
+    </InnerPage>
+  );
+}

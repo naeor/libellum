@@ -44,3 +44,24 @@ export function GearIcon(props: SVGProps<SVGSVGElement>): React.JSX.Element {
     </svg>
   );
 }
+
+/**
+ * Three dots in a row, for "there is more behind here".
+ *
+ * ⚠️ **Filled circles, not an outline.** Every other icon in this file is stroked, and this
+ * one is deliberately not: three small rings at 20 px read as a dotted line, where three
+ * filled dots read as a menu — which is the convention on every platform the user has ever
+ * held.
+ *
+ * Horizontal rather than vertical: a vertical ellipsis means the same thing, but on a phone
+ * the horizontal one sits in a top-right corner without looking like a scrollbar.
+ */
+export function MoreIcon(props: SVGProps<SVGSVGElement>): React.JSX.Element {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" {...props}>
+      <circle cx="5" cy="12" r="1.9" />
+      <circle cx="12" cy="12" r="1.9" />
+      <circle cx="19" cy="12" r="1.9" />
+    </svg>
+  );
+}

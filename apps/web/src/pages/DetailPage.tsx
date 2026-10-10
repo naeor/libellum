@@ -10,7 +10,7 @@ import { EmptyState, ErrorState, SkeletonRows } from "../components/States.js";
 import { OfflineStatus } from "../components/OfflineStatus.js";
 import { SyncBanner } from "../components/SyncBanner.js";
 import { errorMessage } from "../lib/api.js";
-import { useOnlineStatus } from "../lib/connectivity.js";
+import { useAccountOffline } from "../lib/offline/connectivity.js";
 import { currentMonth, formatDayLabel, formatTimeInZone } from "../lib/datetime.js";
 import { readSession, useDetailTransition, writeSession } from "../lib/detailTransition.js";
 import { currencyName, formatMoney } from "../lib/format.js";
@@ -83,7 +83,12 @@ export function DetailPage(): React.JSX.Element {
     }
   }, [saved.progress, saved.scrollTop, scrollRef]);
 
-  const offline = !useOnlineStatus();
+  /**
+   * ⚠️ **The merged signal**, not `navigator.onLine`: offline when either the browser says
+   * so or a request failed to get an answer. The error panel below keys off this, so it
+   * disappears on the strength of a real failed request rather than the browser's guess.
+   */
+  const { offline } = useAccountOffline();
 
   const summary = useSummary(month);
   const ledger = useLedger();

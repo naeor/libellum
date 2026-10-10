@@ -2,7 +2,7 @@
  * Try the network; use what is on the device when it does not answer.
  *
  * ⚠️ **The owner described this rule better than the code did**: "先去读网络数据，被拒绝/
- * 超过两秒没有收到数据然后直接改成用本地数据就可以了吧？"
+ * 超过一秒没有收到数据然后直接改成用本地数据就可以了吧？"
  *
  * **He is right, and the previous version was wrong in a way that only shows on a phone.**
  * It asked `navigator.onLine` first and only used the local copy when the browser admitted
@@ -15,18 +15,29 @@
  * arrive".** So: try the network, and on *any* failure — refused, timed out, server error —
  * read the local copy instead.
  *
- * **Two seconds, because of what happens after it.** The wait is the user's, and the
- * fallback is cheap: the data is already on the device. A shorter time is not "giving up
- * early", it is choosing the answer that is available now over the one that might arrive.
+ * **One second, and his reasoning is the measurement**: "一般健康的网络情况下，服务器返回的
+ * 速度可能就几十毫秒". A healthy answer arrives in tens of milliseconds, so a second is
+ * already an order of magnitude of slack — and the fallback is cheap, because the data is
+ * already on the device. **The wait is the user's; the answer is not.**
  *
- * ⚠️ **And a failure is logged with a unique marker**, so that "was it offline or was the
- * server unhappy" is answerable from the record rather than from another round of guessing
- * — which is the rule the owner set out in DEVLOG §9.1.
+ * ⚠️ **Every attempt updates the shared connectivity state**, which is what lets the app say
+ * "you are offline" on the strength of an actual failed request rather than on the browser's
+ * guess — see `connectivity.ts`.
+ *
+ * ⚠️ **And it is logged with a unique marker**, so "was it offline or was the server
+ * unhappy" is answerable from the record rather than from another round of guessing — the
+ * rule the owner set out in DEVLOG §9.1.
  */
+import { reportReachability } from "./connectivity.js";
 import { logOffline } from "./diagnostics.js";
 
-/** How long to wait for the network before answering from the device. */
-export const LOCAL_FALLBACK_MS = 2_000;
+/**
+ * How long to wait for the network before answering from the device.
+ *
+ * One second. A healthy server answers in tens of milliseconds, so this is already generous;
+ * anything longer is time the user spends looking at a screen that has the answer.
+ */
+export const LOCAL_FALLBACK_MS = 1_000;
 
 /** Marker used in diagnostic output, so the fallback can be counted and grepped. */
 export const FALLBACK_MARKER = "DIAGNOSTIC:fallback";
@@ -43,20 +54,53 @@ export interface FallbackOptions<T> {
 }
 
 /**
+ * An error that means **no answer arrived**, as opposed to an answer we did not like.
+ *
+ * ⚠️ **The distinction matters for what the app tells the user.** A `500` says the server is
+ * unwell and a `403` says the request was refused; neither means the network is gone, and an
+ * "you are offline" banner over a working connection is its own kind of lie. Only a refused
+ * connection, a timeout, or the browser's explicit "no network" changes the offline state —
+ * **all three still fall back to the local copy**, because something useful beats nothing.
+ */
+export function meansNoAnswer(error: unknown): boolean {
+  const status = (error as { readonly status?: unknown }).status;
+
+  // `apiFetch` uses 0 for "offline" and "timed out"; anything else is a real answer.
+  if (typeof status === "number") return status === 0;
+
+  // A thrown fetch (`TypeError: Failed to fetch`) or an abort with no HTTP status.
+  return true;
+}
+
+/**
  * The network if it answers, the device otherwise.
  *
- * Re-throws nothing: if the local copy is also unavailable the local error is the useful
+ * Re-throws nothing: if the local copy is also unavailable, the local error is the useful
  * one, because it is the code that actually ran last.
  */
 export async function withLocalFallback<T>(options: FallbackOptions<T>): Promise<T> {
   const timeoutMs = options.timeoutMs ?? LOCAL_FALLBACK_MS;
 
   try {
-    return await options.network(timeoutMs);
+    const answer = await options.network(timeoutMs);
+
+    /**
+     * A real answer arrived, so the account is reachable — whatever the browser believes.
+     * This is the half of the merge that clears the offline state.
+     */
+    reportReachability(true);
+
+    return answer;
   } catch (error) {
     const detail = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
 
     await logOffline(`${FALLBACK_MARKER} · ${options.label}`, detail);
+
+    /**
+     * Only a *missing* answer means offline. A 500 still falls back — the local copy is
+     * better than an error page — but it does not claim the network is down.
+     */
+    reportReachability(!meansNoAnswer(error), detail);
 
     return options.local();
   }

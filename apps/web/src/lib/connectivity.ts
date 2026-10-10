@@ -1,40 +1,24 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router";
 
 import { recordBackPress } from "./backFallback.js";
 
 /**
- * Whether the browser currently believes it has a network.
+ * ⚠️ **`useOnlineStatus` used to live here, and it was deleted rather than kept.**
  *
- * `navigator.onLine` is not a promise that the server is reachable — it only
- * means there is no obviously dead link. That is the right level for this
- * application: it is used to *warn* the user that what they see may be stale,
- * not to block them from doing anything.
+ * It read `navigator.onLine`, which is a *guess* — and the wrong thing to base a decision on.
+ * It says online in a lift, on a train, and on a Wi-Fi network whose router has stopped
+ * forwarding; the app therefore waited, failed, and showed nothing while a good copy of the
+ * ledger sat on the device.
+ *
+ * The owner's rule replaced it: **offline when either the browser says so or a request failed
+ * to get an answer**, and online again only once the browser agrees *and* a request has
+ * succeeded. That lives in `offline/connectivity.ts`, as one shared state, so every screen
+ * gives the same answer.
+ *
+ * **Deleted, not deprecated**: nothing imported it any more, and a second way to ask "are we
+ * online" is how two screens come to disagree about the answer.
  */
-export function useOnlineStatus(): boolean {
-  const [online, setOnline] = useState(() =>
-    typeof navigator === "undefined" ? true : navigator.onLine,
-  );
-
-  useEffect(() => {
-    const goOnline = (): void => {
-      setOnline(true);
-    };
-    const goOffline = (): void => {
-      setOnline(false);
-    };
-
-    window.addEventListener("online", goOnline);
-    window.addEventListener("offline", goOffline);
-
-    return () => {
-      window.removeEventListener("online", goOnline);
-      window.removeEventListener("offline", goOffline);
-    };
-  }, []);
-
-  return online;
-}
 
 /**
  * Go back to wherever the user actually came from.
