@@ -45,6 +45,17 @@ export const IMPORT_REF_PREFIX = "In-";
 
 /** `fileRef` is VARCHAR(32) in the database; this is the whole of it. */
 export const REF_PATTERN = `^(Out|In)-${STAMP}$`;
+
+/**
+ * The date and time halves in UTC, as a plain string, for the case where the
+ * server is the only thing that knows the pattern.
+ *
+ * Exported because the database CHECK constraints quote the same expression:
+ * `prisma/migrations/20261010124000_tighten_reference_shape/migration.sql` holds
+ * the literal. If one changes and the other does not, writes start failing, so
+ * they are kept next to each other on purpose.
+ */
+export const REF_STAMP_SQL = STAMP;
 /** `Out-…` is 24 characters; `In-…` is one shorter. Pinned by the tests. */
 export const REF_LENGTH = 24;
 

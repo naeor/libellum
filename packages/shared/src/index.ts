@@ -64,6 +64,37 @@ export type {
 export { healthResponseSchema, type HealthResponse } from "./health.js";
 
 export {
+  csvField,
+  csvRow,
+  csvRowEscaped,
+  escapeFormula,
+  parseCsv,
+  startsFormula,
+  unescapeFormula,
+} from "./spreadsheet.js";
+
+export {
+  EXPORT_COLUMNS,
+  EXPORT_FORMATS,
+  MAX_EXPORT_ROWS,
+  MAX_IMPORT_ROWS,
+  TEMPLATE_COLUMN_KEYS,
+  exportFormatSchema,
+  exportQuerySchema,
+  exportReceiptSchema,
+  importReportSchema,
+  importRequestSchema,
+  importRowErrorSchema,
+  type ExportColumnKey,
+  type ExportFormat,
+  type ExportQuery,
+  type ExportReceipt,
+  type ImportReport,
+  type ImportRequest,
+  type ImportRowError,
+} from "./export.js";
+
+export {
   EXPORT_REF_PREFIX,
   IMPORT_REF_PREFIX,
   REF_LENGTH,

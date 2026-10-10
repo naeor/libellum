@@ -11,7 +11,9 @@ import { forbidden, registerErrorHandlers } from "./lib/errors.js";
 import { OcrService } from "./ocr/client.js";
 import { registerAuthRoutes } from "./routes/auth.js";
 import { registerClassificationRoutes } from "./routes/classification.js";
+import { registerExportRoutes } from "./routes/export.js";
 import { registerHealthRoute, type HealthDeps } from "./routes/health.js";
+import { registerImportRoutes } from "./routes/import.js";
 import { registerLedgerRoutes } from "./routes/ledger.js";
 import { registerRecognizeRoutes } from "./routes/recognize.js";
 import { registerStatsRoutes } from "./routes/stats.js";
@@ -102,7 +104,24 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     }
 
     if (!sameOrigin && origin !== webOrigin) {
-      throw forbidden("origin_not_allowed", "请求来源不被允许。");
+      // Log the pair, not just the fact of the rejection. Diagnosing a rejected
+      // write from the client side alone is guesswork: the browser shows the
+      // wrapper's fallback text, which says "网络连接异常" whatever actually went
+      // wrong, and the server used to answer with an unexplained 403. One line
+      // here turns that into an answer.
+      request.log.warn(
+        { origin, host: request.headers.host, path: request.url },
+        "state-changing request rejected: origin does not match the host it arrived on",
+      );
+
+      // The message names the address the request actually came from. That is
+      // safe — it is the caller's own address — and it is the one fact that
+      // makes the problem fixable by whoever is holding the phone.
+      throw forbidden(
+        "origin_not_allowed",
+        `请求来源不被允许：浏览器报告 ${origin}，而请求到达的地址是 ${String(request.headers.host)}。` +
+          "如果你是通过 IP 或另一个域名访问，请用同一个地址打开页面。",
+      );
     }
   });
 
@@ -139,6 +158,8 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     registerStatsRoutes(app, { prisma: options.prisma, requireAuth });
     registerClassificationRoutes(app, { prisma: options.prisma, requireAuth });
     registerRecognizeRoutes(app, { requireAuth, ocr });
+    registerExportRoutes(app, { prisma: options.prisma, requireAuth });
+    registerImportRoutes(app, { prisma: options.prisma, requireAuth });
   }
 
   return app;
