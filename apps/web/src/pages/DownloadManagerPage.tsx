@@ -7,6 +7,7 @@ import { GearIcon } from "../components/Icons.js";
 import { InnerPage } from "../components/Layouts.js";
 import { useOfflineFillStatus } from "../lib/offline/fillContext.js";
 import { monthRows, readNeverMonths, storedMonths, type MonthRow } from "../lib/offline/downloadManager.js";
+import { clearOfflineLog, logTime, readOfflineLog, type LogEntry } from "../lib/offline/diagnostics.js";
 import { readLocalTransactions } from "../lib/offline/localLedger.js";
 import {
   canStoreOffline,
@@ -38,6 +39,7 @@ export function DownloadManagerPage(): React.JSX.Element {
   const [persisted, setPersisted] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [log, setLog] = useState<readonly LogEntry[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -59,6 +61,7 @@ export function DownloadManagerPage(): React.JSX.Element {
        */
       setRows(monthRows(transactions, never, stored, new Date()));
       setUsage(report.usageBytes);
+      setLog(await readOfflineLog());
     } catch {
       setError("读取本机数据时出错了。");
     } finally {
@@ -143,6 +146,49 @@ export function DownloadManagerPage(): React.JSX.Element {
           只会在 Wi-Fi 下自动下载；用流量时会跳过，避免悄悄消耗你的流量。
         </p>
       </section>
+
+      {/*
+        ⚠️ **The evidence panel.**
+        
+        Three rounds of reading the code produced three plausible defects and the
+        symptom survived each time. What was missing was a record of what actually
+        happened on the phone — so the fill writes one down, and this shows it. It is
+        here rather than in a developer tool because the person who can reproduce the
+        problem is the person holding the phone.
+      */}
+      <details className="rounded-card border border-line bg-surface px-4 py-3">
+        <summary className="cursor-pointer text-sm text-ink">
+          下载记录（{log.length} 条）
+        </summary>
+
+        {log.length === 0 ? (
+          <p className="pt-2 text-xs text-muted">
+            还没有记录。刷新页面后应该会出现「自动下载」一行。
+          </p>
+        ) : (
+          <ul className="flex flex-col gap-1 pt-2">
+            {log.map((entry, index) => (
+              <li key={`${String(entry.at)}-${String(index)}`} className="text-[11px] leading-relaxed">
+                <span className="font-mono text-muted">{logTime(entry.at)}</span>{" "}
+                <span className="text-ink">{entry.what}</span>
+                {entry.detail === undefined ? null : (
+                  <span className="text-muted"> — {entry.detail}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <button
+          type="button"
+          onClick={() => {
+            void clearOfflineLog().then(() => load());
+          }}
+          className="mt-2 text-[11px] text-muted underline"
+        >
+          清空记录
+        </button>
+      </details>
 
       {loading ? (
         <p className="text-sm text-muted">正在读取…</p>

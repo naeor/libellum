@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { apiFetch } from "../api.js";
 import { queryKeys, transactionFilters } from "../queries.js";
+import { logOffline } from "./diagnostics.js";
 import { readNeverMonths } from "./downloadManager.js";
 
 /**
@@ -72,11 +73,24 @@ export function monthsToFetch(now: Date, count: number): readonly string[] {
 }
 
 /**
- * Whether the browser says this connection is metered.
+ * Whether to hold off on the **automatic** fill.
  *
- * `saveData` is the user's own "do not use much data" setting; `effectiveType` is
- * the browser's estimate. Downloading an entire ledger on somebody's mobile data
- * without asking is not a thing to do quietly, and the check is free.
+ * ⚠️ **Deliberately conservative, after it caused a real failure.** The first version
+ * treated `effectiveType === "3g"` as metered. That value is the browser's *estimate*,
+ * it changes constantly, and **Safari reports it on Wi-Fi more often than anybody would
+ * expect** — so the automatic fill could decide the user was on mobile data while they
+ * were at home, and skip for ever. The symptom is a download that never happens and no
+ * error anywhere, which is exactly what the owner reported.
+ *
+ * So only two things count now:
+ *
+ *  *  **`saveData`** — the user's own "do not use much data" setting. That is an
+ *     instruction, not a guess, and honouring it is the point.
+ *  *  **`slow-2g` / `2g`** — a connection where sixty requests would take minutes.
+ *
+ * **The button is never held off**, whatever this says: see `start`. Somebody who
+ * presses it has asked, and a silent refusal is worse than a download they did not
+ * want.
  */
 export function isMeteredConnection(): boolean {
   if (typeof navigator === "undefined") return false;
@@ -198,14 +212,26 @@ export function useOfflineFill(options: { readonly enabled: boolean }): OfflineF
        */
       const explicit = requested !== undefined;
 
+      /**
+       * ⚠️ **Every attempt is written down**, because four rounds of reading this file
+       * did not explain why the button appeared to do nothing. See `diagnostics.ts`.
+       */
+      await logOffline(explicit ? "手动下载" : "自动下载", explicit ? `月份：${requested.join("、")}` : undefined);
+
       if (!explicit && isMeteredConnection()) {
+        await logOffline("已跳过", "浏览器报告省流量或 2G/慢速网络");
         setSkippedMetered(true);
         return;
+      }
+
+      if (isMeteredConnection()) {
+        await logOffline("（流量网络，但你手动要求，继续）");
       }
 
       setSkippedMetered(false);
 
       const months = explicit ? requested : monthsToFetch(new Date(), DEFAULT_MONTHS_BACK);
+      await logOffline("开始", `计划 ${months.length} 个月`);
       setTotal(months.length);
       setDone(0);
       setStopped(null);
@@ -287,6 +313,10 @@ export function useOfflineFill(options: { readonly enabled: boolean }): OfflineF
           existing.pages.length > 0 &&
           existing.pages[existing.pages.length - 1]?.nextCursor === null;
 
+        if (alreadyComplete) {
+          await logOffline("跳过（已完整）", month);
+        }
+
         if (!alreadyComplete) {
           const pages: TransactionListResponse[] = [];
           let cursor: string | undefined;
@@ -313,6 +343,8 @@ export function useOfflineFill(options: { readonly enabled: boolean }): OfflineF
 
             cursor = fetched.nextCursor;
           }
+
+          await logOffline("取回", `${month}：${pages.length} 页 / ${pages.reduce((n, page) => n + page.items.length, 0)} 条`);
         }
 
         finished += 1;
@@ -326,6 +358,10 @@ export function useOfflineFill(options: { readonly enabled: boolean }): OfflineF
          * continues from where this stopped — so the message says that rather than
          * presenting a half-finished download as an error.
          */
+        const detail = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+
+        await logOffline("出错", detail);
+
         setStopped(
           error instanceof Error
             ? "这次没能全部取回，已取回的部分离线时可以用。下次联网会自动继续。"
@@ -339,13 +375,18 @@ export function useOfflineFill(options: { readonly enabled: boolean }): OfflineF
          * agrees about when "ten seconds" started.
          */
         setJustFinishedAt(Date.now());
+        await logOffline("结束", `完成 ${finished}/${months.length} 个月`);
       }
     },
     [queryClient],
   );
 
   useEffect(() => {
-    if (!options.enabled) return;
+    if (!options.enabled) {
+      void logOffline("自动下载未启用", "尚未登录");
+      return;
+    }
+
     if (isMeteredConnection()) {
       setSkippedMetered(true);
       return;

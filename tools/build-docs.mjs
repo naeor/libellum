@@ -124,6 +124,12 @@ if (python === null) {
       "Libellum · 协作与多账本 · 设计决定",
       ["协作与多账本-设计决定.pdf"],
     ],
+    [
+      "离线与同步-设计决定.md",
+      "离线与同步-设计决定.docx",
+      "Libellum · 离线与同步 · 设计决定",
+      ["离线与同步-设计决定.pdf"],
+    ],
     /**
      * The colour inventory exports too, even though it is a reference rather
      * than a narrative document: the owner asked for it by name, and a `.docx`
