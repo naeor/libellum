@@ -13,6 +13,7 @@ import { currentMonth, formatDayLabel, formatTimeInZone } from "../lib/datetime.
 import { readSession, useDetailTransition, writeSession } from "../lib/detailTransition.js";
 import { currencyName, formatMoney } from "../lib/format.js";
 import { useLedger, useSummary, useTransactions } from "../lib/queries.js";
+import { handOverForScan } from "../lib/scanHandoff.js";
 
 /**
  * The ledger screen, in one of two shapes.
@@ -428,6 +429,19 @@ export function DetailPage(): React.JSX.Element {
         open={entryOpen}
         onToggle={menu.toggle}
         onNavigate={(to) => void navigate(to)}
+        onPickImages={(chosen) => {
+          /**
+           * Straight from the tap to recognition.
+           *
+           * The card has just opened the picker and has the pictures; this hands
+           * them over in memory and goes to the screen that recognises them. The
+           * user's two presses — 拍照, then choosing a picture — are the whole
+           * interaction, where before there was a screen in between whose only
+           * job was to ask for the picture again.
+           */
+          handOverForScan(chosen);
+          void navigate("/scan");
+        }}
       />
 
       <MonthPicker
@@ -463,15 +477,21 @@ export function DetailPage(): React.JSX.Element {
  * The cards behave the same here as on every other screen — pressing the button
  * unfolds three ways to record. The difference is only that the ledger folds
  * them itself when the reader scrolls into the list; see the call site.
+ *
+ * The ledger is also where 拍照 gets the picker-direct behaviour: this is the
+ * main screen, so it is where somebody is most likely to press that card, and
+ * the two taps saved are saved here first.
  */
 function LedgerNav({
   open,
   onToggle,
   onNavigate,
+  onPickImages,
 }: {
   readonly open: boolean;
   readonly onToggle: () => void;
   readonly onNavigate: (to: string) => void;
+  readonly onPickImages: (files: File[]) => void;
 }): React.JSX.Element {
   return (
     <>
@@ -483,6 +503,7 @@ function LedgerNav({
         active="/"
         onNavigate={onNavigate}
         cards={{ mode: "toggle", expanded: open, active: true, onToggle }}
+        onPickImages={onPickImages}
       />
     </>
   );

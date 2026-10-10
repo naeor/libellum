@@ -21,6 +21,7 @@ import { errorMessage } from "../lib/api.js";
 import { currentMonth, localTimeZone, toLocalDate, toLocalIso } from "../lib/datetime.js";
 import { amountPlaceholder, currencyName, parseAmountInput } from "../lib/format.js";
 import { useCreateTransaction, useLedger, useRecognize, useTransactions } from "../lib/queries.js";
+import { takeScanHandover } from "../lib/scanHandoff.js";
 import { uuidV7 } from "../lib/uuid.js";
 
 /**
@@ -92,6 +93,48 @@ export function ScanPage(): React.JSX.Element {
     [previews],
   );
 
+  /**
+   * Pictures that arrived from the 拍照 card, which opens the picker itself.
+   *
+   * Read once, on mount, and the handover is emptied as it is read — so a
+   * remount, a back-navigation or a refresh finds nothing and this screen
+   * behaves exactly as if it had been opened directly. That is what stops the
+   * same screenshot being recognised twice.
+   *
+   * **One picture goes straight to recognition.** There is nothing to choose —
+   * the mode question has only one answer — so asking it would be a step whose
+   * only content is the user's own decision not to make a decision. Two or more
+   * land on the pick step, where the same-or-different question is a real one
+   * and has to be asked before recognising.
+   */
+  const [arrivedFromCard, setArrivedFromCard] = useState(false);
+
+  useEffect(() => {
+    const handed = takeScanHandover();
+    if (handed.length === 0) return;
+
+    setFiles(handed);
+    setArrivedFromCard(true);
+  }, []);
+
+  /**
+   * Start recognition once, for the single-picture handover.
+   *
+   * A separate effect rather than a call inside the one above, because
+   * `start()` reads `files` from this render's scope — the render in which the
+   * state has just been queued, not applied. Waiting for the next render is what
+   * makes the files visible to it.
+   */
+  useEffect(() => {
+    if (!arrivedFromCard || files.length !== 1) return;
+
+    setArrivedFromCard(false);
+    void start();
+    // Deliberately only on the handover: `files` changing is the trigger, and
+    // `start` is recreated every render, so depending on it would loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [arrivedFromCard, files]);
+
   function addFiles(incoming: FileList | null): void {
     if (incoming === null) return;
 
@@ -108,8 +151,10 @@ export function ScanPage(): React.JSX.Element {
     setFiles(combined);
   }
 
-  async function start(): Promise<void> {
+  async function start(chosenMode?: Mode): Promise<void> {
     if (files.length === 0) return;
+
+    const effectiveMode = chosenMode ?? mode;
 
     setError(null);
     setStep({ name: "working", index: 1, total: files.length });
@@ -138,7 +183,7 @@ export function ScanPage(): React.JSX.Element {
       setStep({
         name: "review",
         draft:
-          mode === "single"
+          effectiveMode === "single"
             ? foldDrafts(readable, categories, paymentMethods, lastCategoryId)
             : draftOf(readable[0]!, categories, paymentMethods, lastCategoryId),
         warnings: readable[0]?.draft?.warnings ?? [],
@@ -245,6 +290,22 @@ export function ScanPage(): React.JSX.Element {
           }}
           onMode={setMode}
           onStart={() => void start()}
+          onModeAndStart={(chosen) => {
+            /**
+             * Choosing "same purchase" or "different purchases" also starts.
+             *
+             * With more than one picture this question is the last thing between
+             * the user and the result, and they have already said "recognise
+             * these" by picking them. Answering and *then* pressing 开始识别 is a
+             * tap the owner asked to remove, so the answer is the go-ahead.
+             *
+             * The choice is passed through rather than read from state: `start`
+             * closes over the render this click happened in, which is the one
+             * before `setMode` has landed.
+             */
+            setMode(chosen);
+            void start(chosen);
+          }}
           onManual={() => void navigate("/add")}
         />
       ) : null}
@@ -313,6 +374,7 @@ function PickStep({
   onRemove,
   onMode,
   onStart,
+  onModeAndStart,
   onManual,
 }: {
   readonly files: readonly File[];
@@ -323,6 +385,15 @@ function PickStep({
   readonly onRemove: (index: number) => void;
   readonly onMode: (mode: Mode) => void;
   readonly onStart: () => void;
+  /**
+   * Answer the mode question **and** begin, in one press.
+   *
+   * Separate from `onMode` rather than replacing it, because the two do different
+   * things depending on why the question is on screen: the same control also
+   * exists for pictures chosen here, where changing one's mind should not launch
+   * recognition.
+   */
+  readonly onModeAndStart: (mode: Mode) => void;
   readonly onManual: () => void;
 }): React.JSX.Element {
   const pickerRef = useRef<HTMLInputElement>(null);
@@ -429,14 +500,14 @@ function PickStep({
               current={mode}
               title="同一笔消费，分几张凭证"
               hint="金额相加，只核对一次"
-              onSelect={onMode}
+              onSelect={onModeAndStart}
             />
             <ModeOption
               mode="batch"
               current={mode}
               title="几笔不同的消费"
               hint="每张单独核对一次"
-              onSelect={onMode}
+              onSelect={onModeAndStart}
             />
           </div>
         </section>

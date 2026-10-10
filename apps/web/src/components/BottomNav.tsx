@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 import { Link } from "react-router";
 
 interface IconProps {
@@ -100,6 +100,14 @@ interface EntryAction {
   readonly hint?: string;
   /** Where the card goes, when it goes anywhere. */
   readonly to?: string;
+  /**
+   * Whether this card opens the image picker before going there.
+   *
+   * A flag rather than a callback on the action, because the onClick has to run
+   * inside the user's tap to be allowed to open a picker at all — see the note
+   * on the camera card where it is rendered.
+   */
+  readonly picksImages?: boolean;
 }
 
 /**
@@ -115,10 +123,23 @@ interface EntryAction {
  * not, and hiding the unfinished ones would make the row's shape change the day
  * they ship.
  */
+/**
+ * The three ways to record.
+ *
+ * ⚠️ **拍照 no longer links anywhere.** It opens the image picker itself and
+ * then goes to recognition, which is the owner's two-taps-fewer change: the card
+ * used to load a screen whose first act was to ask for the same picture, so the
+ * user pressed 拍照, waited for a screen, and pressed 选择截图 to do what they had
+ * already said they wanted.
+ *
+ * `to` is now used only by 手动. 拍照 keeps a route as its **fallback** for the
+ * case where the picker cannot be opened at all — the page it lands on can offer
+ * the button itself, and the user is not stuck.
+ */
 const ENTRY_ACTIONS: readonly EntryAction[] = [
   { label: "语音", icon: <MicrophoneIcon className="size-6" />, hint: "即将开放" },
   { label: "手动", icon: <PenIcon className="size-6" />, to: "/add" },
-  { label: "拍照", icon: <CameraIcon className="size-6" />, to: "/scan" },
+  { label: "拍照", icon: <CameraIcon className="size-6" />, to: "/scan", picksImages: true },
 ];
 
 /**
@@ -159,12 +180,22 @@ export function BottomNav({
   active,
   onNavigate,
   cards,
+  onPickImages,
 }: {
   readonly active: string;
   readonly onNavigate: (to: string) => void;
   readonly cards: EntryCards;
+  /**
+   * What to do with the pictures once 拍照 has them.
+   *
+   * Absent means the camera card falls back to being a plain link to `/scan`,
+   * where a visible button does the same job. That is the behaviour on any
+   * screen that has not opted in, and it keeps the card useful rather than dead.
+   */
+  readonly onPickImages?: ((files: File[]) => void) | undefined;
 }): React.JSX.Element {
   const open = cards.expanded;
+  const pickerRef = useRef<HTMLInputElement | null>(null);
   return (
     // Not `fixed`: the frame that owns this bar is the full dynamic viewport
     // height and only scrolls its middle region, so the bar never ends up
@@ -173,6 +204,37 @@ export function BottomNav({
       aria-label="主导航"
       className="relative z-10 shrink-0 border-t border-line bg-surface pb-[env(safe-area-inset-bottom)]"
     >
+      {/*
+        The camera card's file picker.
+        
+        Hidden rather than absent, and never focused: it exists to be clicked by
+        the card. `multiple` because a batch of screenshots is a supported case,
+        and the screen it hands them to decides what to do with more than one.
+        
+        Living in the bar rather than on the recognition screen means the user's
+        tap opens the picker immediately — the requirement is that the picker
+        opens from a gesture, and the gesture happens here.
+        
+        The input is reset after every change so that choosing the *same*
+        screenshot twice still fires a change event; without that, a second
+        attempt with the same picture would look like nothing happened.
+      */}
+      {onPickImages === undefined ? null : (
+        <input
+          ref={pickerRef}
+          type="file"
+          accept="image/*"
+          multiple
+          className="hidden"
+          onChange={(event) => {
+            const chosen = [...(event.target.files ?? [])];
+            event.target.value = "";
+
+            if (chosen.length > 0) onPickImages(chosen);
+          }}
+        />
+      )}
+
       {/*
         The cards sit above the bar rather than floating over the list. Real
         space is reserved for them by the frame, so nothing ever passes behind
@@ -198,6 +260,41 @@ export function BottomNav({
             {ENTRY_ACTIONS.map((action) => {
               const shape =
                 "flex w-[4.5rem] flex-col items-center gap-0.5 rounded-2xl bg-brand-soft py-2 text-brand-dark shadow-sm transition";
+
+              /**
+               * The camera card: opens the picker, then hands the pictures over.
+               *
+               * ⚠️ **The click is made from inside the tap handler, and that is
+               * not a detail.** A browser only opens a file picker when the call
+               * happens during a user gesture — so a screen cannot "open the
+               * picker on mount", which is what the owner first imagined. Calling
+               * it here, synchronously, works; the navigation happens afterwards
+               * in the change handler.
+               *
+               * Why a programmatic `.click()` on a hidden input rather than a
+               * `<label>` wrapping one: a label would submit the tap to the
+               * input and leave no room to be told *whether anything happened*.
+               * Going through the handler means the fallback — a tap that
+               * opened nothing — can be recognised and the user sent to the
+               * screen that has a visible button.
+               */
+              if (action.picksImages === true && onPickImages !== undefined) {
+                return (
+                  <li key={action.label}>
+                    <button
+                      type="button"
+                      aria-label={`${action.label}记账`}
+                      onClick={() => {
+                        pickerRef.current?.click();
+                      }}
+                      className={`${shape} active:bg-brand-soft/70`}
+                    >
+                      {action.icon}
+                      <span className="text-[11px]">{action.label}</span>
+                    </button>
+                  </li>
+                );
+              }
 
               // A real link, not a button that calls navigate(). If the router's
               // own navigation ever fails, an <a href> still works — the browser
