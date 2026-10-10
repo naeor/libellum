@@ -61,6 +61,17 @@ export type {
   StatsSeriesPoint,
 } from "./stats.js";
 
+export {
+  MAX_SPEECH_BYTES,
+  MAX_SPEECH_SECONDS,
+  cleanNote,
+  isSpeechless,
+  parseSpokenEntry,
+  transcribeResponseSchema,
+  type SpokenEntry,
+  type TranscribeResponse,
+} from "./speech.js";
+
 export { healthResponseSchema, type HealthResponse } from "./health.js";
 
 export {

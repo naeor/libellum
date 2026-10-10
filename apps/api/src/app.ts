@@ -18,6 +18,8 @@ import { registerLedgerRoutes } from "./routes/ledger.js";
 import { registerRecognizeRoutes } from "./routes/recognize.js";
 import { registerStatsRoutes } from "./routes/stats.js";
 import { registerTransactionRoutes } from "./routes/transactions.js";
+import { registerVoiceRoutes } from "./routes/voice.js";
+import { VoiceService } from "./voice/client.js";
 
 export interface BuildAppOptions extends HealthDeps {
   readonly logger?: FastifyServerOptions["logger"];
@@ -31,6 +33,12 @@ export interface BuildAppOptions extends HealthDeps {
    * Python process, which is not something a unit test should depend on.
    */
   readonly ocr?: Pick<OcrService, "recognize" | "stop">;
+  /**
+   * The speech recogniser, for the same reason: it is a long-lived Python
+   * process, and a test that does not exercise transcription should not have to
+   * have a 147 MB model on disk.
+   */
+  readonly voice?: Pick<VoiceService, "transcribe" | "stop">;
 }
 
 const DEFAULT_THROTTLE: LoginThrottleOptions = {
@@ -147,6 +155,11 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       ocr.stop();
     });
 
+    const voice = options.voice ?? new VoiceService();
+    app.addHook("onClose", () => {
+      voice.stop();
+    });
+
     registerAuthRoutes(app, {
       prisma: options.prisma,
       throttle: new LoginThrottle(options.loginThrottleOptions ?? DEFAULT_THROTTLE),
@@ -158,6 +171,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     registerStatsRoutes(app, { prisma: options.prisma, requireAuth });
     registerClassificationRoutes(app, { prisma: options.prisma, requireAuth });
     registerRecognizeRoutes(app, { requireAuth, ocr });
+    registerVoiceRoutes(app, { requireAuth, voice });
     registerExportRoutes(app, { prisma: options.prisma, requireAuth });
     registerImportRoutes(app, { prisma: options.prisma, requireAuth });
   }
