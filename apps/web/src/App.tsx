@@ -6,6 +6,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router";
 import { AuthProvider, useAuth } from "./auth/AuthProvider.js";
 import { ErrorBoundary } from "./components/ErrorBoundary.js";
 import { AppShell } from "./components/Layouts.js";
+import { OfflineFillProvider } from "./components/OfflineFillProvider.js";
 import { UndoProvider } from "./components/UndoProvider.js";
 import { CACHE_MAX_AGE_MS, cachePersister, shouldPersistQuery } from "./lib/offline/cache.js";
 import { AboutPage } from "./pages/AboutPage.js";
@@ -201,7 +202,13 @@ export default function App(): React.JSX.Element {
         }}
       >
         <AuthProvider>
-          <UndoProvider>
+          {/*
+            Inside AuthProvider, because there is nothing to fetch until we know
+            who is signed in — and outside the router, because it must not restart
+            when the reader changes screen.
+          */}
+          <OfflineFillProvider>
+            <UndoProvider>
             <BrowserRouter>
               {/*
                 Inside the router, because the recording menu folds itself when
@@ -212,7 +219,8 @@ export default function App(): React.JSX.Element {
                 <AppRoutes />
               </AppShell>
             </BrowserRouter>
-          </UndoProvider>
+            </UndoProvider>
+          </OfflineFillProvider>
         </AuthProvider>
       </PersistQueryClientProvider>
     </ErrorBoundary>

@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState } from 
 import { useLocation } from "react-router";
 
 import { BottomNav, type EntryCards } from "./BottomNav.js";
+import { OfflineStatus } from "./OfflineStatus.js";
 import { SyncBanner } from "./SyncBanner.js";
 import { useGoBack } from "../lib/connectivity.js";
 
@@ -150,6 +151,7 @@ export function TabPage({
   return (
     <div ref={rootRef} className={`flex h-dvh flex-col overflow-hidden ${rootClassName}`}>
       <SyncBanner />
+      <OfflineStatus />
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto overscroll-contain">
         {/* pb-24 leaves room for the raised entry button, which reaches up

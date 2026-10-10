@@ -35,12 +35,17 @@ const MODULES = [
   "/src/lib/offline/storage.ts",
   "/src/lib/offline/cache.ts",
   "/src/lib/offline/worker.ts",
+  "/src/lib/offline/fill.ts",
+  "/src/lib/offline/fillContext.ts",
+  "/src/lib/offline/persistence.ts",
   "/src/lib/useVoiceRecorder.ts",
   "/src/lib/uuid.ts",
   "/src/components/ConfirmDialog.tsx",
   "/src/components/ChoiceDialog.tsx",
   "/src/components/VoiceRipples.tsx",
   "/src/components/EntryForm.tsx",
+  "/src/components/OfflineStatus.tsx",
+  "/src/components/OfflineFillProvider.tsx",
   "/src/components/Layouts.tsx",
 ];
 

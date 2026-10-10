@@ -51,6 +51,26 @@ export const queryKeys = {
   stats: (query: StatsQuery) => ["stats", query] as const,
 };
 
+/**
+ * What the detail screen asks for when nothing is filtered.
+ *
+ * ⚠️ **Exported, and used by the offline fill, because the query key is the filter
+ * object itself.** Hand-writing the same shape in two places is how the fill came
+ * to cache a month under `{month, kind, categoryId, currency}` while the screen
+ * read it under `{month, kind, categoryId}` — two entries, one request wasted, and
+ * the screen showing nothing offline while the data sat in the cache next to it.
+ * One definition, and the two cannot disagree.
+ *
+ * The fields are spelled out as `undefined` rather than omitted so that
+ * `JSON.stringify` of the key is stable regardless of how a caller built it.
+ */
+export const UNFILTERED_TRANSACTIONS: TransactionFilters = {
+  month: undefined,
+  kind: undefined,
+  categoryId: undefined,
+  currency: undefined,
+};
+
 export interface TransactionFilters {
   readonly month?: string | undefined;
   readonly kind?: "income" | "expense" | undefined;
