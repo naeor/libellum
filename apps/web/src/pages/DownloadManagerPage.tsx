@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 
@@ -6,7 +7,15 @@ import { Button } from "../components/Button.js";
 import { GearIcon } from "../components/Icons.js";
 import { InnerPage } from "../components/Layouts.js";
 import { useOfflineFillStatus } from "../lib/offline/fillContext.js";
-import { monthRows, readNeverMonths, storedMonths, type MonthRow } from "../lib/offline/downloadManager.js";
+import {
+  cacheFootprint,
+  forgetStaleEntries,
+  monthRows,
+  readNeverMonths,
+  storedMonthsIn,
+  type CacheFootprint,
+  type MonthRow,
+} from "../lib/offline/downloadManager.js";
 import { clearOfflineLog, logTime, readOfflineLog, type LogEntry } from "../lib/offline/diagnostics.js";
 import { readLocalTransactions } from "../lib/offline/localLedger.js";
 import {
@@ -32,6 +41,7 @@ import {
  */
 export function DownloadManagerPage(): React.JSX.Element {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { fill } = useOfflineFillStatus();
 
   const [rows, setRows] = useState<readonly MonthRow[]>([]);
@@ -40,15 +50,15 @@ export function DownloadManagerPage(): React.JSX.Element {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [log, setLog] = useState<readonly LogEntry[]>([]);
+  const [footprint, setFootprint] = useState<CacheFootprint | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
 
     try {
-      const [transactions, never, stored, report] = await Promise.all([
+      const [transactions, never, report] = await Promise.all([
         readLocalTransactions(),
         readNeverMonths(),
-        storedMonths(),
         storageReport(),
       ]);
 
@@ -59,15 +69,23 @@ export function DownloadManagerPage(): React.JSX.Element {
        * calling it "未下载" would invite the user to fetch something that will never
        * have anything in it. See `monthRows`.
        */
+      /**
+       * ⚠️ **Asked of the live query client, not the stored blob.** The blob says what
+       * was saved at some point; memory is what the app is actually using, and memory is
+       * what gets written over the blob next. See `storedMonthsIn`.
+       */
+      const stored = storedMonthsIn(queryClient);
+
       setRows(monthRows(transactions, never, stored, new Date()));
       setUsage(report.usageBytes);
       setLog(await readOfflineLog());
+      setFootprint(await cacheFootprint(queryClient));
     } catch {
       setError("读取本机数据时出错了。");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [queryClient]);
 
   useEffect(() => {
     void load();
@@ -118,6 +136,41 @@ export function DownloadManagerPage(): React.JSX.Element {
           {usage === null ? "" : `；本机共占用 ${formatBytes(usage)}`}
         </p>
 
+        {/*
+          ⚠️ **Why the stored cache is bigger than the months it holds.**
+
+          The owner watched the figure climb across several rounds — "每次下载全部，占用的
+          空间都会增加" — and there was nothing on screen to explain it, so the reasonable
+          reading was that each download stacked more data on top of the last.
+
+          Part of it was real, and part of it was **entries for query keys this version no
+          longer reads**: when the key shape changed, the old entries stayed. They are
+          invisible, never read again, and counted in the total. Showing the breakdown is
+          what makes the number understandable; the button is what makes it fixable.
+        */}
+        {footprint === null ? null : (
+          <p className="text-xs text-muted">
+            存储明细：缓存 {formatBytes(footprint.cacheBytes)}，其中{" "}
+            {String(footprint.liveQueryCount)}/{String(footprint.queryCount)} 条是当前版本会读的
+            {footprint.queryCount > footprint.liveQueryCount ? (
+              <>
+                {"；"}
+                <button
+                  type="button"
+                  onClick={() => {
+                    void forgetStaleEntries(queryClient).then(() => load());
+                  }}
+                  className="underline"
+                >
+                  清理 {String(footprint.queryCount - footprint.liveQueryCount)} 条无效记录
+                </button>
+              </>
+            ) : (
+              "，没有多余的记录。"
+            )}
+          </p>
+        )}
+
         {fillRunning ? (
           <p className="text-xs text-muted">
             正在下载（{fill?.done ?? 0}/{fill?.total ?? 0} 个月）…可以离开这一页，下载会在后台继续。
@@ -134,7 +187,7 @@ export function DownloadManagerPage(): React.JSX.Element {
                * An explicit call to `start()` now bypasses that check, because
                * somebody who pressed a button **has** asked.
                */
-              void fill?.start();
+              void fill?.start(undefined, true);
             }}
             disabled={fill === null}
           >

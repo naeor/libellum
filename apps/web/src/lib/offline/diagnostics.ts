@@ -16,15 +16,25 @@ import { readValue, writeValue } from "./storage.js";
  * download manager shows the last few entries. **A screenshot of that panel answers in
  * one look what four rounds of code reading could not.**
  *
- * Kept small and bounded: this is a diagnostic, not a history. Fifty entries, oldest
- * dropped.
+ * Kept bounded: this is a diagnostic, not a history. Two hundred entries, oldest dropped.
  */
 
 /** Where the log lives. */
 const LOG_KEY = "offline-log";
 
-/** How many entries to keep. Enough for several attempts, small enough to read. */
-const MAX_ENTRIES = 50;
+/**
+ * How many entries to keep.
+ *
+ * ⚠️ **Raised from fifty, because one "下载全部" is sixty lines by itself** — the
+ * owner worked that out and said so: "每次下载全部，它都会检索一遍所有月份的数据）光这个就
+ * 60 条了". At fifty, a single download pushed everything before it out of the window,
+ * so the record could never show what happened *before* the attempt being investigated —
+ * which is usually the useful part.
+ *
+ * Two hundred holds three full downloads, which is what "what did it do last time" needs.
+ * Still bounded: this is a diagnostic, not a history.
+ */
+const MAX_ENTRIES = 200;
 
 export interface LogEntry {
   /** Milliseconds since the epoch. */

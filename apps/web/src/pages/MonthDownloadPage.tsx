@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 
@@ -11,7 +12,7 @@ import {
   monthLabel,
   readNeverMonths,
   setNeverMonth,
-  storedMonths,
+  storedMonthsIn,
 } from "../lib/offline/downloadManager.js";
 import { readLocalTransactions } from "../lib/offline/localLedger.js";
 import { formatBytes, requestPersistentStorage, storageReport } from "../lib/offline/persistence.js";
@@ -37,6 +38,7 @@ import { formatBytes, requestPersistentStorage, storageReport } from "../lib/off
 export function MonthDownloadPage(): React.JSX.Element {
   const navigate = useNavigate();
   const { month = "" } = useParams<{ month: string }>();
+  const queryClient = useQueryClient();
   const { fill } = useOfflineFillStatus();
 
   const [stored, setStored] = useState(false);
@@ -57,7 +59,7 @@ export function MonthDownloadPage(): React.JSX.Element {
     try {
       const [transactions, storedSet, neverList, report] = await Promise.all([
         readLocalTransactions(),
-        storedMonths(),
+        Promise.resolve(storedMonthsIn(queryClient)),
         readNeverMonths(),
         storageReport(),
       ]);
@@ -72,7 +74,7 @@ export function MonthDownloadPage(): React.JSX.Element {
     } finally {
       setLoading(false);
     }
-  }, [month]);
+  }, [month, queryClient]);
 
   useEffect(() => {
     void load();
@@ -172,7 +174,7 @@ export function MonthDownloadPage(): React.JSX.Element {
             disabled={working || running}
             onClick={() => {
               setWorking(true);
-              void forgetMonth(month)
+              void Promise.resolve(forgetMonth(queryClient, month))
                 .then(() => load())
                 .finally(() => {
                   setWorking(false);
@@ -195,7 +197,7 @@ export function MonthDownloadPage(): React.JSX.Element {
                */
               setWorking(true);
               void fill
-                ?.start([month])
+                ?.start([month], true)
                 .then(() => load())
                 .finally(() => {
                   setWorking(false);

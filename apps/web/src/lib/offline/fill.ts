@@ -161,7 +161,7 @@ export interface OfflineFill {
    * an explicit list: exactly those months, which is what the download manager's
    * per-month screen needs to re-fetch one the user deleted.
    */
-  readonly start: (months?: readonly string[]) => Promise<void>;
+  readonly start: (months?: readonly string[], force?: boolean) => Promise<void>;
 }
 
 /**
@@ -196,7 +196,7 @@ export function useOfflineFill(options: { readonly enabled: boolean }): OfflineF
   const runningRef = useRef(false);
 
   const start = useCallback(
-    async (requested?: readonly string[]) => {
+    async (requested?: readonly string[], force = false) => {
       if (runningRef.current) return;
 
       /**
@@ -211,6 +211,24 @@ export function useOfflineFill(options: { readonly enabled: boolean }): OfflineF
        * not see.
        */
       const explicit = requested !== undefined;
+
+      /**
+       * ⚠️ **A manual request re-fetches; an automatic one does not.**
+       *
+       * The owner pressed "下载全部" eight times and the log said "跳过（已完整）" every
+       * time. He was asking for the data to be fetched, and the program was answering a
+       * different question — "is it already here" — and then reporting success.
+       *
+       * Both behaviours are right, for different callers:
+       *
+       *  * **automatic**: skip what is already downloaded. That is what makes the second
+       *    and later launches nearly free, and it is the whole reason it can run
+       *    unattended;
+       *  * **manual**: fetch, because a person pressing a button is asking for the
+       *    download and not for a status report. It is also the only way to repair a
+       *    month that is cached but wrong.
+       */
+      const refresh = force || explicit;
 
       /**
        * ⚠️ **Every attempt is written down**, because four rounds of reading this file
@@ -309,6 +327,7 @@ export function useOfflineFill(options: { readonly enabled: boolean }): OfflineF
          * data: the last page stops asking for a cursor.
          */
         const alreadyComplete =
+          !refresh &&
           existing?.pages !== undefined &&
           existing.pages.length > 0 &&
           existing.pages[existing.pages.length - 1]?.nextCursor === null;
@@ -318,6 +337,11 @@ export function useOfflineFill(options: { readonly enabled: boolean }): OfflineF
         }
 
         if (!alreadyComplete) {
+          if (refresh && existing !== undefined) {
+            await logOffline("重新取回（手动要求）", month);
+            queryClient.removeQueries({ queryKey: key, exact: true });
+          }
+
           const pages: TransactionListResponse[] = [];
           let cursor: string | undefined;
 
