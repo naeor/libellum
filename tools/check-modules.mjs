@@ -52,6 +52,7 @@ const MODULES = [
   "/src/lib/offline/reset.ts",
   "/src/lib/clipboard.ts",
   "/src/lib/version.ts",
+  "/src/components/CopyButton.tsx",
   "/src/lib/useVoiceRecorder.ts",
   "/src/lib/uuid.ts",
   "/src/components/ConfirmDialog.tsx",

@@ -6,7 +6,7 @@ import { Alert } from "../components/Alert.js";
 import { Button } from "../components/Button.js";
 import { ChoiceDialog, type Choice } from "../components/ChoiceDialog.js";
 import { InnerPage } from "../components/Layouts.js";
-import { copyText, type CopyOutcome } from "../lib/clipboard.js";
+import { CopyButton } from "../components/CopyButton.js";
 import { cacheFootprint, describeKey, type CacheFootprint } from "../lib/offline/downloadManager.js";
 import { clearOfflineLog, readOfflineLog, type LogEntry } from "../lib/offline/diagnostics.js";
 import { formatBytes, storageBreakdown, type StorageBreakdown } from "../lib/offline/persistence.js";
@@ -38,7 +38,7 @@ export function DownloadMorePage(): React.JSX.Element {
   const [storage, setStorage] = useState<StorageBreakdown | null>(null);
   const [queries, setQueries] = useState<readonly string[]>([]);
   const [trace, setTrace] = useState<readonly string[]>([]);
-  const [copyOutcome, setCopyOutcome] = useState<CopyOutcome | null>(null);
+  const [manualCopy, setManualCopy] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -147,35 +147,30 @@ export function DownloadMorePage(): React.JSX.Element {
       onBack={() => void navigate("/downloads", { replace: true })}
     >
       <section className="flex flex-col gap-3">
-        <Button
-          onClick={() => {
-            void copyText(report).then((outcome) => {
-              setCopyOutcome(outcome);
-
-              if (outcome === "copied") {
-                window.setTimeout(() => {
-                  setCopyOutcome(null);
-                }, 3_000);
-              }
-            });
-          }}
-        >
-          {copyOutcome === "copied" ? "已复制到剪贴板" : "复制诊断信息"}
-        </Button>
-
         {/*
-          ⚠️ **The manual fallback that the blank clipboard made necessary.**
-
-          "不知道为什么复制到粘贴板后粘贴是一片空白" — the async Clipboard API rejected, the
-          `.then()` had no `.catch()`, and the screen said 已复制 over an empty clipboard. When
-          both automatic routes fail the text is shown selected instead, so the user can copy it
-          by hand rather than being told something untrue.
+          ⚠️ **The shared button, because this one silently did nothing.**
+          
+          The owner asked for the same behaviour here as on the version screen, and reported that
+          this one "还是没有生效" — the click handler had been written separately, its outcome was
+          never read, the label never changed, and no fallback was ever offered. **A feature
+          implemented twice is a feature that works in one of the two places**, and which one is
+          decided by luck.
         */}
-        {copyOutcome === "manual" ? (
-          <Alert tone="info">这个浏览器不允许自动复制。下面已选中，请长按选择「复制」。</Alert>
+        <CopyButton
+          text={report}
+          label="复制诊断信息"
+          onOutcome={(outcome) => {
+            setManualCopy(outcome !== "copied");
+          }}
+        />
+
+        {manualCopy ? (
+          <Alert tone="info">
+            这个浏览器不允许自动复制。下面已选中，请长按选择「复制」。
+          </Alert>
         ) : null}
 
-        {copyOutcome === "manual" || copyOutcome === "failed" ? (
+        {manualCopy ? (
           <textarea
             readOnly
             value={report}
@@ -190,10 +185,6 @@ export function DownloadMorePage(): React.JSX.Element {
         <p className="text-xs leading-relaxed text-muted">
           如果遇到问题，点上面的按钮复制这些内容，发给开发者就能定位。
         </p>
-
-        {/* The build stamp, on screen as well as in the report: comparing this line with the
-            newest build is the fastest way to see that a device is running old code. */}
-        <p className="font-mono text-[10px] text-muted">构建：{__BUILD_STAMP__}</p>
       </section>
 
       <section className="flex flex-col gap-2">
@@ -303,10 +294,6 @@ export function DownloadMorePage(): React.JSX.Element {
           </ul>
         )}
       </section>
-
-      {copyOutcome === "copied" ? (
-        <Alert tone="info">已复制。可以直接粘贴给开发者。</Alert>
-      ) : null}
     </InnerPage>
   );
 }

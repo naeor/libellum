@@ -49,19 +49,27 @@ export function buildStampLocal(): string {
 
   if (Number.isNaN(parsed.getTime())) return stamp;
 
-  /**
-   * ⚠️ **Rendered in local time, and the raw UTC value is shown beside it.**
-   *
-   * The owner read a build stamp of `2026-10-10T23:07:44.395Z` as "last night" and reported it
-   * as stale — it was 07:07 that morning in his own timezone, and nine minutes old. **A value
-   * that makes the reader draw the wrong conclusion is worse than no value**, so the screen
-   * shows a local time a person recognises, and keeps the exact stamp for matching against a
-   * build log.
-   */
   const pad = (value: number, width = 2): string => String(value).padStart(width, "0");
   const local =
     `${String(parsed.getFullYear())}-${pad(parsed.getMonth() + 1)}-${pad(parsed.getDate())} ` +
     `${pad(parsed.getHours())}:${pad(parsed.getMinutes())}:${pad(parsed.getSeconds())}`;
 
-  return `${local}（本机时间）`;
+  /**
+   * ⚠️ **The zone offset is printed, and the first version not printing it caused a false alarm.**
+   *
+   * The owner read a local rendering of `2026-10-10 16:18:01` beside a UTC value of
+   * `2026-10-10T23:18:01Z` and reasonably asked why they disagreed — the device he was holding is
+   * **not** on the +08:00 the rest of this project assumes, and nothing on the screen said so.
+   *
+   * **A time without its zone cannot be checked against anything.** With the offset printed, both
+   * numbers can be reconciled by hand in one step, and "which build is this" stops depending on
+   * knowing which device you are holding.
+   */
+  const offsetMinutes = -parsed.getTimezoneOffset();
+  const sign = offsetMinutes < 0 ? "-" : "+";
+  const hours = Math.floor(Math.abs(offsetMinutes) / 60);
+  const minutes = Math.abs(offsetMinutes) % 60;
+  const zone = `UTC${sign}${String(hours)}${minutes === 0 ? "" : `:${pad(minutes)}`}`;
+
+  return `${local}（本机时间 ${zone}）`;
 }
