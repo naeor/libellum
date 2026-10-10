@@ -406,24 +406,44 @@ export function useOfflineFill(options: { readonly enabled: boolean }): OfflineF
   );
 
   useEffect(() => {
+    /**
+     * ⚠️ **"Not enabled *yet*" is not "never".**
+     *
+     * The first version logged this and returned — **after** the once-per-load flag had been
+     * considered but before anything ran. The owner's log shows what that looked like:
+     *
+     *     22:49:13.258  自动下载未启用 — 尚未登录
+     *     22:49:13.631  自动下载未启用 — 尚未登录
+     *     22:49:18.343  自动下载          (once he pressed the button himself)
+     *
+     * Two attempts, neither of which downloaded anything, on a tablet where the session had
+     * simply not been restored at the moment the effect ran. **A launch that starts before the
+     * session is ready must be able to try again**, so nothing is consumed here.
+     */
     if (!options.enabled) {
-      void logOffline("自动下载未启用", "尚未登录");
+      void logOffline("自动下载等待登录", "登录后会自动开始");
       return;
     }
 
+    /**
+     * A metered connection does not consume the flag either: the user may reach Wi-Fi without
+     * reloading, and the fill should then happen.
+     */
     if (isMeteredConnection()) {
       setSkippedMetered(true);
       return;
     }
 
     /**
-     * ⚠️ **Once per page load, not once per mount.**
+     * ⚠️ **Once per page load, not once per mount — and set only where the work starts.**
      *
-     * The provider is mounted once, so this is belt and braces — but the cost of being
-     * wrong is high: a fill that re-runs on every mount walks sixty months of cache
-     * lookups each time the user changes screen, and one that re-*fetches* is a
-     * download nobody asked for. The module-level flag makes it impossible either way,
-     * and survives a remount that React does for its own reasons.
+     * The provider is mounted once, so the guard is belt and braces: a fill that re-runs on
+     * every mount walks sixty months of cache lookups each time the user changes screen, and
+     * one that re-*fetches* is a download nobody asked for.
+     *
+     * **But it must be set only when the fill is genuinely about to run.** Every earlier return
+     * — no session yet, a metered connection — has to leave it false so a later render can
+     * succeed, which is exactly what the tablet needed.
      */
     if (autoFillStarted) return;
     autoFillStarted = true;

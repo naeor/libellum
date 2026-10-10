@@ -135,30 +135,47 @@ export async function readLocalTransactions(): Promise<readonly Transaction[]> {
    */
   const live = liveSource?.() ?? [];
 
-  if (live.length > 0) {
-    await logOffline("DIAGNOSTIC:local-read", `内存 ${String(live.length)} 条`);
-  }
-
   const raw = await readValue<string>(CACHE_KEY);
   const fromDisk = transactionsFromCache(raw);
 
   /**
-   * ⚠️ **The counts are logged, because this is the read path that failed silently.**
+   * ⚠️ **Both counts, and they are the whole point of this line.**
    *
-   * "Shows nothing offline" has many possible causes and no symptom of its own: the stored
-   * blob could be absent, present but unparsable, parsable with no transaction queries, or
-   * full of transactions the filter then excludes. Every one of those looks identical on
+   * "Shows nothing offline" has at least five causes and one symptom: the stored blob absent,
+   * present but unparsable, parsable with no transaction queries under it, full of
+   * transactions the filter then excludes, or a read that threw. Every one looks identical on
    * screen, and each needs a different fix.
+   *
+   * `readValue` traces the disk half itself — including *why* a read failed — so this line
+   * records the outcome, and the storage trace records the steps that produced it.
    */
   await logOffline(
     "DIAGNOSTIC:local-read",
-    `磁盘 ${raw === null ? "无缓存键" : `${String(raw.length)} 字节`} → ${String(fromDisk.length)} 条，内存 ${String(live.length)} 条`,
+    `磁盘 ${raw === null ? "无缓存键" : `${String(raw.length)} 字节`} → ${String(fromDisk.length)} 条；` +
+      `内存 ${String(live.length)} 条；合计 ${String(mergeLocal(fromDisk, live).length)} 条`,
   );
 
+  return mergeLocal(fromDisk, live);
+}
+
+/**
+ * Both copies, by id.
+ *
+ * ⚠️ **The two are not equally new, and neither is authoritative.** The live cache changes
+ * immediately; the stored one is written on a throttle. On the owner's phone that window had
+ * always closed before the network was unplugged; on his tablet it had not — so the fallback
+ * read the disk, found a month missing, and rendered nothing while the data sat in memory.
+ *
+ * Merging closes the window by construction, which is the same principle as the rest of this
+ * file one layer down: do not assume which copy is right, combine them.
+ */
+function mergeLocal(
+  fromDisk: readonly Transaction[],
+  live: readonly Transaction[],
+): readonly Transaction[] {
   if (fromDisk.length === 0) return live;
   if (live.length === 0) return fromDisk;
 
-  // Merged by id, so an entry present in both is counted once.
   const merged = new Map<string, Transaction>();
 
   for (const transaction of fromDisk) merged.set(transaction.id, transaction);

@@ -41,6 +41,57 @@ const STORE = "kv";
 /** The schema version. Bumping it triggers `onupgradeneeded`. */
 const VERSION = 1;
 
+/**
+ * A short in-memory trace of what the storage layer did.
+ *
+ * ⚠️ **In memory, and synchronously written — both on purpose.**
+ *
+ * The owner asked for the diagnostics to be as rich as possible, and this is the layer that
+ * needed them most: a read that returns nothing has half a dozen causes and one symptom. But
+ * the obvious implementation — logging each read to IndexedDB — **is a read**, so it would
+ * recurse, and it would do it once per entry per lookup.
+ *
+ * So the trace lives in an array and is flushed to the log in one go when somebody asks for a
+ * report. Nothing is lost that matters: the sequence is what tells the story, and it is
+ * preserved exactly.
+ *
+ * **What is recorded is deliberately short.** Reading the query cache produces one line, not a
+ * hundred kilobytes of JSON — the point is to see *which* key was asked for and *what kind of
+ * thing came back*, and a trace nobody can read is a trace nobody reads.
+ */
+export interface TraceLine {
+  readonly at: number;
+  readonly what: string;
+  readonly key: string;
+  readonly detail: string;
+}
+
+/** How many lines to keep. Enough for a full page load; bounded so a long session cannot grow. */
+const MAX_TRACE = 120;
+
+let traceLines: TraceLine[] = [];
+
+function trace(what: string, key: string, detail: string): void {
+  traceLines.push({ at: Date.now(), what, key, detail });
+
+  if (traceLines.length > MAX_TRACE) traceLines = traceLines.slice(-MAX_TRACE);
+}
+
+/** The trace so far, oldest first. For the diagnostics screen. */
+export function readTrace(): readonly TraceLine[] {
+  return [...traceLines];
+}
+
+/** Forget it, so a reproduction can start clean. */
+export function clearTrace(): void {
+  traceLines = [];
+}
+
+/** One line of the trace as text. */
+export function traceLine(line: TraceLine): string {
+  return `${new Date(line.at).toISOString()} ${line.what} ${line.key} — ${line.detail}`;
+}
+
 let databasePromise: Promise<IDBDatabase> | null = null;
 
 /** Whether this environment has IndexedDB at all. */
@@ -51,11 +102,15 @@ export function hasIndexedDb(): boolean {
 function openDatabase(): Promise<IDBDatabase> {
   if (databasePromise !== null) return databasePromise;
 
+  trace("open", DATABASE, "开始打开");
+
   databasePromise = new Promise<IDBDatabase>((resolve, reject) => {
     const request = indexedDB.open(DATABASE, VERSION);
 
     request.onupgradeneeded = () => {
       const database = request.result;
+
+      trace("open", DATABASE, `升级到版本 ${String(VERSION)}`);
 
       if (!database.objectStoreNames.contains(STORE)) {
         database.createObjectStore(STORE);
@@ -65,6 +120,8 @@ function openDatabase(): Promise<IDBDatabase> {
     request.onsuccess = () => {
       const database = request.result;
 
+      trace("open", DATABASE, "成功");
+
       /**
        * A second tab opening a newer version asks this one to close.
        *
@@ -72,6 +129,7 @@ function openDatabase(): Promise<IDBDatabase> {
        * user sees a page that never loads — with no error and nothing to click.
        */
       database.onversionchange = () => {
+        trace("open", DATABASE, "另一个页面要求升级，已关闭连接");
         database.close();
         databasePromise = null;
       };
@@ -80,10 +138,24 @@ function openDatabase(): Promise<IDBDatabase> {
     };
 
     request.onerror = () => {
+      const detail = request.error?.name ?? "unknown";
+
+      trace("open", DATABASE, `失败：${detail}`);
+
       reject(request.error ?? new Error("indexeddb_open_failed"));
     };
 
     request.onblocked = () => {
+      /**
+       * ⚠️ **Blocked is traced separately from failed, because it means something different.**
+       *
+       * A blocked open is another tab holding an older version of the database — which on a
+       * tablet is an easy state to be in, with the app open in two windows. It looks identical
+       * to a broken database from the outside, and it resolves itself once the other tab
+       * closes.
+       */
+      trace("open", DATABASE, "被阻塞：另一个页面占着旧版本");
+
       reject(new Error("indexeddb_blocked"));
     };
   });
@@ -137,15 +209,54 @@ async function withStore<T>(
  * does the same thing either way: treat it as a miss.
  */
 export async function readValue<T>(key: string): Promise<T | null> {
-  if (!hasIndexedDb()) return null;
+  if (!hasIndexedDb()) {
+    trace("read", key, "没有 IndexedDB");
+
+    return null;
+  }
 
   try {
     const value = await withStore(true, (store) => store.get(key) as IDBRequest<T | undefined>);
 
+    trace("read", key, value === undefined ? "键不存在" : summarize(value));
+
     return value === undefined ? null : value;
-  } catch {
+  } catch (error) {
+    /**
+     * ⚠️ **The failure is traced, and that is the reason this function has a `trace` at all.**
+     *
+     * An empty ledger offline has several causes and exactly one symptom, and **a read that
+     * threw** is one of them: a private-browsing window, a blocked origin, a database being
+     * upgraded in another tab. Swallowing the error is right for the caller — it has nothing
+     * better to do — but swallowing it *silently* is what made this take three rounds to find.
+     */
+    trace(
+      "read",
+      key,
+      `失败：${error instanceof Error ? `${error.name}: ${error.message}` : String(error)}`,
+    );
+
     return null;
   }
+}
+
+/**
+ * What a stored value looks like, in one line.
+ *
+ * Strings are described rather than printed: the query cache is a hundred kilobytes of JSON,
+ * and a diagnostic that dumps it is a diagnostic nobody can read. Length and a short prefix
+ * are enough to tell "the wrong thing is stored" from "the right thing is stored".
+ */
+function summarize(value: unknown): string {
+  if (typeof value === "string") {
+    return `${String(value.length)} 字节字符串「${value.slice(0, 40)}…」`;
+  }
+
+  if (Array.isArray(value)) return `数组 ${String(value.length)} 项`;
+
+  if (typeof value === "object" && value !== null) return `对象，键：${Object.keys(value).join(",")}`;
+
+  return String(value);
 }
 
 /**
@@ -155,12 +266,25 @@ export async function readValue<T>(key: string): Promise<T | null> {
  * will — can check; callers that do not, ignore it.
  */
 export async function writeValue(key: string, value: unknown): Promise<boolean> {
-  if (!hasIndexedDb()) return false;
+  if (!hasIndexedDb()) {
+    trace("write", key, "没有 IndexedDB，未写入");
+
+    return false;
+  }
 
   try {
     await withStore(false, (store) => store.put(value, key));
+
+    trace("write", key, summarize(value));
+
     return true;
-  } catch {
+  } catch (error) {
+    trace(
+      "write",
+      key,
+      `失败：${error instanceof Error ? `${error.name}: ${error.message}` : String(error)}`,
+    );
+
     return false;
   }
 }

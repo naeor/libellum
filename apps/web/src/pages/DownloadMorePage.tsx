@@ -9,7 +9,7 @@ import { cacheFootprint, describeKey, type CacheFootprint } from "../lib/offline
 import { clearOfflineLog, readOfflineLog, type LogEntry } from "../lib/offline/diagnostics.js";
 import { formatBytes, storageBreakdown, type StorageBreakdown } from "../lib/offline/persistence.js";
 import { resetEverything } from "../lib/offline/reset.js";
-import { readValue } from "../lib/offline/storage.js";
+import { readTrace, traceLine, readValue } from "../lib/offline/storage.js";
 
 /**
  * The diagnostics screen, behind a "more" button.
@@ -34,6 +34,7 @@ export function DownloadMorePage(): React.JSX.Element {
   const [footprint, setFootprint] = useState<CacheFootprint | null>(null);
   const [storage, setStorage] = useState<StorageBreakdown | null>(null);
   const [queries, setQueries] = useState<readonly string[]>([]);
+  const [trace, setTrace] = useState<readonly string[]>([]);
   const [copied, setCopied] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -64,6 +65,16 @@ export function DownloadMorePage(): React.JSX.Element {
       );
 
       setQueries((raw?.clientState?.queries ?? []).map((query) => describeKey(query.queryKey)));
+
+      /**
+       * ⚠️ **The storage layer's own trace, every line of it.**
+       *
+       * It records each open, read and write with the key and what came back — including *why*
+       * a read failed, which is the one thing an empty ledger cannot tell you. The owner asked
+       * for the diagnostics to be as rich as possible and said the length does not matter,
+       * since he copies the whole thing anyway.
+       */
+      setTrace(readTrace().map((line) => traceLine(line)));
     } finally {
       setLoading(false);
     }
@@ -97,6 +108,9 @@ export function DownloadMorePage(): React.JSX.Element {
     ...(footprint?.heaviest ?? []).map(
       (entry) => `  ${entry.label} — ${formatBytes(entry.bytes)}`,
     ),
+    "",
+    `== 存储追踪（${String(trace.length)} 条，最旧在前） ==`,
+    ...trace,
     "",
     `== 全部存储键（${String(queries.length)} 条） ==`,
     ...queries,
