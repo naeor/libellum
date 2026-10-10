@@ -11,6 +11,8 @@ import { BooksPage } from "./pages/BooksPage.js";
 import { ChangePasswordPage } from "./pages/ChangePasswordPage.js";
 import { DetailPage } from "./pages/DetailPage.js";
 import { EntryDetailPage } from "./pages/EntryDetailPage.js";
+import { ExportPage } from "./pages/ExportPage.js";
+import { ImportPage } from "./pages/ImportPage.js";
 import { LoginPage } from "./pages/LoginPage.js";
 import { CategoriesPage, PaymentMethodsPage, TagsPage } from "./pages/ManagePages.js";
 import { MePage } from "./pages/MePage.js";
@@ -126,6 +128,8 @@ function AppRoutes(): React.JSX.Element {
       />
 
       <Route path="/scan" element={<RequireAuth><ScanPage /></RequireAuth>} />
+      <Route path="/export" element={<RequireAuth><ExportPage /></RequireAuth>} />
+      <Route path="/import" element={<RequireAuth><ImportPage /></RequireAuth>} />
       <Route path="/profile" element={<RequireAuth><ProfilePage /></RequireAuth>} />
       <Route path="/settings" element={<RequireAuth><SettingsPage /></RequireAuth>} />
       <Route path="/settings/password" element={<RequireAuth><ChangePasswordPage /></RequireAuth>} />

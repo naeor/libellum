@@ -138,7 +138,14 @@ export function DetailPage(): React.JSX.Element {
               <h1 className="detail-title text-2xl font-semibold tracking-tight">Libellum</h1>
 
               <div className="detail-tools flex gap-2">
-                <ToolButton icon={<ShareIcon />} label="导出" hint="导出功能在 S6 阶段实现" />
+                <ToolButton
+                  icon={<ShareIcon />}
+                  label="导出"
+                  hint="导出账目"
+                  onClick={() => {
+                    void navigate("/export");
+                  }}
+                />
                 <ToolButton icon={<MoreIcon />} label="更多" hint="更多操作即将开放" />
               </div>
             </div>
@@ -435,26 +442,36 @@ function LedgerNav({
  * bubbles rather than tools — a word inside a pill looks like something to
  * read, where a mark inside a circle looks like something to press.
  *
- * Both are disabled and say why. The owner's rule holds here as everywhere
- * else: something that looks ready and does nothing is worse than something
- * that admits it is not. Export becomes real in S6.
+ * With no `onClick` it is disabled and says why, which is the honest state for a
+ * tool that does not exist yet — the owner's rule: something that looks ready
+ * and does nothing is worse than something that admits it is not. Export now has
+ * a destination and is live; 更多 still does not.
  */
 function ToolButton({
   icon,
   label,
   hint,
+  onClick,
 }: {
   readonly icon: React.ReactNode;
   readonly label: string;
   readonly hint: string;
+  readonly onClick?: () => void;
 }): React.JSX.Element {
+  const disabled = onClick === undefined;
+
   return (
     <button
       type="button"
-      disabled
+      disabled={disabled}
+      onClick={onClick}
       title={`${label}——${hint}`}
       aria-label={`${label}，${hint}`}
-      className="flex size-9 items-center justify-center rounded-full bg-white/15 text-white/70"
+      className={`flex size-9 items-center justify-center rounded-full transition ${
+        disabled
+          ? "bg-white/15 text-white/70"
+          : "bg-white/20 text-white hover:bg-white/30 active:bg-white/40"
+      }`}
     >
       {icon}
     </button>

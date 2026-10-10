@@ -3,6 +3,8 @@ import {
   type CreatePaymentMethodInput,
   type CreateTagInput,
   type CreateTransactionInput,
+  type ExportFormat,
+  type ImportReport,
   type LedgerMetaResponse,
   type MeResponse,
   type RecognizeResponse,
@@ -27,7 +29,8 @@ import {
 import { useMemo } from "react";
 
 import { useAuth } from "../auth/AuthProvider.js";
-import { apiFetch } from "./api.js";
+import { apiFetch, apiFetchFile } from "./api.js";
+import { uuidV7 } from "./uuid.js";
 
 /**
  * Every server call the interface makes, in one place.
@@ -354,4 +357,119 @@ export function useTagMutations() {
   });
 
   return { create, update, remove };
+}
+
+// ---------------------------------------------------------------------------
+// Export and import
+// ---------------------------------------------------------------------------
+
+/**
+ * What a caller gets back from an export.
+ *
+ * The bytes are carried here so **the platform can decide what to do with
+ * them**: the share sheet on an iPhone, a download everywhere else. A response
+ * the browser insists on saving cannot be shared, and a share sheet cannot save.
+ */
+export interface ExportedFile {
+  /** e.g. `账目-20261010.csv` — named here, because the client knows the moment. */
+  readonly fileName: string;
+  readonly mimeType: string;
+  readonly format: ExportFormat;
+  /** The `Out-…` reference, shown to the user and written into every row. */
+  readonly fileRef: string;
+  readonly rowCount: number;
+  readonly bytes: Uint8Array;
+}
+
+export interface ExportFilters {
+  readonly format: ExportFormat;
+  readonly monthFrom?: string;
+  readonly monthTo?: string;
+  readonly kind?: "income" | "expense";
+  readonly categoryId?: string;
+  readonly currency?: string;
+}
+
+const EXPORT_MIME: Record<ExportFormat, string> = {
+  csv: "text/csv",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+};
+
+function describe(filters: ExportFilters, now: Date): string {
+  const pad = (value: number): string => String(value).padStart(2, "0");
+  const stamp = `${String(now.getFullYear())}${pad(now.getMonth() + 1)}${pad(now.getDate())}`;
+  const range =
+    filters.monthFrom === undefined && filters.monthTo === undefined
+      ? "全部"
+      : `${filters.monthFrom ?? "起始"}-${filters.monthTo ?? "至今"}`;
+
+  return `账目-${range}-${stamp}`;
+}
+
+export async function fetchExport(filters: ExportFilters): Promise<ExportedFile> {
+  const file = await apiFetchFile("/export", {
+    format: filters.format,
+    monthFrom: filters.monthFrom,
+    monthTo: filters.monthTo,
+    kind: filters.kind,
+    categoryId: filters.categoryId,
+    currency: filters.currency,
+  });
+
+  return {
+    fileName: `${describe(filters, new Date())}.${filters.format}`,
+    mimeType: EXPORT_MIME[filters.format],
+    format: filters.format,
+    fileRef: file.fileRef,
+    rowCount: file.rowCount,
+    bytes: file.bytes,
+  };
+}
+
+/** The template: headings only, no rows, no traceability columns. */
+export async function fetchTemplate(): Promise<ExportedFile> {
+  const file = await apiFetchFile("/export", { format: "csv", template: "true" });
+
+  return {
+    fileName: "记账导入模板.csv",
+    mimeType: EXPORT_MIME.csv,
+    format: "csv",
+    fileRef: "",
+    rowCount: 0,
+    bytes: file.bytes,
+  };
+}
+
+export function useExportLog() {
+  return useQuery({
+    queryKey: ["export-log"],
+    queryFn: () =>
+      apiFetch<{
+        entries: {
+          fileRef: string;
+          format: string;
+          rowCount: number;
+          createdAt: string;
+          by: string;
+        }[];
+      }>("/export-log"),
+  });
+}
+
+export function useImportEntries() {
+  const invalidateMoney = useMoneyInvalidator();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (file: File) => {
+      const form = new FormData();
+      form.append("fileId", uuidV7());
+      form.append("file", file, file.name === "" ? "import.csv" : file.name);
+      return apiFetch<ImportReport>("/import", { method: "POST", formData: form, timeoutMs: 120_000 });
+    },
+    onSuccess: () => {
+      void invalidateMoney();
+      void queryClient.invalidateQueries({ queryKey: ["export-log"] });
+    },
+  });
 }

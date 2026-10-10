@@ -132,6 +132,87 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
 }
 
 /**
+ * Fetch a file from the server, bytes and metadata together.
+ *
+ * The file arrives as the response *body*, not as base64 inside JSON. That is a
+ * correction: an earlier version wrapped the bytes in JSON, which is 33% larger
+ * and, far worse, would have hit Fastify's one-megabyte body limit at roughly a
+ * thousand entries — an export that works until the ledger gets big enough to
+ * matter. Here the bytes stream and the metadata rides in response headers.
+ *
+ * Those headers have to be named in `access-control-expose-headers` for the
+ * browser to let this code read them; the server does that. A cross-origin
+ * `fetch` is otherwise allowed to see only a handful of standard headers, and
+ * going through the Vite proxy counts as cross-origin.
+ *
+ * Error handling matches `apiFetch`: a failed export answers with the same JSON
+ * error body, so it is parsed and thrown rather than handed back as a file.
+ */
+export interface FetchedFile {
+  readonly bytes: Uint8Array;
+  readonly fileRef: string;
+  readonly rowCount: number;
+}
+
+export async function apiFetchFile(
+  path: string,
+  query?: Record<string, string | undefined>,
+  timeoutMs = 120_000,
+): Promise<FetchedFile> {
+  if (typeof navigator !== "undefined" && !navigator.onLine) {
+    throw new ApiRequestError(0, "offline", "当前处于离线状态，无法与服务器同步。请恢复网络后重试。");
+  }
+
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => {
+    controller.abort();
+  }, timeoutMs);
+
+  let response: Response;
+  try {
+    response = await fetch(buildUrl(path, query), {
+      method: "GET",
+      credentials: "same-origin",
+      headers: { accept: "*/*" },
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new ApiRequestError(0, "timeout", "请求超时，请检查网络后重试。");
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timer);
+  }
+
+  if (!response.ok) {
+    const raw = await response.text();
+    let payload: unknown;
+    try {
+      payload = raw === "" ? undefined : JSON.parse(raw);
+    } catch {
+      throw new ApiRequestError(
+        response.status,
+        "malformed_response",
+        `服务器返回了无法解析的内容（HTTP ${String(response.status)}）。`,
+      );
+    }
+
+    const parsed = apiErrorSchema.safeParse(payload);
+    if (parsed.success) {
+      throw new ApiRequestError(response.status, parsed.data.code, parsed.data.message, parsed.data.details);
+    }
+    throw new ApiRequestError(response.status, "unexpected_error", "服务暂时不可用，请稍后再试。");
+  }
+
+  return {
+    bytes: new Uint8Array(await response.arrayBuffer()),
+    fileRef: response.headers.get("x-libellum-file-ref") ?? "",
+    rowCount: Number(response.headers.get("x-libellum-row-count") ?? "0"),
+  };
+}
+
+/**
  * Turn any thrown value into something safe to show a user.
  *
  * `ApiRequestError` already carries a message the server wrote for a person to

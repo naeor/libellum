@@ -21,6 +21,7 @@ import { errorMessage } from "../lib/api.js";
 import { currentMonth, localTimeZone, toLocalDate, toLocalIso } from "../lib/datetime.js";
 import { amountPlaceholder, currencyName, parseAmountInput } from "../lib/format.js";
 import { useCreateTransaction, useLedger, useRecognize, useTransactions } from "../lib/queries.js";
+import { uuidV7 } from "../lib/uuid.js";
 
 /**
  * Recording from a screenshot.
@@ -192,8 +193,20 @@ export function ScanPage(): React.JSX.Element {
 
     try {
       const entry = await createEntry.mutateAsync({
-        id: crypto.randomUUID(),
-        idempotencyKey: crypto.randomUUID(),
+        /**
+         * `uuidV7()`, not `crypto.randomUUID()`.
+         *
+         * `randomUUID` is a secure-context API: over plain `http://` — which is
+         * exactly how the app is reached from a phone on the LAN, at
+         * `http://192.168.0.184:5173` — Safari does not define it, and the save
+         * fails with "crypto.randomUUID is not a function". `getRandomValues`,
+         * which `uuidV7` uses, has been available in every context for years.
+         *
+         * This is the only place the two were mixed up; `AddEntryPage` has always
+         * used `uuidV7`.
+         */
+        id: uuidV7(),
+        idempotencyKey: uuidV7(),
         kind: draft.kind,
         amountCents,
         currency: draft.currency,

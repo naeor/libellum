@@ -226,8 +226,16 @@ export function registerExportRoutes(app: FastifyInstance, options: ExportRouteO
     reply
       .header("x-libellum-file-ref", exportRef)
       .header("x-libellum-row-count", String(rowCount))
-      // The browser reads these to name the file and to tell the user something
-      // they can quote back later.
+      /**
+       * The browser reads these two to name the file and to tell the user
+       * something they can quote back later.
+       *
+       * Exposed explicitly because a cross-origin `fetch` can only read a
+       * response header that the server has named here — and the Vite proxy
+       * makes even a same-machine request cross-origin from the browser's point
+       * of view. Without this line the export works and the reference is
+       * invisible, which is the worst of both.
+       */
       .header("access-control-expose-headers", "x-libellum-file-ref, x-libellum-row-count");
 
     if (query.format === "xlsx") {
