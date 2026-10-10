@@ -243,15 +243,25 @@ export function useDetailTransition(initial: number): DetailTransition {
       const atTop = scroller.scrollTop <= 0;
 
       /*
-       * Past the end, the list belongs to the browser.
+       * Past the end of the transition the list belongs to the browser.
        *
-       * This is what made the list almost impossible to scroll: the previous
-       * version intercepted every vertical move and clamped the progress at one,
-       * so the page consumed the gesture and did nothing with it. Now the only
-       * downward pull claimed here is the one at the very top that has nowhere
-       * else to go.
+       * The only gesture claimed here is a *downward* pull at the very top —
+       * the one with nowhere else to go. Everything else is an ordinary
+       * scroll, including an upward drag at the top, which is how a reader
+       * moves further down a list.
+       *
+       * The previous version checked "at the top" but not the direction, so an
+       * upward drag there was swallowed: prevented from scrolling and driven
+       * into a progress that was already at its end. The list jolted and went
+       * nowhere.
        */
-      if (progress.current >= 1 && !atTop) return;
+      if (progress.current >= 1) {
+        if (!atTop || dy <= 0) return;
+
+        event.preventDefault();
+        dragTo(1 - dy / DRAG_DISTANCE);
+        return;
+      }
 
       // At the top of the display state there is nothing above to pull down to.
       if (progress.current <= 0 && dy > 0) return;

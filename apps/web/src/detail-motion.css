@@ -186,8 +186,16 @@
  *
  * Every number here is one this file already knows. Nothing is measured.
  */
+/*
+ * E. The row of smaller currencies rises to join the primary card.
+ *
+ * It has to land exactly on the card's line, which means rising by the gap plus
+ * the card's own height and no more. An earlier version added sixty pixels on
+ * top of that, and the owner saw the result: the row climbed past the card, so
+ * the primary currency appeared to have been pushed onto a second line.
+ */
 .detail-secondary-row {
-  margin-top: calc(var(--card-gap) - var(--p-rise) * (var(--card-gap) + var(--card-short) + 60px));
+  margin-top: calc(var(--card-gap) - var(--p-rise) * (var(--card-gap) + var(--card-short)));
   padding-left: calc(var(--p-rise) * var(--card-narrow));
   height: calc(var(--secondary-tall) - var(--p-secondary) * (var(--secondary-tall) - var(--secondary-short)));
 }
