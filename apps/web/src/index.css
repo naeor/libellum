@@ -2,6 +2,19 @@
 @import "./detail-motion.css";
 
 /*
+ * No rubber-banding on the ledger's scrolling region.
+ *
+ * A fast flick to the bottom of the list used to overshoot into Safari's own
+ * bounce and settle back, which the owner read - correctly - as the page
+ * moving down and returning rather than as the transition beginning. The
+ * bounce is the browser's, and it is not ours to end with an animation, so it
+ * is turned off where the transition needs the gesture instead.
+ */
+.detail-root > div.overflow-y-auto {
+  overscroll-behavior-y: none;
+}
+
+/*
  * Libellum theme.
  *
  * Light, calm and friendly: a near-white canvas, one low-saturation green as

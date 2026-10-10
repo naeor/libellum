@@ -63,15 +63,16 @@
    */
   --p-cur: clamp(0, calc((var(--p) - 0.15) / 0.55), 1);
   /*
-   * The row of smaller currencies rises on a later clock than the card shrinks.
+   * Rising begins only after narrowing has finished.
    *
-   * These used to share one value, and the owner saw the result: the row was
-   * already climbing while the card was still wide, so the two sat on top of
-   * each other for the middle of the transition. Narrowing finishes at 0.7 and
-   * rising does not begin until 0.55, so by the time the row moves up the card
-   * has given it somewhere to go.
+   * The owner saw the primary card and the row overlapping on the way down. The
+   * two were on neighbouring clocks — narrowing ended at 0.7 while rising had
+   * already started at 0.55 — so for a stretch of the middle the row was
+   * climbing into space the card still occupied. Sequenced instead of merely
+   * staggered: narrowing ends exactly where rising begins, so the row never
+   * moves into room the card has not yet given up.
    */
-  --p-rise: clamp(0, calc((var(--p) - 0.55) / 0.45), 1);
+  --p-rise: clamp(0, calc((var(--p) - 0.7) / 0.3), 1);
   --p-toggle: clamp(0, calc((var(--p) - 0.2) / 0.65), 1);
   --p-body: clamp(0, calc(var(--p) / 0.9), 1);
 }

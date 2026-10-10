@@ -208,6 +208,16 @@ export function useDetailTransition(initial: number): DetailTransition {
     let startProgress = 0;
     let lastY = 0;
     let lastTime = 0;
+    /**
+     * The gesture's speed, smoothed.
+     *
+     * Taken from one sample it was wrong at the end of a swipe: fingers slow
+     * and drift in the last few milliseconds before they lift, so the final
+     * delta is often tiny and occasionally points the wrong way. The owner saw
+     * the result - the animation reversing briefly in the middle before
+     * finishing. A short exponential average keeps the swipe's real direction
+     * and discards the wobble at the end.
+     */
     let flick = 0;
 
     /**
@@ -269,7 +279,10 @@ export function useDetailTransition(initial: number): DetailTransition {
       const now = performance.now();
       const elapsed = now - lastTime;
       if (elapsed > 0) {
-        flick = (((event.touches[0]!.clientY - lastY) / elapsed) * 1000) / DRAG_DISTANCE;
+        const sample = (((event.touches[0]!.clientY - lastY) / elapsed) * 1000) / DRAG_DISTANCE;
+        // Weighted towards what has come before, so a single stray sample
+        // cannot flip the direction the release will read.
+        flick = flick * 0.72 + sample * 0.28;
         lastY = event.touches[0]!.clientY;
         lastTime = now;
       }

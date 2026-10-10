@@ -47,6 +47,20 @@ export function DetailPage(): React.JSX.Element {
   const categoryId = searchParams.get("categoryId");
   const { rootRef, scrollRef, atList, goTo } = useDetailTransition(saved.progress);
 
+  /**
+   * The recording cards fold away when the list state arrives.
+   *
+   * The owner asked for this: the summary has just collapsed to give the
+   * entries more room, and leaving three cards open underneath would spend
+   * that room again on a menu. They are one press away whenever they are
+   * wanted, and the transition itself is the signal that they have closed.
+   */
+  const [entryOpen, setEntryOpen] = useState(() => saved.progress < 1);
+
+  useEffect(() => {
+    if (atList) setEntryOpen(false);
+  }, [atList]);
+
   useEffect(() => {
     writeSession({ month, kind });
   }, [month, kind]);
@@ -208,7 +222,7 @@ export function DetailPage(): React.JSX.Element {
             the seam between the two halves, and a control that moved while the
             things above it collapsed would make the whole change look loose.
           */}
-          <div className="detail-toggle-bar px-6 pt-4">
+          <div className={`detail-toggle-bar px-6 pt-4 ${atList ? "detail-toggle-sticky" : ""}`}>
             <div className="flex gap-1 rounded-full bg-line/70 p-1">
               {(["expense", "income"] as const).map((option) => (
                 <button
@@ -339,7 +353,13 @@ export function DetailPage(): React.JSX.Element {
         </div>
       </div>
 
-      <LedgerNav onNavigate={(to) => void navigate(to)} />
+      <LedgerNav
+        open={entryOpen}
+        onToggle={() => {
+          setEntryOpen((value) => !value);
+        }}
+        onNavigate={(to) => void navigate(to)}
+      />
 
       <MonthPicker
         open={pickerOpen}
@@ -371,23 +391,22 @@ export function DetailPage(): React.JSX.Element {
  * its scrolling region — the transition needs to know where the list is — and
  * because the bar's expansion has to reserve real space in this page's column.
  */
-function LedgerNav({ onNavigate }: { readonly onNavigate: (to: string) => void }): React.JSX.Element {
-  const [open, setOpen] = useState(true);
-
+function LedgerNav({
+  open,
+  onToggle,
+  onNavigate,
+}: {
+  readonly open: boolean;
+  readonly onToggle: () => void;
+  readonly onNavigate: (to: string) => void;
+}): React.JSX.Element {
   return (
     <>
       <div
         aria-hidden="true"
         className={`shrink-0 transition-[height] duration-200 ease-out ${open ? "h-[100px]" : "h-0"}`}
       />
-      <BottomNav
-        active="/"
-        onNavigate={onNavigate}
-        expanded={open}
-        onToggle={() => {
-          setOpen((value) => !value);
-        }}
-      />
+      <BottomNav active="/" onNavigate={onNavigate} expanded={open} onToggle={onToggle} />
     </>
   );
 }
