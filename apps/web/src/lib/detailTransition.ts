@@ -82,17 +82,6 @@ function clamp01(value: number): number {
   return value < 0 ? 0 : value > 1 ? 1 : value;
 }
 
-/**
- * Is this the gesture that carries the screen back to its display state?
- *
- * Only when the list is at its very top and the finger is moving down. Any
- * other downward drag is the reader scrolling a list that is already scrolled,
- * and belongs to the browser.
- */
-function touchesArePullingDown(startProgress: number, scrollTop: number, dy: number): boolean {
-  return startProgress >= 1 && scrollTop <= 0 && dy > 0;
-}
-
 export function useDetailTransition(initial: number): DetailTransition {
   const rootRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -214,30 +203,28 @@ export function useDetailTransition(initial: number): DetailTransition {
     const scroller = scrollRef.current;
     if (root === null || scroller === null) return;
 
-    let tracking = false;
-    let decided: "none" | "vertical" | "horizontal" = "none";
-    let startX = 0;
-    let startY = 0;
-    let startProgress = 0;
-    let lastY = 0;
-    let lastTime = 0;
-    let flick = 0;
-
+    /**
+     * Which zone the finger landed in decides what the gesture means.
+     *
+     * The owner proposed this after the axis-detection version failed him three
+     * times, and he was right: deciding by direction meant guessing from the
+     * first few pixels, getting it wrong, and either killing the transition or
+     * blocking an ordinary scroll. Where the finger *starts* is not a guess.
+     *
+     * A strip that scrolls sideways marks itself `data-h-scroll`; a gesture
+     * beginning inside one belongs to it entirely and the screen does not
+     * intercept a single event. Anywhere else, the gesture is the screen's.
+     */
     const onStart = (event: TouchEvent): void => {
       if (event.touches.length !== 1) return;
 
-      const touch = event.touches[0]!;
+      const target = event.target;
+      const inStrip =
+        target instanceof Element && target.closest("[data-h-scroll]") !== null;
 
-      // A second gesture while the spring is running takes over from wherever
-      // it has got to, which is why the current value is read rather than the
-      // target.
-      tracking = true;
-      decided = "none";
-      startX = touch.clientX;
-      startY = touch.clientY;
+      tracking = !inStrip;
+      startY = event.touches[0]!.clientY;
       startProgress = progress.current;
-      lastY = touch.clientY;
-      lastTime = performance.now();
       flick = 0;
       stop();
     };
@@ -245,73 +232,39 @@ export function useDetailTransition(initial: number): DetailTransition {
     const onMove = (event: TouchEvent): void => {
       if (!tracking || event.touches.length !== 1) return;
 
-      const touch = event.touches[0]!;
-      const dx = touch.clientX - startX;
-      const dy = touch.clientY - startY;
+      const dy = event.touches[0]!.clientY - startY;
+      const atTop = scroller.scrollTop <= 0;
 
       /*
-       * The reverse pull is claimed immediately, before any threshold.
+       * Past the end, the list belongs to the browser.
        *
-       * This is the whole difference between the two directions working. At the
-       * top of a scrollable list, a downward drag is a gesture the browser also
-       * has a claim on — it reads as overscroll. If the first few pixels are
-       * left alone while an eight-pixel threshold is measured, the browser
-       * takes the gesture, stops delivering touchmove, and the screen sits
-       * still until the finger lifts. Which is exactly what the owner saw:
-       * nothing moved, then the whole animation played on release.
-       *
-       * There is no ambiguity to wait for here, so there is nothing to wait
-       * for: scrolled to the top and pulling down can only mean one thing.
+       * This is what made the list almost impossible to scroll: the previous
+       * version intercepted every vertical move and clamped the progress at one,
+       * so the page consumed the gesture and did nothing with it. Now the only
+       * downward pull claimed here is the one at the very top that has nowhere
+       * else to go.
        */
-      if (touchesArePullingDown(startProgress, scroller.scrollTop, dy)) {
-        event.preventDefault();
-        dragTo(1 - dy / DRAG_DISTANCE);
-        return;
-      }
+      if (progress.current >= 1 && !atTop) return;
 
-      if (decided === "none") {
-        // Eight pixels before committing to an axis. Under that, a small
-        // wobble decides nothing; over it, the dominant axis owns the gesture
-        // — which is what keeps a sideways swipe through the currencies from
-        // changing the screen's shape.
-        if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
-        decided = Math.abs(dy) > Math.abs(dx) ? "vertical" : "horizontal";
-      } else if (decided === "horizontal") {
-        /*
-         * A sideways start does not end the gesture.
-         *
-         * This used to give up for the rest of the touch, and the owner found
-         * the result: starting a drag slightly off-vertical, or pausing
-         * half-way and letting the finger drift, killed the transition
-         * entirely for that touch. The reverse direction never had the problem
-         * because it claims the gesture on the first move, with no axis to
-         * decide.
-         *
-         * So the axis is reconsidered on every move. A gesture that began
-         * sideways and turns vertical is still a vertical gesture, and one
-         * that turns sideways again simply stops driving the screen.
-         */
-        if (Math.abs(dy) > Math.abs(dx) + 4) decided = "vertical";
-        else return;
-      }
+      // At the top of the display state there is nothing above to pull down to.
+      if (progress.current <= 0 && dy > 0) return;
 
       const now = performance.now();
       const elapsed = now - lastTime;
-
       if (elapsed > 0) {
-        flick = (((touch.clientY - lastY) / elapsed) * 1000) / DRAG_DISTANCE;
-        lastY = touch.clientY;
+        flick = (((event.touches[0]!.clientY - lastY) / elapsed) * 1000) / DRAG_DISTANCE;
+        lastY = event.touches[0]!.clientY;
         lastTime = now;
       }
 
-      dragTo(startProgress - dy / DRAG_DISTANCE);
       event.preventDefault();
+      dragTo(startProgress - dy / DRAG_DISTANCE);
     };
 
     const onEnd = (): void => {
       if (!tracking) return;
       tracking = false;
-      if (decided === "vertical") release(flick);
+      release(flick);
     };
 
     root.addEventListener("touchstart", onStart, { passive: true });

@@ -180,7 +180,10 @@ export function DetailPage(): React.JSX.Element {
                 <MainCard className="detail-main-card mt-4" summary={main} currency={mainCode} />
 
                 {others.length === 0 ? null : (
-                  <div className="detail-secondary-row mt-3 flex gap-2.5 overflow-x-auto pb-1 [scrollbar-width:none] [scroll-snap-type:x_proximity]">
+                  <div
+                    data-h-scroll
+                    className="detail-secondary-row mt-3 flex gap-2.5 overflow-x-auto pb-1 [scrollbar-width:none] [scroll-snap-type:x_proximity]"
+                  >
                     {others.map((item) => (
                       <SecondaryCard key={item.currency} summary={item} />
                     ))}

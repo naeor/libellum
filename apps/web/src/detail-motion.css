@@ -25,14 +25,7 @@
    * be tuned on a real phone without hunting through calc() expressions.
    */
   --hero-tall: 360px;
-  /*
-   * Tall enough to hold what the list state actually draws: the wordmark line,
-   * the month, the primary card, the row of smaller ones and the padding. It
-   * used to be shorter than its own contents, and because the hero is a
-   * containment box the extra was clipped — which is why the owner saw the
-   * currency cards cut in half with empty green above them.
-   */
-  --hero-short: 196px;
+  --hero-short: 150px;
   --card-tall: 128px;
   --card-short: 52px;
   --secondary-tall: 74px;
@@ -46,7 +39,7 @@
    * centre begins 60px down. Rising 42px puts it at 18px — the same centre as
    * the tool buttons. The owner noticed these two were not level.
    */
-  --row-one: 42px;
+  --row-one: 52px;
   /* Gap between the main card and the row of smaller ones. */
   --card-gap: 12px;
   /* The main card's share of the width once it joins the row. */
@@ -68,7 +61,17 @@
    * wrong height. Deriving them from one value is what keeps them in step, and
    * it is why the block needs no measurement at all.
    */
-  --p-cur: clamp(0, calc((var(--p) - 0.25) / 0.6), 1);
+  --p-cur: clamp(0, calc((var(--p) - 0.15) / 0.55), 1);
+  /*
+   * The row of smaller currencies rises on a later clock than the card shrinks.
+   *
+   * These used to share one value, and the owner saw the result: the row was
+   * already climbing while the card was still wide, so the two sat on top of
+   * each other for the middle of the transition. Narrowing finishes at 0.7 and
+   * rising does not begin until 0.55, so by the time the row moves up the card
+   * has given it somewhere to go.
+   */
+  --p-rise: clamp(0, calc((var(--p) - 0.55) / 0.45), 1);
   --p-toggle: clamp(0, calc((var(--p) - 0.2) / 0.65), 1);
   --p-body: clamp(0, calc(var(--p) / 0.9), 1);
 }
@@ -184,8 +187,8 @@
  * Every number here is one this file already knows. Nothing is measured.
  */
 .detail-secondary-row {
-  margin-top: calc(var(--card-gap) - var(--p-cur) * (var(--card-gap) + var(--card-short)));
-  padding-left: calc(var(--p-cur) * var(--card-narrow));
+  margin-top: calc(var(--card-gap) - var(--p-rise) * (var(--card-gap) + var(--card-short) + 60px));
+  padding-left: calc(var(--p-rise) * var(--card-narrow));
   height: calc(var(--secondary-tall) - var(--p-secondary) * (var(--secondary-tall) - var(--secondary-short)));
 }
 
