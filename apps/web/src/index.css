@@ -12,6 +12,18 @@
  */
 .detail-root > div.overflow-y-auto {
   overscroll-behavior-y: none;
+  /*
+   * And no scroll anchoring.
+   *
+   * The green area's height changes on every frame of the transition, which
+   * moves everything below it. Scroll anchoring exists to stop content jumping
+   * in exactly that situation — the browser picks an anchor node and adjusts
+   * scrollTop to keep it still. Here that adjustment fights the animation: the
+   * page compensates for a movement that is supposed to happen, and the two
+   * corrections together read as a stutter. The anchor is ours, not the
+   * browser's.
+   */
+  overflow-anchor: none;
 }
 
 /*

@@ -222,9 +222,16 @@
   transform: translate3d(0, calc(var(--p-toggle) * -6px), 0);
 }
 
-/* H. The white area rises. Transform, not margin, so the list never re-flows. */
+/*
+ * H. The white area.
+ *
+ * It used to carry a small transform of its own on top of the green area's
+ * height change — two displacements for one movement, which is the kind of
+ * doubling that shows up as a jolt rather than as extra travel. The green area
+ * shrinking already moves everything below it; nothing else needs to help.
+ */
 .detail-body {
-  transform: translate3d(0, calc(var(--p-body) * -4px), 0);
+  transform: none;
 }
 
 /* The "recent entries" heading belongs to the display state only. */

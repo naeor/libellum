@@ -24,20 +24,10 @@ export interface DetailTransition {
   /** True once settled at the list end. React may use this for labels. */
   readonly atList: boolean;
   /**
-   * True once the transition is far enough along that the currency strip should
-   * stop wrapping.
-   *
-   * The strip holds the primary card and every other currency in one scrolling
-   * row, and it has two behaviours to serve: in the display state the smaller
-   * cards belong on a second line, and in the list state they belong beside the
-   * primary one with the ones that do not fit running off the edge. Both cannot
-   * be true of one `flex-wrap` value, so it changes — but only near the end,
-   * where the cards are already small enough that the swap is invisible.
-   *
-   * This is the one React update the transition makes, and it happens once per
-   * gesture rather than once per frame.
+   * The strip that switches between wrapping and scrolling. Handed back so the
+   * transition can toggle it directly.
    */
-  readonly late: boolean;
+  readonly stripRef: React.RefObject<HTMLDivElement | null>;
   /** Move to one end without a gesture — used by "查看全部" and the back control. */
   readonly goTo: (progress: number) => void;
 }
@@ -109,6 +99,7 @@ function clamp01(value: number): number {
 export function useDetailTransition(initial: number): DetailTransition {
   const rootRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const stripRef = useRef<HTMLDivElement>(null);
 
   const progress = useRef(initial);
   const velocity = useRef(0);
@@ -116,20 +107,46 @@ export function useDetailTransition(initial: number): DetailTransition {
   const frame = useRef<number | null>(null);
   const lastTick = useRef(0);
 
+  /**
+   * Which animation owns the value.
+   *
+   * `stop()` cannot be trusted on its own: a frame that has already been
+   * dispatched will still run, and a spring that is mid-step will schedule
+   * itself again from inside its own callback — so cancelling the handle and
+   * then starting a new spring could leave two of them writing progress, one
+   * of them to a target nobody wants any more. The owner's friend named this
+   * first and it is the most likely cause of a fast flick stepping backwards.
+   *
+   * Every spring carries the number it was started with and stops the moment
+   * that number is no longer current. There is exactly one owner at any time.
+   */
+  const generation = useRef(0);
+
   const [atList, setAtList] = useState(initial >= 1);
-  const [late, setLate] = useState(initial >= LATE_THRESHOLD);
   const lateState = useRef(initial >= LATE_THRESHOLD);
 
-  /** Paint the current value. One DOM write, no React involved. */
+  /**
+   * Paint the current value.
+   *
+   * One DOM write, and deliberately no React state. The strip used to be
+   * switched by a `setState` from here, and the owner's friend found the
+   * consequence: it fired exactly as the transition crossed 0.72, which during
+   * a fast flick is while the spring is still in the air, and the re-render
+   * showed up as a stall or a step backwards. Nothing in the middle of an
+   * animation may enter React.
+   */
   const paint = useCallback((): void => {
-    rootRef.current?.style.setProperty("--p", progress.current.toFixed(4));
+    const value = progress.current;
+    rootRef.current?.style.setProperty("--p", value.toFixed(4));
 
-    // The single place React hears about the transition's position, and only
-    // when it crosses the one line that matters.
-    const crossed = progress.current >= LATE_THRESHOLD;
+    const crossed = value >= LATE_THRESHOLD;
     if (crossed !== lateState.current) {
       lateState.current = crossed;
-      setLate(crossed);
+      const strip = stripRef.current;
+      if (strip !== null) {
+        strip.classList.toggle("flex-nowrap", crossed);
+        strip.classList.toggle("flex-wrap", !crossed);
+      }
     }
   }, []);
 
@@ -149,9 +166,15 @@ export function useDetailTransition(initial: number): DetailTransition {
    */
   const run = useCallback((): void => {
     stop();
+    generation.current += 1;
+    const mine = generation.current;
     lastTick.current = performance.now();
 
     const step = (now: number): void => {
+      // This spring is no longer the owner: a newer gesture took over. It must
+      // not write, and above all it must not schedule itself again.
+      if (mine !== generation.current) return;
+
       const elapsed = Math.min((now - lastTick.current) / 1000, 1 / 30);
       lastTick.current = now;
 
@@ -195,6 +218,9 @@ export function useDetailTransition(initial: number): DetailTransition {
   /** Follow the finger directly; no spring while it is down. */
   const dragTo = useCallback(
     (next: number): void => {
+      // A gesture takes ownership: whatever spring was running is retired, not
+      // merely cancelled.
+      generation.current += 1;
       stop();
       progress.current = clamp01(next);
       velocity.current = 0;
@@ -414,5 +440,5 @@ export function useDetailTransition(initial: number): DetailTransition {
     };
   }, []);
 
-  return { rootRef, scrollRef, atList, late, goTo };
+  return { rootRef, scrollRef, stripRef, atList, goTo };
 }

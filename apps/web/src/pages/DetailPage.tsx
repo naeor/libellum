@@ -45,7 +45,7 @@ export function DetailPage(): React.JSX.Element {
   const [showAllCurrencies, setShowAllCurrencies] = useState(false);
 
   const categoryId = searchParams.get("categoryId");
-  const { rootRef, scrollRef, atList, late, goTo } = useDetailTransition(saved.progress);
+  const { rootRef, scrollRef, stripRef, atList, goTo } = useDetailTransition(saved.progress);
 
   /**
    * The recording cards fold away when the list state arrives.
@@ -202,10 +202,9 @@ export function DetailPage(): React.JSX.Element {
                * once it is a list.
                */
               <div
+                ref={stripRef}
                 data-h-scroll
-                className={`mt-4 flex gap-2.5 overflow-x-auto pb-1 [scrollbar-width:none] [scroll-snap-type:x_proximity] ${
-                  late ? "flex-nowrap" : "flex-wrap"
-                }`}
+                className="mt-4 flex flex-wrap gap-2.5 overflow-x-auto pb-1 [scrollbar-width:none] [scroll-snap-type:x_proximity]"
               >
                 <MainCard className="detail-main-card" summary={main} currency={mainCode} />
 
