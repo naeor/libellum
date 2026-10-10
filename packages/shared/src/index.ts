@@ -64,6 +64,25 @@ export type {
 export { healthResponseSchema, type HealthResponse } from "./health.js";
 
 export {
+  EXPORT_REF_PREFIX,
+  IMPORT_REF_PREFIX,
+  REF_LENGTH,
+  REF_PATTERN,
+  exportRefSchema,
+  fileRefSchema,
+  importRefSchema,
+  isExportRef,
+  isImportRef,
+  isOurRef,
+  newExportRef,
+  newImportRef,
+  refStamp,
+  type ExportRef,
+  type FileRef,
+  type ImportRef,
+} from "./refs.js";
+
+export {
   DISPLAY_NAME_MAX_LENGTH,
   PASSWORD_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,

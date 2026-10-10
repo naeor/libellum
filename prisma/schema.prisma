@@ -57,6 +57,8 @@ model User {
   createdBooks    Book[]        @relation("BookCreator")
   bookMemberships BookMember[]
   transactions    Transaction[]
+  exportLogs      ExportLog[]
+  importLogs      ImportLog[]
 
   @@map("users")
 }
@@ -127,6 +129,8 @@ model Book {
   paymentMethods PaymentMethod[]
   tags           Tag[]
   transactions   Transaction[]
+  exportLogs     ExportLog[]
+  importLogs     ImportLog[]
 
   @@map("books")
 }
@@ -254,6 +258,23 @@ model Transaction {
   /// Who recorded it.
   userId String @map("user_id") @db.Uuid
 
+  /// The unique value this row carried in the file it was imported from.
+  ///
+  /// Deliberately **not** the primary key. A file we did not produce does not
+  /// get to choose our keys, and de-duplicating on this value alone would
+  /// refuse a legitimate import into a second book — the unique constraint at
+  /// the bottom of this model scopes it to the book instead. Null for anything
+  /// typed in by hand.
+  sourceRef String? @map("source_ref") @db.VarChar(64)
+
+  /// The `In-…` reference of the import batch that created this row, if any.
+  ///
+  /// `source_ref` says *which row of a file* this came from, and can be a value
+  /// we did not mint. This says *which import run brought it in*, and it is
+  /// always ours. Manual entries leave it null. Together they make a row
+  /// answerable: where did this come from, and when did it arrive.
+  importRef String? @map("import_ref") @db.VarChar(32)
+
   /// Always set. An entry saved without a category is filed under the book's
   /// system category 暂无分类, which is never shown in the picker.
   categoryId      String @map("category_id") @db.Uuid
@@ -299,6 +320,13 @@ model Transaction {
   @@index([bookId, kind, occurredLocalDate(sort: Desc)])
   @@index([categoryId])
   @@index([paymentMethodId])
+  /// The import rule, and the scoping is the point: the same file imported
+  /// twice into one book changes nothing, while importing it into a second
+  /// book is not blocked. Nullable, and PostgreSQL treats NULLs as distinct, so
+  /// any number of hand-typed rows can share the null.
+  @@unique([bookId, sourceRef])
+  /// "Show me everything the 20261010-153012 import brought in."
+  @@index([bookId, importRef])
   @@map("transactions")
 }
 
@@ -312,4 +340,97 @@ model TransactionTag {
   @@id([transactionId, tagId])
   @@index([tagId])
   @@map("transaction_tags")
+}
+
+// ---------------------------------------------------------------------------
+// Provenance: what left this book, and what arrived in it
+// ---------------------------------------------------------------------------
+
+/// A record that an export happened.
+///
+/// Metadata only. The owner was explicit that the contents are not kept: no
+/// rows, no file. What is here is what the export covered, how much of it there
+/// was, and the `Out-…` reference the user was shown — which is what makes it
+/// possible to match a file in someone's hands to the run that produced it.
+///
+/// The reference is also written into the exported file, on every row. That is
+/// what lets an import tell "this came back to me" from "this is somebody
+/// else's file".
+model ExportLog {
+  id     String @id @default(uuid()) @db.Uuid
+  bookId String @map("book_id") @db.Uuid
+  /// Who ran it.
+  userId String @map("user_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  /// "csv" or "xlsx".
+  format String @db.VarChar(8)
+
+  /// The filter that produced it, kept as answers rather than as a query string
+  /// so it stays readable when the query language changes.
+  monthFrom  String?          @map("month_from") @db.VarChar(7)
+  monthTo    String?          @map("month_to") @db.VarChar(7)
+  kind       TransactionKind?
+  categoryId String?          @map("category_id") @db.Uuid
+  currency   String?          @db.Char(3)
+
+  /// How many entries went into it.
+  rowCount Int @map("row_count")
+
+  /// Shown to the user and written into the file: `Out-20261010-153012-a3f9`.
+  /// The prefix is enforced by a CHECK constraint, not by convention.
+  fileRef String @unique @map("file_ref") @db.VarChar(32)
+
+  book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([bookId, createdAt])
+  @@map("export_logs")
+}
+
+/// A record that an import happened.
+///
+/// The import equivalent of the row above, with the numbers an import actually
+/// needs to be auditable: how many rows the file held, how many were written,
+/// and how many were recognised as already present and skipped. A skip is not
+/// an error — it is the de-duplication rule doing its job — but it must be
+/// countable, because "the file said 200 rows and my ledger grew by 187" is
+/// exactly the question this table has to answer.
+model ImportLog {
+  id     String @id @default(uuid()) @db.Uuid
+  bookId String @map("book_id") @db.Uuid
+  /// Who ran it.
+  userId String @map("user_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  /// "csv". XLSX import is not offered: the format that round-trips is the text
+  /// one, and a spreadsheet is a viewing format.
+  format String @db.VarChar(8)
+
+  /// Every row the file carried is stamped with this: `In-20261010-153012-b7c2`.
+  /// It is how a row in the ledger answers "where did you come from".
+  fileRef String @unique @map("file_ref") @db.VarChar(32)
+
+  /// The `Out-…` reference of the export this file appears to be, when it is
+  /// one of ours. Null for a file from somewhere else.
+  exportedFileRef String? @map("exported_file_ref") @db.VarChar(32)
+
+  /// SHA-256 of the uploaded bytes. Lets a user settle "did I already import
+  /// this exact file" without keeping the file.
+  sourceFingerprint String @map("source_fingerprint") @db.VarChar(64)
+
+  /// Rows the file declared.
+  rowCount Int @map("row_count")
+  /// Rows written to the ledger.
+  importedCount Int @map("imported_count")
+  /// Rows recognised as already present in this book.
+  skippedCount Int @map("skipped_count")
+
+  book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([bookId, createdAt])
+  @@map("import_logs")
 }
