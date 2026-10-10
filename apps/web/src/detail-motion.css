@@ -35,7 +35,7 @@
    */
   --hero-pad-top: calc(24px - var(--p) * 18px);
   --hero-pad-bottom: calc(28px - var(--p) * 22px);
-  --hero-short: 155px;
+  --hero-short: 140px;
   --card-tall: 128px;
   --card-short: 52px;
   --secondary-tall: 74px;
@@ -49,7 +49,7 @@
    * centre begins 60px down. Rising 42px puts it at 18px — the same centre as
    * the tool buttons. The owner noticed these two were not level.
    */
-  --row-one: 52px;
+  --row-one: 24px;
   /* Gap between the main card and the row of smaller ones. */
   --card-gap: 12px;
   /* The main card's share of the width once it joins the row. */
@@ -151,6 +151,15 @@
    * rather than shows.
    */
   margin-top: calc(8px - var(--p) * 8px);
+  /*
+   * And it gives up its height.
+   *
+   * This is the gap the owner kept reporting: the month rises out of this row,
+   * but the row stayed thirty-two pixels tall underneath it, so the space it
+   * had vacated was still there. The month is translated, not laid out, so
+   * shrinking the row does not move it.
+   */
+  height: calc(32px - var(--p) * 16px);
 }
 
 .detail-month {
@@ -230,7 +239,7 @@
  * spacing around them. This is that slack.
  */
 .detail-strip {
-  margin-top: calc(var(--card-gap) * (1 - var(--p-rise)));
+  margin-top: calc(16px - var(--p) * 24px);
 }
 
 /*
@@ -267,11 +276,19 @@
   opacity: var(--p-twin);
   overflow: hidden;
   padding-inline: 0;
+  /*
+   * And it does not leave the row's gap behind.
+   *
+   * With no width it still had a gap after it, which put the first real card
+   * about ten pixels in from the edge in the display state. The owner saw it
+   * and was right that it was small but wrong.
+   */
+  margin-right: calc(-10px + var(--p-twin) * 10px);
 }
 
 /* F. The tool buttons only move; a rotating button would say nothing. */
 .detail-tools {
-  transform: translate3d(0, calc(var(--p-tools) * -10px), 0);
+  transform: translate3d(0, calc(var(--p-tools) * 10px), 0);
 }
 
 /*
