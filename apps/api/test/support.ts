@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 
 import { buildApp, type BuildAppOptions } from "../src/app.js";
 import { createPrismaClient } from "../src/db.js";
+import { assertTestDatabase } from "./setup.js";
 
 /**
  * Shared fixtures for the integration suites.
@@ -38,8 +39,15 @@ export function cookieFrom(headers: Record<string, unknown>): string {
  * Order matters and is not alphabetical: `transactions.category_id` is
  * ON DELETE RESTRICT, so a cascade that reaches a category still holding
  * entries would be refused. Entries go first, always.
+ *
+ * The database name is checked **before** anything is deleted. `deleteMany()`
+ * has no undo, and on 2026-10-10 this function cleared the development
+ * database's entries because the run inherited a switched DATABASE_URL. The
+ * guard costs one query per reset and removes the possibility.
  */
 export async function resetDatabase(): Promise<void> {
+  await assertTestDatabase((sql) => prisma.$queryRawUnsafe(sql));
+
   await prisma.transactionTag.deleteMany();
   await prisma.transaction.deleteMany();
   await prisma.tag.deleteMany();
