@@ -270,16 +270,29 @@ export function useDetailTransition(initial: number): DetailTransition {
       }
 
       if (decided === "none") {
-        // Eight pixels before committing. Under that, a small wobble decides
-        // nothing; over it, the dominant axis owns the gesture — which is what
-        // keeps a sideways swipe through the currencies from changing shape.
+        // Eight pixels before committing to an axis. Under that, a small
+        // wobble decides nothing; over it, the dominant axis owns the gesture
+        // — which is what keeps a sideways swipe through the currencies from
+        // changing the screen's shape.
         if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
         decided = Math.abs(dy) > Math.abs(dx) ? "vertical" : "horizontal";
-
-        if (decided === "horizontal") {
-          tracking = false;
-          return;
-        }
+      } else if (decided === "horizontal") {
+        /*
+         * A sideways start does not end the gesture.
+         *
+         * This used to give up for the rest of the touch, and the owner found
+         * the result: starting a drag slightly off-vertical, or pausing
+         * half-way and letting the finger drift, killed the transition
+         * entirely for that touch. The reverse direction never had the problem
+         * because it claims the gesture on the first move, with no axis to
+         * decide.
+         *
+         * So the axis is reconsidered on every move. A gesture that began
+         * sideways and turns vertical is still a vertical gesture, and one
+         * that turns sideways again simply stops driving the screen.
+         */
+        if (Math.abs(dy) > Math.abs(dx) + 4) decided = "vertical";
+        else return;
       }
 
       const now = performance.now();

@@ -25,14 +25,28 @@
    * be tuned on a real phone without hunting through calc() expressions.
    */
   --hero-tall: 360px;
-  --hero-short: 150px;
+  /*
+   * Tall enough to hold what the list state actually draws: the wordmark line,
+   * the month, the primary card, the row of smaller ones and the padding. It
+   * used to be shorter than its own contents, and because the hero is a
+   * containment box the extra was clipped — which is why the owner saw the
+   * currency cards cut in half with empty green above them.
+   */
+  --hero-short: 196px;
   --card-tall: 128px;
   --card-short: 52px;
   --secondary-tall: 74px;
   --secondary-short: 52px;
   --heading-h: 44px;
-  /* Height of the wordmark/tools line, which the month slides up into. */
-  --row-one: 44px;
+  /*
+   * How far the month rises to sit on the wordmark's line.
+   *
+   * Worked out from the geometry rather than guessed: the tools row is 36px
+   * tall and the month row starts 8px below it and is 32px tall, so the month's
+   * centre begins 60px down. Rising 42px puts it at 18px — the same centre as
+   * the tool buttons. The owner noticed these two were not level.
+   */
+  --row-one: 42px;
   /* Gap between the main card and the row of smaller ones. */
   --card-gap: 12px;
   /* The main card's share of the width once it joins the row. */
@@ -141,6 +155,21 @@
 }
 
 /*
+ * The primary card's type shrinks with it.
+ *
+ * The card is the same element in both states, so its text has to come down
+ * too — otherwise "¥260.10" at thirty pixels overflows a fifty-two pixel card
+ * and the row turns into a mess, which is exactly what the owner saw.
+ */
+.detail-main-amount {
+  font-size: calc(1.875rem - var(--p-cur) * 0.95rem);
+}
+
+.detail-main-name {
+  font-size: calc(0.75rem - var(--p-cur) * 0.09rem);
+}
+
+/*
  * E. The row of smaller currencies rises to join the main card.
  *
  * The owner's point was that the list state is too short for two rows, so in
@@ -162,8 +191,7 @@
 
 /* F. The tool buttons only move; a rotating button would say nothing. */
 .detail-tools {
-  transform: translate3d(0, calc(var(--p-tools) * -10px), 0) scale(calc(1 - var(--p-tools) * 0.15));
-  transform-origin: right top;
+  transform: translate3d(0, calc(var(--p-tools) * -10px), 0);
 }
 
 /*

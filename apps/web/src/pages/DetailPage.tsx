@@ -190,8 +190,7 @@ export function DetailPage(): React.JSX.Element {
                       onClick={() => {
                         setShowAllCurrencies(true);
                       }}
-                      className="detail-currency-card h-full shrink-0 snap-start px-4 text-left text-xs text-white/90"
-                      style={{ width: "32%" }}
+                      className="detail-currency-card h-full w-30 shrink-0 snap-start px-4 text-left text-xs text-white/90"
                     >
                       更多币种
                     </button>
@@ -493,13 +492,13 @@ function MainCard({
 }): React.JSX.Element {
   return (
     <section className={`${className} detail-currency-card px-5`}>
-      <span className="text-xs text-white/75">{currencyName(currency)}</span>
+      <span className="detail-main-name text-xs text-white/75">{currencyName(currency)}</span>
 
       {summary === null ? (
         <span className="mt-1 text-sm text-white/80">本月暂无数据</span>
       ) : (
         <>
-          <span className="text-3xl font-semibold tabular-nums">
+          <span className="detail-main-amount font-semibold tabular-nums">
             {formatMoney(summary.expenseCents, summary.currency)}
           </span>
 
@@ -516,14 +515,18 @@ function MainCard({
 /**
  * A currency other than the primary one.
  *
- * Sized to about a third of the screen so the next card is always partly
- * visible. The owner asked for that specifically, because a row that fits
- * exactly looks like it has nothing more to show, and because a page of
- * currencies should not all have to fit on one screen.
+ * A fixed width, not a share of the row.
+ *
+ * A percentage would be measured against the row's *content* box, which shrinks
+ * when the row indents to make room for the primary card — so every card got
+ * narrower exactly when there was one more of them, which is backwards. A fixed
+ * width keeps them all the same and lets the ones that do not fit run off the
+ * right edge, which is what the owner asked for: a currency that cannot fit
+ * should move along, not shrink everything.
  */
 function SecondaryCard({ summary }: { readonly summary: CurrencySummary }): React.JSX.Element {
   return (
-    <div className="detail-currency-card h-full shrink-0 snap-start px-4" style={{ width: "34%" }}>
+    <div className="detail-currency-card h-full w-34 shrink-0 snap-start px-4">
       <span className="text-[11px] text-white/70">{currencyName(summary.currency)}</span>
       <span className="text-base font-medium tabular-nums">
         {formatMoney(summary.expenseCents, summary.currency)}
