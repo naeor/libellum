@@ -82,6 +82,17 @@ function clamp01(value: number): number {
   return value < 0 ? 0 : value > 1 ? 1 : value;
 }
 
+/**
+ * Is this the gesture that carries the screen back to its display state?
+ *
+ * Only when the list is at its very top and the finger is moving down. Any
+ * other downward drag is the reader scrolling a list that is already scrolled,
+ * and belongs to the browser.
+ */
+function touchesArePullingDown(startProgress: number, scrollTop: number, dy: number): boolean {
+  return startProgress >= 1 && scrollTop <= 0 && dy > 0;
+}
+
 export function useDetailTransition(initial: number): DetailTransition {
   const rootRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -238,6 +249,26 @@ export function useDetailTransition(initial: number): DetailTransition {
       const dx = touch.clientX - startX;
       const dy = touch.clientY - startY;
 
+      /*
+       * The reverse pull is claimed immediately, before any threshold.
+       *
+       * This is the whole difference between the two directions working. At the
+       * top of a scrollable list, a downward drag is a gesture the browser also
+       * has a claim on — it reads as overscroll. If the first few pixels are
+       * left alone while an eight-pixel threshold is measured, the browser
+       * takes the gesture, stops delivering touchmove, and the screen sits
+       * still until the finger lifts. Which is exactly what the owner saw:
+       * nothing moved, then the whole animation played on release.
+       *
+       * There is no ambiguity to wait for here, so there is nothing to wait
+       * for: scrolled to the top and pulling down can only mean one thing.
+       */
+      if (touchesArePullingDown(startProgress, scroller.scrollTop, dy)) {
+        event.preventDefault();
+        dragTo(1 - dy / DRAG_DISTANCE);
+        return;
+      }
+
       if (decided === "none") {
         // Eight pixels before committing. Under that, a small wobble decides
         // nothing; over it, the dominant axis owns the gesture — which is what
@@ -260,17 +291,7 @@ export function useDetailTransition(initial: number): DetailTransition {
         lastTime = now;
       }
 
-      const scrolled = scroller.scrollTop;
-
-      if (startProgress >= 1) {
-        // Pulling the list down from its top carries the transition back. Any
-        // other downward drag is the reader scrolling, and is left alone.
-        if (scrolled > 0 || dy <= 0) return;
-        dragTo(1 + dy / DRAG_DISTANCE);
-      } else {
-        dragTo(startProgress - dy / DRAG_DISTANCE);
-      }
-
+      dragTo(startProgress - dy / DRAG_DISTANCE);
       event.preventDefault();
     };
 

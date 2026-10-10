@@ -25,7 +25,7 @@
    * be tuned on a real phone without hunting through calc() expressions.
    */
   --hero-tall: 360px;
-  --hero-short: 132px;
+  --hero-short: 150px;
   --card-tall: 128px;
   --card-short: 52px;
   --secondary-tall: 74px;
@@ -33,6 +33,10 @@
   --heading-h: 44px;
   /* Height of the wordmark/tools line, which the month slides up into. */
   --row-one: 44px;
+  /* Gap between the main card and the row of smaller ones. */
+  --card-gap: 12px;
+  /* The main card's share of the width once it joins the row. */
+  --card-narrow: 34%;
 
   /* Each element's own slice of the timeline. clamp keeps them in 0..1. */
   --p-title: clamp(0, calc(var(--p) / 0.35), 1);
@@ -41,6 +45,16 @@
   --p-tools: clamp(0, calc((var(--p) - 0.4) / 0.45), 1);
   --p-cards: clamp(0, calc((var(--p) - 0.15) / 0.65), 1);
   --p-secondary: clamp(0, calc((var(--p) - 0.4) / 0.6), 1);
+  /*
+   * One variable for the whole currency block.
+   *
+   * The main card's height and width, the gap beneath it and the row's indent
+   * all have to reach their ends together — if the card finishes narrowing
+   * before the row has finished rising, the two are briefly side by side at the
+   * wrong height. Deriving them from one value is what keeps them in step, and
+   * it is why the block needs no measurement at all.
+   */
+  --p-cur: clamp(0, calc((var(--p) - 0.25) / 0.6), 1);
   --p-toggle: clamp(0, calc((var(--p) - 0.2) / 0.65), 1);
   --p-body: clamp(0, calc(var(--p) / 0.9), 1);
 }
@@ -116,37 +130,33 @@
 
 /* D. The main card. Shrinks in place rather than being swapped for a new one. */
 .detail-main-card {
-  height: calc(var(--card-tall) - var(--p-cards) * (var(--card-tall) - var(--card-short)));
+  height: calc(var(--card-tall) - var(--p-cur) * (var(--card-tall) - var(--card-short)));
+  width: calc(100% - var(--p-cur) * (100% - var(--card-narrow)));
   contain: layout paint style;
 }
 
 /* Its smaller print steps aside rather than being re-wrapped mid-flight. */
 .detail-main-detail {
-  opacity: calc(1 - clamp(0, calc((var(--p-cards) - 0.35) / 0.35), 1));
+  opacity: calc(1 - clamp(0, calc((var(--p-cur) - 0.35) / 0.35), 1));
 }
 
 /*
- * E. The currency cards.
+ * E. The row of smaller currencies rises to join the main card.
  *
- * One style for all of them — the same tint, the same corner radius, the same
- * inner padding — so that when they shrink they read as a row of matching
- * cards rather than as one large card with some loose elements beside it. That
- * uniformity was the owner's main complaint about the list state, and it comes
- * from the cards sharing a definition rather than each being styled where it
- * is used.
+ * The owner's point was that the list state is too short for two rows, so in
+ * that state every currency has to be one row of matching cards with the
+ * primary one at the left. Rather than moving elements between containers —
+ * which needs measuring both of them, and breaks the moment either changes —
+ * the row simply walks up: its top margin goes from the gap to the negative of
+ * the main card's own height, which lands it exactly on the card's line. Its
+ * left padding grows by the same share the card gave up, so the first small
+ * card begins where the big one ends.
  *
- * Their heights converge on the same value, which is what turns two rows of
- * different sizes into one tidy block.
+ * Every number here is one this file already knows. Nothing is measured.
  */
-.detail-currency-card {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  border-radius: var(--radius-card, 1rem);
-  background: rgb(255 255 255 / 0.14);
-}
-
-.detail-secondary-card {
+.detail-secondary-row {
+  margin-top: calc(var(--card-gap) - var(--p-cur) * (var(--card-gap) + var(--card-short)));
+  padding-left: calc(var(--p-cur) * var(--card-narrow));
   height: calc(var(--secondary-tall) - var(--p-secondary) * (var(--secondary-tall) - var(--secondary-short)));
 }
 
@@ -156,8 +166,37 @@
   transform-origin: right top;
 }
 
-/* G. The toggle slides up under the compact bar. Its selection is untouched. */
-.detail-toggle-bar {
+/*
+ * Every currency card shares one definition — the same tint, the same corner
+ * radius, the same inner padding — so that once they are all small they read as
+ * a row of matching cards. That uniformity was the owner's main complaint about
+ * the list state, and it comes from the cards sharing a rule rather than each
+ * being styled where it is used.
+ */
+.detail-currency-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  border-radius: var(--radius-card, 1rem);
+  background: rgb(255 255 255 / 0.14);
+}
+
+/*
+ * The month arrows.
+ *
+ * Their slot is what animates, not their opacity alone. The owner noticed the
+ * month sitting a few characters in from the left in the display state, and the
+ * cause was the left arrow holding a gap open for a control that is not there
+ * yet. Collapsing the slot means the month is flush with the wordmark above it,
+ * and the arrows arrive by taking their room rather than by appearing in it.
+ */
+.detail-arrow-slot {
+  display: flex;
+  overflow: hidden;
+  width: calc(var(--p-arrows) * 34px);
+}
+
+/* G. The toggle slides up under the compact bar. Its selection is untouched. */.detail-toggle-bar {
   transform: translate3d(0, calc(var(--p-toggle) * -6px), 0);
 }
 

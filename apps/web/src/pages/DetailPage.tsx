@@ -138,13 +138,15 @@ export function DetailPage(): React.JSX.Element {
             */}
             <div className="detail-month-row relative mt-2 h-8">
               <div className="flex items-center gap-1">
-                <ArrowButton
-                  direction="left"
-                  tabbable={atList}
-                  onClick={() => {
-                    setMonth(shiftMonth(month, -1));
-                  }}
-                />
+                <span className="detail-arrow-slot">
+                  <ArrowButton
+                    direction="left"
+                    tabbable={atList}
+                    onClick={() => {
+                      setMonth(shiftMonth(month, -1));
+                    }}
+                  />
+                </span>
 
                 <button
                   type="button"
@@ -159,13 +161,15 @@ export function DetailPage(): React.JSX.Element {
                   </span>
                 </button>
 
-                <ArrowButton
-                  direction="right"
-                  tabbable={atList}
-                  onClick={() => {
-                    setMonth(shiftMonth(month, 1));
-                  }}
-                />
+                <span className="detail-arrow-slot">
+                  <ArrowButton
+                    direction="right"
+                    tabbable={atList}
+                    onClick={() => {
+                      setMonth(shiftMonth(month, 1));
+                    }}
+                  />
+                </span>
               </div>
             </div>
 
@@ -176,7 +180,7 @@ export function DetailPage(): React.JSX.Element {
                 <MainCard className="detail-main-card mt-4" summary={main} currency={mainCode} />
 
                 {others.length === 0 ? null : (
-                  <div className="detail-secondary-card mt-3 flex gap-2.5 overflow-x-auto pb-1 [scrollbar-width:none] [scroll-snap-type:x_proximity]">
+                  <div className="detail-secondary-row mt-3 flex gap-2.5 overflow-x-auto pb-1 [scrollbar-width:none] [scroll-snap-type:x_proximity]">
                     {others.map((item) => (
                       <SecondaryCard key={item.currency} summary={item} />
                     ))}
@@ -186,7 +190,7 @@ export function DetailPage(): React.JSX.Element {
                       onClick={() => {
                         setShowAllCurrencies(true);
                       }}
-                      className="detail-currency-card detail-secondary-card shrink-0 snap-start px-4 text-left text-xs text-white/90"
+                      className="detail-currency-card h-full shrink-0 snap-start px-4 text-left text-xs text-white/90"
                       style={{ width: "32%" }}
                     >
                       更多币种
@@ -519,10 +523,7 @@ function MainCard({
  */
 function SecondaryCard({ summary }: { readonly summary: CurrencySummary }): React.JSX.Element {
   return (
-    <div
-      className="detail-currency-card detail-secondary-card shrink-0 snap-start px-4"
-      style={{ width: "34%" }}
-    >
+    <div className="detail-currency-card h-full shrink-0 snap-start px-4" style={{ width: "34%" }}>
       <span className="text-[11px] text-white/70">{currencyName(summary.currency)}</span>
       <span className="text-base font-medium tabular-nums">
         {formatMoney(summary.expenseCents, summary.currency)}
