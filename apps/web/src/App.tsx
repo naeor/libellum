@@ -1,4 +1,5 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient } from "@tanstack/react-query";
+import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { Suspense, lazy } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router";
 
@@ -6,6 +7,7 @@ import { AuthProvider, useAuth } from "./auth/AuthProvider.js";
 import { ErrorBoundary } from "./components/ErrorBoundary.js";
 import { AppShell } from "./components/Layouts.js";
 import { UndoProvider } from "./components/UndoProvider.js";
+import { CACHE_MAX_AGE_MS, cachePersister, shouldPersistQuery } from "./lib/offline/cache.js";
 import { AboutPage } from "./pages/AboutPage.js";
 import { AddEntryPage } from "./pages/AddEntryPage.js";
 import { BooksPage } from "./pages/BooksPage.js";
@@ -171,7 +173,33 @@ function AppRoutes(): React.JSX.Element {
 export default function App(): React.JSX.Element {
   return (
     <ErrorBoundary>
-      <QueryClientProvider client={queryClient}>
+      <PersistQueryClientProvider
+        client={queryClient}
+        persistOptions={{
+          persister: cachePersister,
+          maxAge: CACHE_MAX_AGE_MS,
+          /**
+           * Which queries are worth keeping on the device.
+           *
+           * Decided per query rather than by a blanket rule, because "will this
+           * answer still be the answer tomorrow" is a question only the query's own
+           * author can answer. See `shouldPersistQuery`.
+           */
+          dehydrateOptions: {
+            shouldDehydrateQuery: shouldPersistQuery,
+          },
+          /**
+           * `buster` invalidates every stored cache when it changes.
+           *
+           * Bumped by hand when the shape of a response changes. Without it, an
+           * upgrade would restore yesterday's responses into code that expects a
+           * new field, and the app would read `undefined` from its own cache —
+           * which is a class of bug that only ever appears on somebody else's
+           * phone, after a deploy.
+           */
+          buster: "v1",
+        }}
+      >
         <AuthProvider>
           <UndoProvider>
             <BrowserRouter>
@@ -186,7 +214,7 @@ export default function App(): React.JSX.Element {
             </BrowserRouter>
           </UndoProvider>
         </AuthProvider>
-      </QueryClientProvider>
+      </PersistQueryClientProvider>
     </ErrorBoundary>
   );
 }
