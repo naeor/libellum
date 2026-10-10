@@ -187,7 +187,7 @@ describe("POST /api/v1/transactions", () => {
     expect((response.json() as { categoryName: string }).categoryName).toBe("餐饮");
   });
 
-  it("refuses a category that belongs to another kind", async () => {
+  it("refuses a category that belongs to another kind, and says which mismatch it is", async () => {
     const cookie = await signUp("mama");
     const ledger = await ledgerOf(cookie);
     const salary = ledger.categories.find((category) => category.name === "工资");
@@ -196,7 +196,43 @@ describe("POST /api/v1/transactions", () => {
     const response = await record(cookie, { kind: "expense", categoryId: salary?.id });
 
     expect(response.statusCode).toBe(403);
-    expect(response.json()).toMatchObject({ code: "category_invalid" });
+    // A code of its own, not the generic one. The old message — "分类不存在或不属于
+    // 该账本" — was untrue here: the category exists and it does belong to this
+    // book. A message that names the wrong fault sends the reader after a
+    // permissions problem that is not there.
+    expect(response.json()).toMatchObject({ code: "category_kind_mismatch" });
+    expect((response.json() as { message: string }).message).toContain("工资");
+  });
+
+  it("files an entry under 暂无分类 when the other kind's 暂无分类 is sent", async () => {
+    const cookie = await signUp("mama");
+    const ledger = await ledgerOf(cookie);
+    const incomeNone = ledger.categories.find(
+      (category) => category.name === "暂无分类" && category.kind === "income",
+    );
+
+    // The owner's report, in one line: the screenshot-recognition screen offered
+    // the previous entry's category, the new entry was an expense, and the id it
+    // carried was the income side's "no category". Nobody chose anything, so
+    // there is nothing to correct — the entry belongs in the ledger.
+    const response = await record(cookie, { kind: "expense", categoryId: incomeNone?.id });
+
+    expect(response.statusCode, response.body).toBe(201);
+    const body = response.json() as { categoryName: string; categoryIsSystem: boolean };
+    expect(body.categoryName).toBe("暂无分类");
+    expect(body.categoryIsSystem).toBe(true);
+  });
+
+  it("accepts an empty categoryId as 'nothing chosen'", async () => {
+    const cookie = await signUp("mama");
+
+    // A `<select>` with an empty option hands back `""`. Reading it as a
+    // malformed UUID was a validation error for the most ordinary action there
+    // is: not picking a category.
+    const response = await record(cookie, { categoryId: "" });
+
+    expect(response.statusCode, response.body).toBe(201);
+    expect((response.json() as { categoryName: string }).categoryName).toBe("暂无分类");
   });
 
   it("refuses a category that belongs to another account", async () => {

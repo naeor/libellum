@@ -382,6 +382,7 @@ export function DetailPage(): React.JSX.Element {
           setEntryOpen((value) => !value);
         }}
         onNavigate={(to) => void navigate(to)}
+        collapsible={!atList}
       />
 
       <MonthPicker
@@ -413,23 +414,42 @@ export function DetailPage(): React.JSX.Element {
  * The ledger builds its own frame rather than using `TabPage` because it owns
  * its scrolling region — the transition needs to know where the list is — and
  * because the bar's expansion has to reserve real space in this page's column.
+ *
+ * **The cards are only a switch in the display state.** Once the reader has
+ * moved down into the list, the frame around them exists to give the entries
+ * room, and a menu that unfolds there would spend exactly what was just won.
+ * In the list state the centre button records directly, which is one press
+ * either way.
  */
 function LedgerNav({
   open,
   onToggle,
   onNavigate,
+  collapsible,
 }: {
   readonly open: boolean;
   readonly onToggle: () => void;
   readonly onNavigate: (to: string) => void;
+  /** False in the list state: no cards to open, so no switch. */
+  readonly collapsible: boolean;
 }): React.JSX.Element {
+  const expanded = collapsible && open;
+
   return (
     <>
       <div
         aria-hidden="true"
-        className={`shrink-0 transition-[height] duration-200 ease-out ${open ? "h-[100px]" : "h-0"}`}
+        className={`shrink-0 transition-[height] duration-200 ease-out ${expanded ? "h-[100px]" : "h-0"}`}
       />
-      <BottomNav active="/" onNavigate={onNavigate} expanded={open} onToggle={onToggle} />
+      <BottomNav
+        active="/"
+        onNavigate={onNavigate}
+        cards={
+          collapsible
+            ? { mode: "toggle", expanded, active: true, onToggle }
+            : { mode: "none", to: "/add", active: true }
+        }
+      />
     </>
   );
 }

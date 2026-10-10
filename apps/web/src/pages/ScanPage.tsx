@@ -509,7 +509,7 @@ function ReviewStep({
   readonly draft: ReviewDraft;
   readonly warnings: readonly string[];
   readonly remaining: number;
-  readonly categories: readonly { id: string; name: string; kind: string; isArchived: boolean }[];
+  readonly categories: readonly { id: string; name: string; kind: string; isArchived: boolean; isSystem: boolean }[];
   readonly paymentMethods: readonly { id: string; name: string; isArchived: boolean }[];
   readonly busy: boolean;
   readonly onSave: (draft: ReviewDraft) => void;
@@ -684,7 +684,7 @@ function Field({
 /** Build the form's starting values from one recognition result. */
 export function draftOf(
   item: OcrItemResult,
-  categories: readonly { id: string; name: string; kind: string; isArchived: boolean }[],
+  categories: readonly { id: string; name: string; kind: string; isArchived: boolean; isSystem?: boolean }[],
   paymentMethods: readonly { id: string; name: string; isArchived: boolean; channel?: string }[],
   lastCategoryId: string | null,
 ): ReviewDraft {
@@ -714,15 +714,22 @@ export function draftOf(
       : "CNY",
     date,
     time,
-    // Only a category the form will actually offer. Accepting an archived one
-    // would leave the select showing 暂无分类 while the state still held the
-    // archived id, and the entry would be filed under a category the user
-    // could not see was selected.
-    categoryId: categories.some(
-      (category) => category.id === lastCategoryId && !category.isArchived,
-    )
-      ? lastCategoryId
-      : null,
+    // Only a category the form will actually offer **for this kind**. Two
+    // mistakes were possible here and both were being made: an archived
+    // category, and — the one that reached a user — the other kind's category.
+    // A screenshot recognised as income inherited the previous expense entry's
+    // 暂无分类, and the server refused the save with a message about permissions
+    // that had nothing to do with it.
+    categoryId:
+      categories.some(
+        (category) =>
+          category.id === lastCategoryId &&
+          !category.isArchived &&
+          category.kind === kind &&
+          !category.isSystem,
+      )
+        ? lastCategoryId
+        : null,
     paymentMethodId: method?.id ?? null,
     note: [draft?.counterparty, draft?.note].filter((part) => part !== null && part !== "").join(" · "),
   };
@@ -731,7 +738,7 @@ export function draftOf(
 /** The single-entry mode: several proofs, one purchase, so the amounts add up. */
 export function foldDrafts(
   items: readonly OcrItemResult[],
-  categories: readonly { id: string; name: string; kind: string; isArchived: boolean }[],
+  categories: readonly { id: string; name: string; kind: string; isArchived: boolean; isSystem?: boolean }[],
   paymentMethods: readonly { id: string; name: string; isArchived: boolean; channel?: string }[],
   lastCategoryId: string | null,
 ): ReviewDraft {

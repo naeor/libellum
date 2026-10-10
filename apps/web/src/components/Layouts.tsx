@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { BottomNav } from "./BottomNav.js";
+import { BottomNav, type EntryCards } from "./BottomNav.js";
 import { SyncBanner } from "./SyncBanner.js";
 import { useGoBack } from "../lib/connectivity.js";
 
@@ -14,6 +14,13 @@ import { useGoBack } from "../lib/connectivity.js";
  * as you scroll up and the app's navigation disappears underneath it, so the
  * user has to scroll back down to reach the tabs. With the page itself never
  * scrolling, there is nothing for that toolbar to react to.
+ *
+ * **The recording cards are the ledger's, not the app's.** Every tab used to
+ * default them open, which meant the analysis, collaborator and account screens
+ * each gave up a hundred pixels to a menu nobody had asked for — and pressing
+ * the centre button there unfolded a menu rather than going anywhere. A screen
+ * that wants the cards passes `entryCards`; a screen that does not gets a centre
+ * button that simply records. See `EntryCards` in `BottomNav`.
  */
 export function TabPage({
   active,
@@ -23,6 +30,7 @@ export function TabPage({
   scrollRef,
   rootRef,
   rootClassName = "",
+  entryCards,
 }: {
   readonly active: string;
   readonly onNavigate: (to: string) => void;
@@ -36,20 +44,21 @@ export function TabPage({
   /** The outermost element, for a screen that drives its own animation. */
   readonly rootRef?: React.RefObject<HTMLDivElement | null>;
   readonly rootClassName?: string;
+  /** Omitted by every tab except the ledger — see the note above. */
+  readonly entryCards?: EntryCards | undefined;
 }): React.JSX.Element {
   /**
-   * Whether the three recording cards above the bar are showing.
+   * Whether the three recording cards are showing.
    *
-   * Held here rather than inside the bar so the scrolling region can make room
-   * for them. That is the whole advantage of cards above the bar over a control
-   * floating over the list: nothing has to be shoved aside at the last moment,
-   * because the space is reserved before anything is drawn.
-   *
-   * Open by default, so recording something is one tap from the moment the app
-   * loads. Whether it should stay open on later visits is a preference and
-   * belongs in settings — recorded in the backlog.
+   * Only meaningful when this screen owns them. The ledger drives that with its
+   * own display/list state, because there the cards are part of the layout
+   * rather than a menu: they belong to the display state and fold away when the
+   * reader moves down into the list.
    */
-  const [entryOpen, setEntryOpen] = useState(true);
+  const [entryOpen, setEntryOpen] = useState(false);
+
+  const cards: EntryCards =
+    entryCards ?? { mode: "none", to: "/add", active: active === "/add" };
 
   return (
     <div ref={rootRef} className={`flex h-dvh flex-col overflow-hidden ${rootClassName}`}>
@@ -66,21 +75,33 @@ export function TabPage({
         The scroll region shrinks by this much while they are out, so nothing
         ever passes behind them — they are in the layout rather than on top of
         it. Animating the height keeps the list from jumping as they fold away.
+
+        Zero height when this screen has no cards, which is every tab except the
+        ledger: reserving space for a menu that cannot open would be the same
+        waste the cards were removed to avoid.
       */}
       <div
         aria-hidden="true"
         className={`shrink-0 transition-[height] duration-200 ease-out ${
-          entryOpen ? "h-[100px]" : "h-0"
+          cards.mode === "toggle" && entryOpen ? "h-[100px]" : "h-0"
         }`}
       />
 
       <BottomNav
         active={active}
         onNavigate={onNavigate}
-        expanded={entryOpen}
-        onToggle={() => {
-          setEntryOpen((open) => !open);
-        }}
+        cards={
+          cards.mode === "toggle"
+            ? {
+                mode: "toggle",
+                expanded: entryOpen,
+                active: false,
+                onToggle: () => {
+                  setEntryOpen((open) => !open);
+                },
+              }
+            : cards
+        }
       />
     </div>
   );

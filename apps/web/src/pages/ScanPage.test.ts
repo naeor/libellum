@@ -105,6 +105,36 @@ describe("draftOf", () => {
     expect(draftOf(item(), CATEGORIES, METHODS, "c-old").categoryId).toBeNull();
     expect(draftOf(item(), CATEGORIES, METHODS, "nope").categoryId).toBeNull();
   });
+
+  it("does not carry a category across a change of kind", () => {
+    // The bug the owner hit, in one line. He photographed a bill, the reading
+    // came back as income, and the form inherited the previous entry's expense
+    // category — which the server refused, with a message about permissions that
+    // had nothing to do with it. A category offered for one kind must never be
+    // offered for the other.
+    const asIncome = draftOf(item({ kind: "income" }), CATEGORIES, METHODS, "c-dining");
+
+    expect(asIncome.kind).toBe("income");
+    expect(asIncome.categoryId).toBeNull();
+  });
+
+  it("still carries a category when the kind matches", () => {
+    const asIncome = draftOf(item({ kind: "income" }), CATEGORIES, METHODS, "c-salary");
+
+    expect(asIncome.categoryId).toBe("c-salary");
+  });
+
+  it("never defaults to a system category, which the picker does not offer", () => {
+    // 暂无分类 is a real row, but it is not something the user can choose, so
+    // inheriting it would leave the picker showing one thing and the state
+    // holding another.
+    const withSystem = [
+      ...CATEGORIES,
+      { id: "c-none", name: "暂无分类", kind: "expense", isArchived: false, isSystem: true },
+    ];
+
+    expect(draftOf(item(), withSystem, METHODS, "c-none").categoryId).toBeNull();
+  });
 });
 
 describe("foldDrafts", () => {

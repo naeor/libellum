@@ -56,8 +56,20 @@ export async function currentBookId(prisma: PrismaClient, userId: string): Promi
  *
  * A chosen category must belong to the same book and the same kind — otherwise
  * an income entry could be filed under 餐饮, and totals per category would be
- * nonsense. No choice at all is not an error: it falls back to the book's
- * hidden 暂无分类 for that kind, which is why `category_id` can stay mandatory.
+ * nonsense.
+ *
+ * **An empty value is not an error.** "Not chosen" is the ordinary case, and the
+ * owner put the reason plainly: 暂无分类 is itself a category, so an entry with
+ * no choice still belongs in the ledger. It falls back to the book's hidden
+ * system category for that kind, which is why `category_id` can stay mandatory.
+ *
+ * The two failure modes are reported **separately**, and that came from a real
+ * complaint. One message used to cover both: "分类不存在或不属于该账本". When the
+ * actual problem was that a ¥ expense category had been sent with an income
+ * entry, that message was simply untrue — the category existed, and it did
+ * belong to the book — and it sent the reader looking for a permissions problem
+ * that was not there. A message that describes the wrong fault is worse than no
+ * message, because it is believed.
  */
 export async function resolveCategoryId(
   prisma: PrismaClient,
@@ -65,15 +77,34 @@ export async function resolveCategoryId(
   kind: TransactionKind,
   requested: string | null | undefined,
 ): Promise<string> {
-  if (requested) {
+  // `""` means the same as absent. A `<select>` with an empty option hands back
+  // an empty string, and the client should not have to know that.
+  if (requested !== null && requested !== undefined && requested !== "") {
     const category = await prisma.category.findFirst({
-      where: { id: requested, bookId, kind },
-      select: { id: true },
+      where: { id: requested, bookId },
+      select: { id: true, kind: true, name: true, isSystem: true },
     });
 
-    if (!category) throw forbidden("category_invalid", "分类不存在或不属于该账本。");
+    if (category === null) {
+      throw forbidden("category_invalid", "这个分类不在这本账里，可能已被删除。");
+    }
 
-    return category.id;
+    if (category.kind !== kind) {
+      // The other kind's 暂无分类 is not a mismatch worth failing over: the
+      // person did not choose a category at all, so there is nothing to correct.
+      // Anything else is a genuine inconsistency between the type and the
+      // category, and it is named as such.
+      const wantIncome = category.kind === "income";
+
+      if (!category.isSystem) {
+        throw forbidden(
+          "category_kind_mismatch",
+          `「${category.name}」属于${wantIncome ? "收入" : "支出"}分类，和这笔记账的收支类型不一致。`,
+        );
+      }
+    } else {
+      return category.id;
+    }
   }
 
   const fallback = await prisma.category.findFirst({

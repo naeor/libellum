@@ -122,6 +122,33 @@ const ENTRY_ACTIONS: readonly EntryAction[] = [
 ];
 
 /**
+ * How the three recording cards behave, if they exist at all.
+ *
+ *  * `toggle` — the centre button unfolds them and folds them away again.
+ *  * `navigate` — pressing the button goes to the given path instead.
+ *  * absent — the cards are **gone entirely**, and the button takes the reader to
+ *    `/add`.
+ *
+ * The absent case is the owner's decision and it earns its existence: the cards
+ * are a *menu*, and a menu that is open by default on the analysis, collaborator
+ * and account screens spends space those screens need for their own content.
+ * Rather than defaulting them closed everywhere and leaving a switch that
+ * unfolds a menu nobody asked for, they simply do not exist off the ledger.
+ *
+ * The centre button stays a real destination either way, so recording something
+ * is never more than one press away.
+ */
+export type EntryCards =
+  | {
+      readonly mode: "toggle";
+      readonly expanded: boolean;
+      readonly onToggle: () => void;
+      readonly active: boolean;
+    }
+  | { readonly mode: "navigate"; readonly to: string; readonly active: boolean }
+  | { readonly mode: "none"; readonly to: string; readonly active: boolean };
+
+/**
  * The bottom bar, whose centre button is a switch rather than a destination.
  *
  * Pressing it turns the `+` forty-five degrees into an `×` and unfolds three
@@ -137,14 +164,16 @@ const ENTRY_ACTIONS: readonly EntryAction[] = [
 export function BottomNav({
   active,
   onNavigate,
-  expanded,
-  onToggle,
+  cards,
 }: {
   readonly active: string;
   readonly onNavigate: (to: string) => void;
-  readonly expanded: boolean;
-  readonly onToggle: () => void;
+  readonly cards: EntryCards;
 }): React.JSX.Element {
+  /** The cards are drawn only when something can open them. */
+  const open = cards.mode === "toggle" && cards.expanded;
+  /** The `+` rotates into an `×` only while the cards are actually out. */
+  const turned = open;
   return (
     // Not `fixed`: the frame that owns this bar is the full dynamic viewport
     // height and only scrolls its middle region, so the bar never ends up
@@ -157,56 +186,62 @@ export function BottomNav({
         Kept mounted and animated, rather than added and removed: an element
         that appears instantly has nothing to animate, and the fade is what
         makes the row read as coming out of the button.
-      */}
-      <div
-        aria-hidden={!expanded}
-        className={`absolute inset-x-0 bottom-full transition-all duration-200 ease-out ${
-          expanded ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-2 opacity-0"
-        }`}
-      >
-        {/*
-          pb-[26px]: the row sits a little lower than it first did. The cross
-          button is raised 32px above the bar, so the cards' lower edge comes
-          within a few pixels of its top — close, but the owner asked for the
-          row to sit lower and the two do not actually touch.
-        */}
-        <ul className="mx-auto flex w-full max-w-md items-end justify-center gap-3 px-6 pb-[26px]">
-          {ENTRY_ACTIONS.map((action) => {
-            const shape =
-              "flex w-[4.5rem] flex-col items-center gap-0.5 rounded-2xl bg-brand-soft py-2 text-brand-dark shadow-sm transition";
 
-            // A real link, not a button that calls navigate(). If the router's
-            // own navigation ever fails, an <a href> still works — the browser
-            // does it — and it can be long-pressed and copied, which a button
-            // cannot.
-            if (action.to !== undefined) {
+        Not rendered at all when the cards cannot be opened — there is nothing to
+        animate into, and a hidden menu that still exists in the DOM is a menu
+        somebody will eventually focus.
+      */}
+      {cards.mode === "toggle" ? (
+        <div
+          aria-hidden={!open}
+          className={`absolute inset-x-0 bottom-full transition-all duration-200 ease-out ${
+            open ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-2 opacity-0"
+          }`}
+        >
+          {/*
+            pb-[26px]: the row sits a little lower than it first did. The cross
+            button is raised 32px above the bar, so the cards' lower edge comes
+            within a few pixels of its top — close, but the owner asked for the
+            row to sit lower and the two do not actually touch.
+          */}
+          <ul className="mx-auto flex w-full max-w-md items-end justify-center gap-3 px-6 pb-[26px]">
+            {ENTRY_ACTIONS.map((action) => {
+              const shape =
+                "flex w-[4.5rem] flex-col items-center gap-0.5 rounded-2xl bg-brand-soft py-2 text-brand-dark shadow-sm transition";
+
+              // A real link, not a button that calls navigate(). If the router's
+              // own navigation ever fails, an <a href> still works — the browser
+              // does it — and it can be long-pressed and copied, which a button
+              // cannot.
+              if (action.to !== undefined) {
+                return (
+                  <li key={action.label}>
+                    <Link to={action.to} aria-label={`${action.label}记账`} className={`${shape} active:bg-brand-soft/70`}>
+                      {action.icon}
+                      <span className="text-[11px]">{action.label}</span>
+                    </Link>
+                  </li>
+                );
+              }
+
               return (
                 <li key={action.label}>
-                  <Link to={action.to} aria-label={`${action.label}记账`} className={`${shape} active:bg-brand-soft/70`}>
+                  <button
+                    type="button"
+                    disabled
+                    tabIndex={open ? 0 : -1}
+                    aria-label={`${action.label}记账，${action.hint ?? "即将开放"}`}
+                    className={`${shape} opacity-60`}
+                  >
                     {action.icon}
                     <span className="text-[11px]">{action.label}</span>
-                  </Link>
+                  </button>
                 </li>
               );
-            }
-
-            return (
-              <li key={action.label}>
-                <button
-                  type="button"
-                  disabled
-                  tabIndex={expanded ? 0 : -1}
-                  aria-label={`${action.label}记账，${action.hint ?? "即将开放"}`}
-                  className={`${shape} opacity-60`}
-                >
-                  {action.icon}
-                  <span className="text-[11px]">{action.label}</span>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      </div>
+            })}
+          </ul>
+        </div>
+      ) : null}
 
       <ul className="mx-auto flex w-full max-w-md items-end justify-around px-2">
         {TABS.map((tab) => {
@@ -216,22 +251,41 @@ export function BottomNav({
           if (tab.primary === true) {
             return (
               <li key={tab.to} className="flex-1">
-                <button
-                  type="button"
-                  onClick={onToggle}
-                  aria-expanded={expanded}
-                  aria-label={expanded ? "收起记账方式" : "展开记账方式"}
-                  // Raised well above the bar and ringed in the bar's own
-                  // colour, so it reads as the one deliberate action rather
-                  // than a fifth destination.
-                  className="mx-auto -mt-8 mb-2 flex size-16 items-center justify-center rounded-full bg-brand text-white shadow-lg ring-4 ring-surface transition hover:bg-brand-dark"
-                >
-                  <PlusIcon
-                    className={`size-8 transition-transform duration-200 ease-out ${
-                      expanded ? "rotate-45" : "rotate-0"
-                    }`}
-                  />
-                </button>
+                {/*
+                  Raised well above the bar and ringed in the bar's own colour,
+                  so it reads as the one deliberate action rather than a fifth
+                  destination.
+
+                  A button that switches, or a link that goes somewhere — never
+                  both, because a control that sometimes unfolds a menu and
+                  sometimes navigates is a control nobody can predict.
+                */}
+                {cards.mode === "toggle" ? (
+                  <button
+                    type="button"
+                    onClick={cards.onToggle}
+                    aria-expanded={open}
+                    aria-label={open ? "收起记账方式" : "展开记账方式"}
+                    className="mx-auto -mt-8 mb-2 flex size-16 items-center justify-center rounded-full bg-brand text-white shadow-lg ring-4 ring-surface transition hover:bg-brand-dark"
+                  >
+                    <PlusIcon
+                      className={`size-8 transition-transform duration-200 ease-out ${
+                        turned ? "rotate-45" : "rotate-0"
+                      }`}
+                    />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onNavigate(cards.to);
+                    }}
+                    aria-label="记一笔"
+                    className="mx-auto -mt-8 mb-2 flex size-16 items-center justify-center rounded-full bg-brand text-white shadow-lg ring-4 ring-surface transition hover:bg-brand-dark"
+                  >
+                    <PlusIcon className="size-8" />
+                  </button>
+                )}
               </li>
             );
           }

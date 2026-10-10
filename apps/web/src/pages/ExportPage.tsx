@@ -9,7 +9,7 @@ import { useAuth } from "../auth/AuthProvider.js";
 import { errorMessage } from "../lib/api.js";
 import { currentMonth, formatMonthLabel, shiftMonth } from "../lib/datetime.js";
 import { currencyName } from "../lib/format.js";
-import { fetchExport, fetchTemplate, useExportLog, useLedger } from "../lib/queries.js";
+import { fetchExport, fetchTemplate, useLedger } from "../lib/queries.js";
 import { canShareFiles, deliverFile, toFile } from "../lib/share.js";
 
 /**
@@ -69,7 +69,6 @@ export function ExportPage(): React.JSX.Element {
   const navigate = useNavigate();
   const { user } = useAuth();
   const ledger = useLedger();
-  const exportLog = useExportLog();
 
   const [format, setFormat] = useState<ExportFormat>("csv");
   const [range, setRange] = useState<RangePreset>("all");
@@ -131,7 +130,6 @@ export function ExportPage(): React.JSX.Element {
           ? `已导出 ${String(file.rowCount)} 条记录（${file.fileRef}），并打开分享菜单。`
           : `已导出 ${String(file.rowCount)} 条记录（${file.fileRef}），文件已下载。`,
       );
-      void exportLog.refetch();
     } catch (caught) {
       setError(errorMessage(caught));
     } finally {
@@ -359,30 +357,22 @@ export function ExportPage(): React.JSX.Element {
         </Button>
       </section>
 
-      {/* ------------------------------------------------------------------ */}
-      {(exportLog.data?.entries.length ?? 0) > 0 ? (
-        <section className="flex flex-col gap-3">
-          <h2 className="text-xs text-muted">导出记录</h2>
-          <p className="text-xs leading-relaxed text-muted">
-            只记录谁在什么时候导出了多少条，不保存导出的内容。
-          </p>
+      {/*
+        There is deliberately **no** list of past exports here.
 
-          <ul className="overflow-hidden rounded-field border border-line bg-surface">
-            {exportLog.data?.entries.slice(0, 5).map((entry) => (
-              <li
-                key={entry.fileRef}
-                className="flex items-center justify-between gap-3 border-b border-line px-4 py-3 last:border-b-0"
-              >
-                <span className="font-mono text-xs text-ink">{entry.fileRef}</span>
-                <span className="text-xs text-muted">
-                  {entry.format.toUpperCase()} · {String(entry.rowCount)} 条 ·{" "}
-                  {new Date(entry.createdAt).toLocaleDateString("zh-CN")}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
+        An earlier version of this screen showed one, and the owner's objection
+        is worth stating as a principle rather than a preference: **this site is
+        a client.** Everything built here is visible to every user of it, so the
+        test for anything on a screen is not "is this interesting" but "does this
+        user have to see this". Audit data — who exported what, and when — is the
+        server's record of events, not the client's content. The safest way not
+        to show something is not to send it.
+
+        `GET /api/v1/export-log` still exists and is scoped to the caller's own
+        book, so it can back a "my export history" surface the day there is a
+        reason for one. Until then the client does not ask for it, and therefore
+        cannot show it.
+      */}
 
       <p className="text-xs leading-relaxed text-muted">
         导出默认币种：{currencyName(user?.defaultCurrency ?? "CNY")}。不同币种分开统计，不做汇率换算。
