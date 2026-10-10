@@ -1,23 +1,25 @@
 /**
- * Handing the chosen screenshots from the recording cards to the recognition
- * screen.
+ * Handing things from the recording controls to the screens that use them.
  *
- * **Why a module and not a route state.** The owner asked for two fewer taps:
- * pressing 拍照 should open the image picker straight away and, once a picture
- * is chosen, go to recognition. That means the card owns the picker and the
- * screen does the work, so the chosen `File`s have to cross a navigation.
+ * **Why a module and not route state.**
  *
- * They cannot go through the URL — a `File` is not serialisable, and the
- * alternative (an object URL) would put somebody's screenshot in their history.
- * They cannot go through router state either, because a `File` in history state
- * survives a back-navigation and would be *re-used*: go forward, go back, and
- * the same picture is recognised again. So they are handed over in memory, once,
- * and the handover is emptied as it is read.
+ * Photographs: the owner asked for two fewer taps — pressing 拍照 should open the
+ * image picker straight away and, once a picture is chosen, go to recognition.
+ * That means the card owns the picker and the screen does the work, so the chosen
+ * `File`s cross a navigation.
  *
- * In memory is also the right lifetime for the other reason: screenshots are
- * discarded as soon as recognition finishes and nothing is ever stored. A
- * handover that outlives its read would be a leak of exactly the thing the
- * feature promises not to keep.
+ * A transcript: the voice screen records, sends, reads the answer, and only then
+ * knows what to put in the form. Passing the text through the URL would work
+ * today and would put somebody's sentence in their browser history, where it
+ * outlives the entry they decided not to save.
+ *
+ * `File`s cannot go through the URL at all, and not through history state either:
+ * a `File` in history state survives a back-navigation and would be **re-used**,
+ * so forward, back, and the same picture is recognised again.
+ *
+ * So both are handed over **in memory, once**, and the handover is emptied as it
+ * is read. In memory is also the right lifetime for the promise these features
+ * make — screenshots and recordings are discarded once read.
  */
 
 let pending: File[] = [];
@@ -39,4 +41,34 @@ export function takeScanHandover(): File[] {
   pending = [];
 
   return files;
+}
+
+/** What the voice screen hands to its review form. */
+export interface SpokenDraftHandover {
+  /** The sentence as heard, already edited by the user if they changed it. */
+  readonly text: string;
+  /** Digits as spoken, or null when no amount was heard. */
+  readonly amount: string | null;
+  readonly kind: "expense" | "income";
+}
+
+let pendingSpoken: SpokenDraftHandover | null = null;
+
+/** Put a transcript where the review screen will find it. */
+export function handOverSpoken(draft: SpokenDraftHandover): void {
+  pendingSpoken = draft;
+}
+
+/**
+ * Take the transcript, leaving nothing behind.
+ *
+ * `null` means the screen was opened directly — a bookmark, a refresh, a back
+ * press. The review screen then says so and points at the recorder rather than
+ * showing an empty form the user has to work out is empty.
+ */
+export function takeSpokenHandover(): SpokenDraftHandover | null {
+  const draft = pendingSpoken;
+  pendingSpoken = null;
+
+  return draft;
 }

@@ -63,10 +63,15 @@ TARGET_RATE = 16_000
 MAX_AUDIO_BYTES = 8 * 1024 * 1024
 MAX_SECONDS = 60
 
-# The owner chose `base`: small enough for the 2 GB server, and clearly better
-# than `tiny` on Chinese. Overridable so the choice can be revisited on a real
-# phone without editing code.
-MODEL_NAME = os.environ.get("LIBELLUM_WHISPER_MODEL", "base")
+# The owner chose the model. `base` misheard 午饭 as 五份 — a tonal distinction
+# that matters in Chinese and that the smallest models are known to lose — so he
+# asked for one step up. `small` is 466 MB against `base`'s 148, still comfortable
+# on a 2 GB server, and noticeably better on Mandarin.
+#
+# Overridable so the choice can be revisited on a real phone without editing code,
+# and named in the startup line so a log says which one is actually loaded rather
+# than which one was intended.
+MODEL_NAME = os.environ.get("LIBELLUM_WHISPER_MODEL", "small")
 THREADS = int(os.environ.get("LIBELLUM_WHISPER_THREADS", "4"))
 
 

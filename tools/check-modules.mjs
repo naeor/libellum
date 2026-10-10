@@ -26,6 +26,7 @@ const MODULES = [
   "/src/pages/ScanPage.tsx",
   "/src/pages/RecordPage.tsx",
   "/src/pages/AddEntryPage.tsx",
+  "/src/pages/VoiceReviewPage.tsx",
   "/src/lib/api.ts",
   "/src/lib/queries.ts",
   "/src/lib/share.ts",
@@ -36,6 +37,7 @@ const MODULES = [
   "/src/components/ConfirmDialog.tsx",
   "/src/components/ChoiceDialog.tsx",
   "/src/components/VoiceRipples.tsx",
+  "/src/components/EntryForm.tsx",
   "/src/components/Layouts.tsx",
 ];
 

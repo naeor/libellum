@@ -8,6 +8,7 @@ import { InnerPage } from "../components/Layouts.js";
 import { VoiceRipples } from "../components/VoiceRipples.js";
 import { errorMessage } from "../lib/api.js";
 import { useTranscribe } from "../lib/queries.js";
+import { handOverSpoken } from "../lib/scanHandoff.js";
 import { describeBlocker, useVoiceRecorder, type Recording } from "../lib/useVoiceRecorder.js";
 
 /**
@@ -80,14 +81,30 @@ export function RecordPage(): React.JSX.Element {
       {transcribe.isError ? <Alert tone="error">{errorMessage(transcribe.error)}</Alert> : null}
 
       {/*
-        The panel. Its whole surface starts and stops the recording, because the
-        button is the obvious target and the lines are what the eye is on; making
-        only a small button work would send taps to a dead area on a screen whose
+        The panel. Its whole surface starts and stops the recording: the button is
+        the obvious target and the ripples are what the eye is on, so making only
+        a small control work would send taps to a dead area on a screen whose
         entire purpose is one press.
       */}
       <button
         type="button"
-        disabled={busy || transcribe.isSuccess}
+        /**
+         * ⚠️ **Not disabled after a transcription, and that was a real bug.**
+         *
+         * The condition used to include `transcribe.isSuccess`, so once a
+         * recording had been read the panel was dead — while its own label read
+         * "点击重新录一遍". The owner pressed it and nothing happened.
+         *
+         * A screen that offers an action and refuses it is worse than one that
+         * never offered it: the user is left working out whether the app is
+         * broken or they misread, and here the label was telling them the
+         * opposite of the truth.
+         *
+         * `busy` alone is the honest gate — starting, stopping, or waiting for a
+         * transcription. Those are the three states where a second press would
+         * do something surprising.
+         */
+        disabled={busy}
         onClick={() => {
           if (recording) {
             recorder.stop();
@@ -169,22 +186,24 @@ export function RecordPage(): React.JSX.Element {
           <Button
             onClick={() => {
               /**
-               * Straight to the manual form, filled in.
+               * To the review form, filled in from what was heard.
                *
-               * Not to a review screen of its own: the entry still needs a
-               * category, a payment method and a date, and the form that already
-               * collects those is one screen away. Building a second one here
-               * would mean two places to keep in step for no gain.
+               * In memory rather than in the URL: the sentence is somebody's own
+               * words about their own spending, and a query string puts it in the
+               * browser's history where it outlives the entry they decided not to
+               * save. The handover is read once and emptied as it is read, so a
+               * refresh or a back press finds nothing and the review screen says
+               * so rather than showing an empty form.
                */
-              const params = new URLSearchParams();
-              params.set("spoken", "1");
+              const text = (editedText ?? transcribe.data.text).trim();
 
-              const text = editedText ?? transcribe.data.text;
-              if (text.trim() !== "") params.set("note", text.trim());
-              if (transcribe.data.amount !== null) params.set("amount", transcribe.data.amount);
-              params.set("kind", transcribe.data.kind);
+              handOverSpoken({
+                text,
+                amount: transcribe.data.amount,
+                kind: transcribe.data.kind,
+              });
 
-              void navigate(`/add?${params.toString()}`);
+              void navigate("/voice/review");
             }}
           >
             去核对并记账

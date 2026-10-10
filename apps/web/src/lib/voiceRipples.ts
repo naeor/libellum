@@ -24,22 +24,67 @@
  */
 
 /**
- * How often a new ripple appears, in milliseconds.
+ * How often a new ripple appears, in milliseconds, **when the room is quiet**.
  *
- * The owner's number. Worth keeping rather than tuning: at 500 ms a ripple is
- * born twice a second, which reads as a steady pulse, and the rhythm itself
- * carries the message that recording is live even when the room is silent.
+ * The owner's number, raised from 0.5 s after seeing it: a slower pulse reads as
+ * calmer, and the rhythm still says "listening" without competing with the sound.
  */
-export const RIPPLE_INTERVAL_MS = 500;
+export const RIPPLE_INTERVAL_MS = 600;
 
 /**
- * How long one ripple lives, in milliseconds.
+ * The fastest the pulse may go, in milliseconds.
  *
- * Three intervals, so there are always about three on screen — enough for the
- * eye to read them as a series travelling outwards rather than as separate
- * blinks. Fewer and it pulses; many more and it becomes a haze.
+ * The owner's second rule: **音量越大扩散，波纹的时间会越短，最多缩短至 0.2 秒** —
+ * louder means the rings come faster as well as travel further, bottoming out at
+ * 0.2 s, which he places at a shout ("差不多时很大声说话的时候，大约 100 分贝").
+ *
+ * So a quiet room ticks every 0.6 s and a shout every 0.2 s. Both ends are his,
+ * and both are needed: without a floor, a clipped signal would fire rings so fast
+ * they would be a solid blur rather than a pulse.
  */
-export const RIPPLE_LIFE_MS = 1_500;
+export const RIPPLE_INTERVAL_MIN_MS = 200;
+
+/**
+ * How long one ripple lives, as a multiple of its own interval.
+ *
+ * Tied to the interval rather than fixed, and that is the whole point: a shout
+ * produces rings three times as often, and with a fixed life they would pile up
+ * until the display was a grey disc. Scaling the life keeps **about three rings
+ * in flight** whatever the pace — which is what makes it read as a series
+ * travelling outwards rather than as a pulse or a haze.
+ */
+export const RIPPLE_LIFE_INTERVALS = 2.5;
+
+/**
+ * How loud a full-scale signal is taken to be, in decibels.
+ *
+ * The owner described his ceiling as "大约 100 分贝" for very loud speech. It is a
+ * rough anchor rather than a measurement — nothing here is calibrated, and a
+ * phone microphone's absolute level depends on its gain, its position and the
+ * room — but it gives the mapping a floor and a ceiling that match how he
+ * described the two ends, which is what the display is for.
+ */
+export const RIPPLE_LOUD_DB = 100;
+
+/**
+ * How long a ripple thrown by this level waits before the next one.
+ *
+ * Loud means quick, quiet means slow, linearly between the owner's two numbers.
+ * Linear rather than eased: he described a range with two ends, and the ear is
+ * already doing the perceptual work here — the reach is where the square root
+ * belongs, because that is the one being read as "how far did that go".
+ */
+export function intervalForLevel(level: number): number {
+  const decibels = Math.max(0, Math.min(1, level)) * RIPPLE_LOUD_DB;
+  const proportion = decibels / RIPPLE_LOUD_DB;
+
+  return RIPPLE_INTERVAL_MS - (RIPPLE_INTERVAL_MS - RIPPLE_INTERVAL_MIN_MS) * proportion;
+}
+
+/** How long a ripple born at this pace lives. */
+export function lifeForInterval(intervalMs: number): number {
+  return intervalMs * RIPPLE_LIFE_INTERVALS;
+}
 
 /** The radius a ripple reaches when it dies, for a **quiet** sound. */
 export const RIPPLE_MIN_REACH = 26;
@@ -52,6 +97,8 @@ export interface Ripple {
   readonly ageMs: number;
   /** Where it will have got to by the end of its life. */
   readonly reach: number;
+  /** How long this one lives — shorter for a loud one, so the pace can rise. */
+  readonly lifeMs: number;
 }
 
 /**
@@ -110,28 +157,36 @@ export function advanceRipples(
   sinceLastMs: number,
   level: number,
 ): { readonly ripples: readonly Ripple[]; readonly sinceLastMs: number } {
+  const interval = intervalForLevel(level);
+  const life = lifeForInterval(interval);
+  const reach = reachForLevel(level);
+
   const aged = ripples
     .map((ripple) => ({ ...ripple, ageMs: ripple.ageMs + elapsedMs }))
-    .filter((ripple) => ripple.ageMs < RIPPLE_LIFE_MS);
+    // Each ripple is measured against **its own** life, not a global one: a
+    // ripple born during a shout lives a shorter time, which is what lets the
+    // pace rise without the display filling up.
+    .filter((ripple) => ripple.ageMs < ripple.lifeMs);
 
   let since = sinceLastMs + elapsedMs;
-  const count = Math.floor(since / RIPPLE_INTERVAL_MS);
-  since -= count * RIPPLE_INTERVAL_MS;
+  const born: Ripple[] = [];
 
   /**
-   * The ripples that came due, oldest first and one interval apart.
+   * The interval is recomputed from the level each time round the loop, which is
+   * what makes the pulse *speed up* while somebody is talking rather than
+   * switching pace only at the next ring. Cheap — it is arithmetic on one number
+   * — and it means a shout is answered immediately.
    *
-   * `since` is the leftover time to the *next* one, so after `count` intervals the
-   * oldest is `since + (count - 1) · interval` old and the newest is `since` old.
-   * Spacing them by whole intervals is what makes a long frame produce a
-   * travelling series rather than a stack — and in the ordinary case of one birth
-   * per frame this is a single ripple whose age is the leftover time.
+   * The age of a ripple born mid-frame comes from how long ago it fell due, so a
+   * long frame produces a travelling series rather than a stack.
    */
-  const reach = reachForLevel(level);
-  const born: Ripple[] = Array.from({ length: count }, (_, index) => ({
-    ageMs: since + (count - 1 - index) * RIPPLE_INTERVAL_MS,
-    reach,
-  }));
+  let guard = 0;
+
+  while (since >= interval && guard < 64) {
+    since -= interval;
+    born.unshift({ ageMs: since, reach, lifeMs: life });
+    guard += 1;
+  }
 
   return { ripples: [...aged, ...born], sinceLastMs: since };
 }
@@ -150,7 +205,7 @@ export function advanceRipples(
  * visible ring for as long as possible instead of a grey smudge for most of it.
  */
 export function rippleProgress(ripple: Ripple): { readonly spread: number; readonly opacity: number } {
-  const life = Math.max(0, Math.min(1, ripple.ageMs / RIPPLE_LIFE_MS));
+  const life = Math.max(0, Math.min(1, ripple.ageMs / ripple.lifeMs));
 
   return {
     spread: 1 - (1 - life) ** 2,

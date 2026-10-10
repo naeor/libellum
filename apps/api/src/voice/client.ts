@@ -96,13 +96,14 @@ interface Pending {
 /**
  * How long to wait for one recording.
  *
- * Generous: the model is loaded once, but the first request after a long idle
- * period pays the operating system's page-in cost on top of the transcription,
- * and a thirty-second clip on a small server is not instant.
+ * Generous on purpose, and then made more so when the model grew: the first
+ * request in a fresh deployment **downloads the model** (466 MB for `small`)
+ * before it can transcribe anything, and a timeout that gave up during the
+ * download would look like a broken recogniser rather than a slow first run.
  */
-const TRANSCRIBE_TIMEOUT_MS = 120_000;
-/** How long to wait for the model to load on first use. */
-const STARTUP_TIMEOUT_MS = 180_000;
+const TRANSCRIBE_TIMEOUT_MS = 300_000;
+/** How long to wait for the model to load, or to arrive, on first use. */
+const STARTUP_TIMEOUT_MS = 600_000;
 
 export class VoiceService {
   private child: ChildProcessWithoutNullStreams | null = null;
