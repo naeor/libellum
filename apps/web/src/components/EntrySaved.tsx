@@ -45,6 +45,7 @@ export function EntrySaved({
   remaining,
   onHome,
   onAgain,
+  onUndo,
 }: {
   readonly entry: Transaction;
   readonly categoryName: string;
@@ -60,6 +61,18 @@ export function EntrySaved({
   readonly remaining: number;
   readonly onHome: () => void;
   readonly onAgain: () => void;
+  /**
+   * Take this entry back.
+   *
+   * The owner asked for it on this screen rather than in the ledger, and the
+   * arithmetic is his: fixing a wrong amount used to mean finding the entry in
+   * the list and editing it — six steps — where the moment after saving is
+   * exactly when the mistake is noticed. One tap here replaces all of them.
+   *
+   * Absent means no undo is offered, which is the case on the manual form where
+   * the fields are still on screen behind this one.
+   */
+  readonly onUndo?: (() => void) | undefined;
 }): React.JSX.Element {
   const detail = [categoryName, paymentName].filter((part) => part !== null && part !== "").join(" · ");
   const inBatch = remaining > 0;
@@ -101,6 +114,27 @@ export function EntrySaved({
           <Button variant="secondary" onClick={onHome}>
             返回主页
           </Button>
+        )}
+
+        {/*
+          The undo, quiet and last.
+
+          Quiet because it is not what most people want here — a screen that
+          shouts "undo" invites the doubt it is meant to remove. Last because the
+          eye should reach "record the next one" first.
+
+          Its own handler deletes the entry rather than navigating anywhere, so
+          the mistake is fixed where it was made instead of sending the user off
+          to find the row in a list.
+        */}
+        {onUndo === undefined ? null : (
+          <button
+            type="button"
+            onClick={onUndo}
+            className="mt-1 text-xs text-muted underline transition hover:text-ink"
+          >
+            撤销这次记账
+          </button>
         )}
       </div>
     </main>

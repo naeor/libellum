@@ -20,13 +20,14 @@ import { InnerPage } from "../components/Layouts.js";
 import { SkeletonRows } from "../components/States.js";
 import { errorMessage } from "../lib/api.js";
 import { currentMonth, localTimeZone, toLocalDate, toLocalIso } from "../lib/datetime.js";
-import { amountPlaceholder, currencyName, parseAmountInput } from "../lib/format.js";
+import { amountPlaceholder, currencyName, formatMoney, parseAmountInput } from "../lib/format.js";
 import {
   useCheckDuplicates,
   useCreateTransaction,
   useDeleteTransaction,
   useLedger,
   useRecognize,
+  useRestoreTransaction,
   useTransactions,
 } from "../lib/queries.js";
 import { takeScanHandover } from "../lib/scanHandoff.js";
@@ -70,6 +71,7 @@ export function ScanPage(): React.JSX.Element {
   const createEntry = useCreateTransaction();
   const checkDuplicates = useCheckDuplicates();
   const removeEntry = useDeleteTransaction();
+  const restoreEntry = useRestoreTransaction();
 
   const [files, setFiles] = useState<File[]>([]);
   const [mode, setMode] = useState<Mode>("single");
@@ -98,6 +100,15 @@ export function ScanPage(): React.JSX.Element {
     readonly amountCents: number;
     readonly existing: readonly Transaction[];
   } | null>(null);
+
+  /**
+   * An entry that was just taken back, kept so it can be put back.
+   *
+   * Holding the whole entry rather than its id, because the dialog says what was
+   * undone — an amount and a category — and looking it up again would need a
+   * request to describe something the screen already had.
+   */
+  const [undone, setUndone] = useState<Transaction | null>(null);
 
   /** Results that could be read, and where we are among them. */
   const [items, setItems] = useState<OcrItemResult[]>([]);
@@ -415,6 +426,29 @@ export function ScanPage(): React.JSX.Element {
              */
             remaining={mode === "single" ? 0 : Math.max(0, items.length - cursor - 1)}
             onHome={() => void navigate("/")}
+            onUndo={() => {
+              /**
+               * Take it back, and offer to put it back again.
+               *
+               * A soft delete, so this is reversible — which is why there is no
+               * confirmation in front of it. Asking "are you sure?" before an
+               * action that can be undone is the dialog people learn to dismiss;
+               * showing what happened, with a way back, is the one they read.
+               *
+               * The screen stays on the confirmation rather than navigating, so
+               * the offer to restore is in front of them rather than behind a
+               * back-navigation.
+               */
+              void removeEntry
+                .mutateAsync(step.entry.id)
+                .then(() => {
+                  setUndone(step.entry);
+                  setStep({ name: "pick" });
+                })
+                .catch((caught: unknown) => {
+                  setError(errorMessage(caught));
+                });
+            }}
             onAgain={() => {
               // In a batch, "one more" means the next screenshot in it; in the
               // single mode there is nothing left, so it starts over.
@@ -521,6 +555,30 @@ export function ScanPage(): React.JSX.Element {
           void 0;
         }}
       />
+
+      {/*
+        The entry was taken back. The way to put it back, while the undo is still
+        the most recent thing that happened.
+      */}
+      <ChoiceDialog
+        open={undone !== null}
+        title="已撤销这笔记账"
+        description={
+          undone === null
+            ? ""
+            : `${formatMoney(undone.amountCents, undone.currency)} 已从账本移除。`
+        }
+        choices={UNDONE_CHOICES}
+        onChoose={(choice) => {
+          const entry = undone;
+          setUndone(null);
+          if (entry === null || choice === "dismiss") return;
+
+          void restoreEntry.mutateAsync(entry.id).catch((caught: unknown) => {
+            setError(errorMessage(caught));
+          });
+        }}
+      />
     </InnerPage>
   );
 }
@@ -561,6 +619,21 @@ const DUPLICATE_CHOICES: readonly Choice<"save" | "replace" | "cancel">[] = [
   { id: "save", label: "仍然保存", hint: "两笔都留（也许是两次一样的消费）", primary: true },
   { id: "replace", label: "删掉旧的，保存这笔", hint: "只留现在这笔" },
   { id: "cancel", label: "取消，我再看看", dismissive: true },
+];
+
+/**
+ * What to offer after an entry has been taken back.
+ *
+ * **Two options, and neither is "OK".** The undo is immediate and reversible, so
+ * the second thing the user sees is the way to reverse it — a plain "知道了"
+ * would leave them restarting the entry by hand if they changed their mind.
+ *
+ * The first option is labelled 重新记上 rather than 撤销撤销, because the second
+ * is a word nobody reads twice.
+ */
+const UNDONE_CHOICES: readonly Choice<"restore" | "dismiss">[] = [
+  { id: "restore", label: "重新记上", hint: "我刚才点错了", primary: true },
+  { id: "dismiss", label: "知道了", dismissive: true },
 ];
 
 function PickStep({

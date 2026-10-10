@@ -103,6 +103,30 @@ describe("EntrySaved", () => {
     expect(html).not.toContain("继续记账");
   });
 
+  it("offers to take the entry back when it is told how", () => {
+    // The owner's arithmetic: fixing a wrong amount used to mean finding the row
+    // in the list and editing it, where the moment after saving is exactly when
+    // the mistake is noticed.
+    const html = render({ onUndo: () => undefined });
+
+    expect(html).toContain("撤销这次记账");
+  });
+
+  it("offers no undo when the caller does not provide one", () => {
+    // The manual form keeps its fields behind this screen, so an undo there
+    // would be a second way to do what the back button already does.
+    expect(render()).not.toContain("撤销这次记账");
+  });
+
+  it("puts the undo last and quiet", () => {
+    // A screen that shouts "undo" invites the doubt it exists to remove, and the
+    // eye should reach "record the next one" first.
+    const html = render({ onUndo: () => undefined });
+
+    expect(html.indexOf("返回主页")).toBeLessThan(html.indexOf("撤销这次记账"));
+    expect(html).toContain("text-xs text-muted underline");
+  });
+
   it("announces itself to a screen reader", () => {
     // Otherwise the interface silently becomes a different screen.
     expect(render()).toContain('role="status"');
