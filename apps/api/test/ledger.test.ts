@@ -213,6 +213,89 @@ describe("ledger numbers", () => {
   });
 });
 
+describe("invite lifetimes", () => {
+  /** Try to register with a code and report what the server said. */
+  async function registerWith(code: string, username: string) {
+    return app.inject({
+      method: "POST",
+      url: "/api/v1/auth/register",
+      payload: {
+        inviteCode: code,
+        username,
+        displayName: "测试",
+        password: "invite-test-password",
+      },
+    });
+  }
+
+  it("refuses a code that was revoked, and says so", async () => {
+    // The owner asked for revocation on 2026-10-10. The message matters as much
+    // as the refusal: "邀请码无效" would send somebody looking for a typo instead
+    // of asking the person who sent it.
+    await prisma.registrationInvite.create({
+      data: { code: "REVOKED-1", revokedAt: new Date() },
+    });
+
+    const response = await registerWith("REVOKED-1", "revokedone");
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({ code: "invite_revoked" });
+    expect((response.json() as { message: string }).message).toContain("撤销");
+  });
+
+  it("refuses a code whose seven days are up", async () => {
+    await prisma.registrationInvite.create({
+      data: { code: "EXPIRED-1", expiresAt: new Date(Date.now() - 1_000) },
+    });
+
+    const response = await registerWith("EXPIRED-1", "expiredone");
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({ code: "invite_expired" });
+  });
+
+  it("accepts an ordinary code inside its window", async () => {
+    await prisma.registrationInvite.create({
+      data: { code: "LIVE-1", expiresAt: new Date(Date.now() + 6 * 24 * 60 * 60 * 1_000) },
+    });
+
+    const response = await registerWith("LIVE-1", "liveone");
+
+    expect(response.statusCode, response.body).toBe(201);
+  });
+
+  it("still accepts a reserved code, which has no deadline", async () => {
+    // The exception that makes the batch possible: a code written on a card and
+    // handed over months later cannot have a seven-day life.
+    await prisma.registrationInvite.create({
+      data: { code: "RESERVED-NODATE", accountNumber: "10000080", expiresAt: null },
+    });
+
+    const response = await registerWith("RESERVED-NODATE", "reservednodate");
+
+    expect(response.statusCode, response.body).toBe(201);
+    expect((response.json() as { user: { accountNumber: string } }).user.accountNumber).toBe(
+      "10000080",
+    );
+  });
+
+  it("reports 'used' rather than 'expired' for a code that is both", async () => {
+    // The order of the checks is decided once, in `shared`. A used code that has
+    // since expired should not send its holder looking for a replacement.
+    await prisma.registrationInvite.create({
+      data: {
+        code: "USED-AND-OLD",
+        usedAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1_000),
+        expiresAt: new Date(Date.now() - 1_000),
+      },
+    });
+
+    const response = await registerWith("USED-AND-OLD", "usedandold");
+
+    expect(response.json()).toMatchObject({ code: "invite_used" });
+  });
+});
+
 describe("account numbers", () => {
   /** The number an account ended up with. */
   async function numberOf(cookie: string): Promise<string> {

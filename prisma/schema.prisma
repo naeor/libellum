@@ -130,6 +130,19 @@ model RegistrationInvite {
   /// Null for a code generated before numbers were pre-allocated.
   accountNumber String? @unique @map("account_number")
 
+  /// When the code was withdrawn before anybody used it.
+  ///
+  /// The owner asked for revocation on 2026-10-10, alongside a default life of
+  /// seven days for ordinary codes. Both exist because a code is a **credential
+  /// that sits in a chat window**: the useful life of "here, register with this"
+  /// is days, not months, and the person who sent it needs a way to take it
+  /// back when it reaches the wrong person.
+  ///
+  /// A timestamp rather than a boolean, so the record says *when* — which is
+  /// what somebody auditing the code will want to know, and what a boolean
+  /// would have thrown away.
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(6)
+
   usedByUserId String?   @unique @map("used_by_user_id") @db.Uuid
   usedAt       DateTime? @map("used_at") @db.Timestamptz(6)
 

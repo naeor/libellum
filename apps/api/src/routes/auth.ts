@@ -1,4 +1,6 @@
 import {
+  INVITE_REJECTION_CODE,
+  INVITE_REJECTION_MESSAGE,
   authResponseSchema,
   changePasswordRequestSchema,
   currencySchema,
@@ -8,6 +10,7 @@ import {
   recoveryCodeResponseSchema,
   regenerateRecoveryCodeRequestSchema,
   registerRequestSchema,
+  rejectInvite,
   type SessionUser,
   updatePreferencesRequestSchema,
 } from "@libellum/shared";
@@ -154,9 +157,19 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
     const invite = await prisma.registrationInvite.findUnique({ where: { code: inviteCode } });
 
     if (!invite) throw badRequest("invite_invalid", "邀请码无效。");
-    if (invite.usedAt) throw badRequest("invite_used", "该邀请码已被使用。");
-    if (invite.expiresAt && invite.expiresAt.getTime() <= Date.now()) {
-      throw badRequest("invite_expired", "该邀请码已过期。");
+
+    /**
+     * Why this code cannot be used, if it cannot.
+     *
+     * The rule lives in `shared` (`rejectInvite`) because the invite list has to
+     * label a code the same way registration rejects it — a code that reads
+     * "已过期" in one place and "可用" in another is a support ticket. `used` is
+     * checked first there, so a code that was both used and has since expired
+     * says "used", which is the fact that ends the story.
+     */
+    const rejection = rejectInvite(invite);
+    if (rejection !== null) {
+      throw badRequest(INVITE_REJECTION_CODE[rejection], INVITE_REJECTION_MESSAGE[rejection]);
     }
 
     const taken = await prisma.user.findUnique({ where: { username: body.username } });
@@ -206,10 +219,16 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
       // methods all exist, or the signup does not happen at all.
       await createDefaultLedger(tx, created.id);
 
-      // Claim the invite inside the same transaction: `usedAt: null` in the
-      // filter means two simultaneous registrations cannot both consume it.
+      /**
+       * Claim the invite inside the same transaction: `usedAt: null` in the
+       * filter means two simultaneous registrations cannot both consume it.
+       *
+       * `revokedAt: null` is checked again here, not only above, because a code
+       * revoked between that check and this line must not register anybody. The
+       * window is small and the guard is one extra condition.
+       */
       const claimed = await tx.registrationInvite.updateMany({
-        where: { id: invite.id, usedAt: null },
+        where: { id: invite.id, usedAt: null, revokedAt: null },
         data: { usedByUserId: created.id, usedAt: new Date() },
       });
 

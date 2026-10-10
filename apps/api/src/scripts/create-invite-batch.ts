@@ -16,8 +16,7 @@
  * the owner asked them to live in, and it is **git-ignored** — a code in the
  * repository is a code in everybody's hands, and these grant accounts.
  */
-import { generateInviteCode } from "../auth/invite-code.js";
-import { reserveAccountNumber } from "../auth/recovery-code.js";
+import { createReservedInvite } from "../auth/invites.js";
 import { createPrismaClient } from "../db.js";
 import { loadEnv } from "../env.js";
 
@@ -37,10 +36,16 @@ const created = await prisma.$transaction(async (tx) => {
   const rows: { code: string; accountNumber: string | null }[] = [];
 
   for (let index = 0; index < count; index += 1) {
-    const accountNumber = await reserveAccountNumber(tx);
-    const invite = await tx.registrationInvite.create({
-      data: { code: generateInviteCode(), note, accountNumber },
-    });
+    /**
+     * The batch generator makes **reserved** codes: each carries the account
+     * number it will grant and does not expire.
+     *
+     * That is the whole purpose of a batch — it is written down and handed out
+     * slowly, which a seven-day code cannot survive. `createReservedInvite`
+     * also reserves the number from the counter inside this same transaction, so
+     * the numbers come out contiguous and a failure leaves no half-batch.
+     */
+    const invite = await createReservedInvite(tx, note);
     rows.push({ code: invite.code, accountNumber: invite.accountNumber });
   }
 
