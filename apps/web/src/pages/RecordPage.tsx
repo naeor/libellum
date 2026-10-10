@@ -5,7 +5,7 @@ import { useNavigate } from "react-router";
 import { Alert } from "../components/Alert.js";
 import { Button } from "../components/Button.js";
 import { InnerPage } from "../components/Layouts.js";
-import { VoiceLines } from "../components/VoiceLines.js";
+import { VoiceRipples } from "../components/VoiceRipples.js";
 import { errorMessage } from "../lib/api.js";
 import { useTranscribe } from "../lib/queries.js";
 import { describeBlocker, useVoiceRecorder, type Recording } from "../lib/useVoiceRecorder.js";
@@ -101,7 +101,7 @@ export function RecordPage(): React.JSX.Element {
         }}
         className="flex w-full flex-col items-center gap-5 rounded-card border border-line bg-surface px-6 py-8 transition disabled:opacity-60"
       >
-        <VoiceLines amplitudes={recorder.amplitudes} active={recording} />
+        <VoiceRipples level={recorder.level} active={recording} />
 
         <span className="flex flex-col items-center gap-1">
           <span className="text-base font-medium text-ink">

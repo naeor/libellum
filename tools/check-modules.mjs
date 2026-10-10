@@ -1,16 +1,21 @@
 /**
- * Does every module the browser will ask for actually compile?
+ * ⚠️ **Tries https first, then http.**
  *
- * The dev server transforms TypeScript on request, so a syntax error, a bad
- * import path or a missing export shows up here as a 500 with the compiler's
- * complaint — which is exactly the check worth doing before telling somebody to
- * open the page. It is not a substitute for using the interface; it is the part
- * that can be verified without hands.
+ * The LAN dev server serves **https** — it has to, because the recording and
+ * offline APIs are secure-context only — while the loopback-only server serves
+ * http. Picking one would mean this check reports "13 modules failed" every time
+ * the other server is running, which reads as a broken build rather than a
+ * mismatched address.
  *
  *   node tools/check-modules.mjs
  */
 
-const BASE = "http://127.0.0.1:5173";
+/** `LIBELLUM_CHECK_BASE` overrides both, for a server on another port. */
+const CANDIDATES = [
+  process.env["LIBELLUM_CHECK_BASE"],
+  "https://127.0.0.1:5173",
+  "http://127.0.0.1:5173",
+].filter((value) => value !== undefined && value !== "");
 
 const MODULES = [
   "/src/main.tsx",
@@ -19,14 +24,43 @@ const MODULES = [
   "/src/pages/ExportPage.tsx",
   "/src/pages/ImportPage.tsx",
   "/src/pages/ScanPage.tsx",
+  "/src/pages/RecordPage.tsx",
   "/src/pages/AddEntryPage.tsx",
   "/src/lib/api.ts",
   "/src/lib/queries.ts",
   "/src/lib/share.ts",
+  "/src/lib/speech.ts",
+  "/src/lib/voiceRipples.ts",
+  "/src/lib/useVoiceRecorder.ts",
   "/src/lib/uuid.ts",
   "/src/components/ConfirmDialog.tsx",
+  "/src/components/ChoiceDialog.tsx",
+  "/src/components/VoiceRipples.tsx",
   "/src/components/Layouts.tsx",
 ];
+
+/**
+ * A self-signed certificate is the normal state of the LAN server, so the check
+ * must not fail on it. This is a local development tool talking to a local
+ * development server; there is nothing to protect.
+ */
+process.env["NODE_TLS_REJECT_UNAUTHORIZED"] = "0";
+
+let BASE = CANDIDATES[0];
+
+for (const candidate of CANDIDATES) {
+  try {
+    const response = await fetch(`${candidate}/src/main.tsx`, { signal: AbortSignal.timeout(5_000) });
+    if (response.ok) {
+      BASE = candidate;
+      break;
+    }
+  } catch {
+    // Try the next one.
+  }
+}
+
+console.log(`  服务器：${BASE}`);
 
 let failures = 0;
 

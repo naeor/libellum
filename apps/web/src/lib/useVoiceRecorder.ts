@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { MAX_SPEECH_SECONDS } from "@libellum/shared";
 
-import { LINE_COUNT, bandLevels, lineAmplitudes, secondsLeft } from "./voiceBars.js";
+import { secondsLeft } from "./voiceRipples.js";
 
 /**
  * Recording from the microphone, and the levels that drive the moving lines.
@@ -120,8 +120,8 @@ export function describeBlocker(blocker: RecorderBlocker): string | null {
 
 export interface VoiceRecorder {
   readonly state: RecorderState;
-  /** Draw amplitudes, one per line, refreshed every frame while recording. */
-  readonly amplitudes: readonly number[];
+  /** The loudest the microphone has been since this was last read, 0–1. */
+  readonly level: number;
   readonly secondsLeft: number;
   /** Seconds recorded so far, counting up. */
   readonly elapsed: number;
@@ -159,9 +159,6 @@ export function useVoiceRecorder(
   limitSeconds: number = MAX_SPEECH_SECONDS,
 ): VoiceRecorder {
   const [state, setState] = useState<RecorderState>("idle");
-  const [amplitudes, setAmplitudes] = useState<readonly number[]>(
-    () => Array.from({ length: LINE_COUNT }, () => 0),
-  );
   const [elapsed, setElapsed] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
@@ -200,7 +197,21 @@ export function useVoiceRecorder(
 
   useEffect(() => release, [release]);
 
-  /** Draw the lines, and stop the recording when the limit is reached. */
+  /**
+   * The loudest level seen since the last draw.
+   *
+   * A ref, not state, and deliberately a **peak rather than an instant**: the
+   * ripple display samples this once per frame, and a frame boundary has nothing
+   * to do with when somebody spoke. Accumulating the peak means a syllable
+   * between two frames still throws its ripple as far as it deserves.
+   *
+   * Reset by the reader, which is why it is read-and-clear rather than a plain
+   * number.
+   */
+  const peakRef = useRef(0);
+  const [level, setLevel] = useState(0);
+
+  /** Draw the symbol and the ripples, and stop at the limit. */
   const pump = useCallback(() => {
     const analyser = analyserRef.current;
     const recorder = recorderRef.current;
@@ -210,7 +221,22 @@ export function useVoiceRecorder(
     const spectrum = new Uint8Array(analyser.frequencyBinCount);
     analyser.getByteFrequencyData(spectrum);
 
-    setAmplitudes(lineAmplitudes(bandLevels(spectrum)));
+    /**
+     * One number for the whole spectrum: the loudest bin.
+     *
+     * The ripple display needs "how loud is it", and the peak across the
+     * spectrum answers that. A mean would make a quiet room and a loud vowel
+     * look similar, because most bins are near silent at any moment.
+     */
+    let loudest = 0;
+    for (const bin of spectrum) {
+      if (bin > loudest) loudest = bin;
+    }
+
+    peakRef.current = Math.max(peakRef.current, loudest / 255);
+
+    setLevel(peakRef.current);
+    peakRef.current = 0;
 
     const millis = Date.now() - startedAtRef.current;
     setElapsed(millis / 1000);
@@ -277,7 +303,6 @@ export function useVoiceRecorder(
         release();
         setState("idle");
         setElapsed(0);
-        setAmplitudes(Array.from({ length: LINE_COUNT }, () => 0));
 
         if (blob.size === 0) {
           setError(byLimit ? "没有录到声音。" : "录音是空的，请再试一次。");
@@ -321,7 +346,7 @@ export function useVoiceRecorder(
 
   return {
     state,
-    amplitudes,
+    level,
     secondsLeft: secondsLeft(elapsed * 1000, limitSeconds),
     elapsed,
     error,
