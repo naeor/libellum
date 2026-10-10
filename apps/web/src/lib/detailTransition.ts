@@ -80,6 +80,23 @@ const SPRING_DAMPING = 27;
 /** Below this the motion is over; snapping to the exact end avoids a long tail. */
 const SETTLED = 0.0015;
 
+/**
+ * The screen may not cross from one state to the other in less than this.
+ *
+ * The owner's fix, after several rounds of chasing the jolt properly. Anything
+ * the transition does faster than this — a hard flick, a spring launched with
+ * the finger's own speed — is where the stutter lives, and a stutter is far
+ * more noticeable than a transition that takes half a second instead of a
+ * quarter.
+ *
+ * So it is a speed limit rather than a physics fix: whatever the velocity
+ * reading says, the value moves at most this fast, and the whole animation
+ * therefore always plays out over at least half a second. It does not matter
+ * which of the earlier causes was responsible, because none of them can act
+ * faster than this.
+ */
+const MAX_SPEED = 1 / 0.5;
+
 /** A flick is enough on its own, without needing to travel half the distance. */
 const FLICK_VELOCITY = 0.55;
 
@@ -181,7 +198,13 @@ export function useDetailTransition(initial: number): DetailTransition {
       const displacement = target.current - progress.current;
       velocity.current += displacement * SPRING_STIFFNESS * elapsed;
       velocity.current *= Math.exp(-SPRING_DAMPING * elapsed);
-      progress.current += velocity.current * elapsed;
+
+      // The speed limit. Applied to the step rather than to the velocity so
+      // that a reading far above it simply travels at the ceiling instead of
+      // being thrown away, and the end still arrives smoothly.
+      const limit = MAX_SPEED * elapsed;
+      const step1 = velocity.current * elapsed;
+      progress.current += step1 > limit ? limit : step1 < -limit ? -limit : step1;
 
       // Overshoot past the end would show a sliver of nothing at either edge.
       if ((target.current === 0 && progress.current < 0) || (target.current === 1 && progress.current > 1)) {
@@ -247,7 +270,10 @@ export function useDetailTransition(initial: number): DetailTransition {
        * contradiction, and it shows as a jolt.
        */
       const heading = target.current >= 1 ? -1 : 1;
-      velocity.current = fast && Math.sign(flick) === heading ? flick : 0;
+      const carried = fast && Math.sign(flick) === heading ? flick : 0;
+      // Even the finger's own speed is capped, so a hard flick cannot outrun
+      // the limit before the spring has had a chance to take over.
+      velocity.current = Math.max(-MAX_SPEED, Math.min(MAX_SPEED, carried));
       run();
     },
     [run],
