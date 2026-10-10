@@ -23,6 +23,21 @@ export interface DetailTransition {
   readonly scrollRef: React.RefObject<HTMLDivElement | null>;
   /** True once settled at the list end. React may use this for labels. */
   readonly atList: boolean;
+  /**
+   * True once the transition is far enough along that the currency strip should
+   * stop wrapping.
+   *
+   * The strip holds the primary card and every other currency in one scrolling
+   * row, and it has two behaviours to serve: in the display state the smaller
+   * cards belong on a second line, and in the list state they belong beside the
+   * primary one with the ones that do not fit running off the edge. Both cannot
+   * be true of one `flex-wrap` value, so it changes — but only near the end,
+   * where the cards are already small enough that the swap is invisible.
+   *
+   * This is the one React update the transition makes, and it happens once per
+   * gesture rather than once per frame.
+   */
+  readonly late: boolean;
   /** Move to one end without a gesture — used by "查看全部" and the back control. */
   readonly goTo: (progress: number) => void;
 }
@@ -78,6 +93,15 @@ const SETTLED = 0.0015;
 /** A flick is enough on its own, without needing to travel half the distance. */
 const FLICK_VELOCITY = 0.55;
 
+/**
+ * Where the currency strip switches from wrapping to scrolling.
+ *
+ * Late on purpose: by this point the cards are nearly their final size, so the
+ * row's reflow lands on a layout that has almost stopped changing and reads as
+ * nothing at all.
+ */
+const LATE_THRESHOLD = 0.72;
+
 function clamp01(value: number): number {
   return value < 0 ? 0 : value > 1 ? 1 : value;
 }
@@ -93,10 +117,20 @@ export function useDetailTransition(initial: number): DetailTransition {
   const lastTick = useRef(0);
 
   const [atList, setAtList] = useState(initial >= 1);
+  const [late, setLate] = useState(initial >= LATE_THRESHOLD);
+  const lateState = useRef(initial >= LATE_THRESHOLD);
 
   /** Paint the current value. One DOM write, no React involved. */
   const paint = useCallback((): void => {
     rootRef.current?.style.setProperty("--p", progress.current.toFixed(4));
+
+    // The single place React hears about the transition's position, and only
+    // when it crosses the one line that matters.
+    const crossed = progress.current >= LATE_THRESHOLD;
+    if (crossed !== lateState.current) {
+      lateState.current = crossed;
+      setLate(crossed);
+    }
   }, []);
 
   const stop = useCallback((): void => {
@@ -176,9 +210,18 @@ export function useDetailTransition(initial: number): DetailTransition {
       const wantsList = fast ? flick < 0 : progress.current > 0.5;
 
       target.current = wantsList ? 1 : 0;
-      // Carry the finger's speed into the spring, so the snap continues the
-      // gesture instead of restarting from a standstill.
-      velocity.current = fast ? flick : 0;
+      /*
+       * Carry the finger's speed into the spring, so the snap continues the
+       * gesture instead of restarting from a standstill — but never against the
+       * direction the spring is travelling.
+       *
+       * The owner saw the animation reverse briefly in the middle. Whatever the
+       * velocity reading is, a spring heading for one end must not be launched
+       * with speed pointing at the other; that is not a gesture, it is a
+       * contradiction, and it shows as a jolt.
+       */
+      const heading = target.current >= 1 ? -1 : 1;
+      velocity.current = fast && Math.sign(flick) === heading ? flick : 0;
       run();
     },
     [run],
@@ -205,18 +248,24 @@ export function useDetailTransition(initial: number): DetailTransition {
 
     let tracking = false;
     let startY = 0;
+    let startTime = 0;
     let startProgress = 0;
-    let lastY = 0;
-    let lastTime = 0;
+
     /**
-     * The gesture's speed, smoothed.
+     * The gesture's speed, taken as an average over the whole touch.
      *
-     * Taken from one sample it was wrong at the end of a swipe: fingers slow
-     * and drift in the last few milliseconds before they lift, so the final
-     * delta is often tiny and occasionally points the wrong way. The owner saw
-     * the result - the animation reversing briefly in the middle before
-     * finishing. A short exponential average keeps the swipe's real direction
-     * and discards the wobble at the end.
+     * The owner proposed this after two attempts at reading a recent sample
+     * both failed him, and he was right about why. A recent sample is the
+     * noisiest thing available: fingers slow and drift in the last few
+     * milliseconds before they lift, so the final delta is often tiny and
+     * sometimes points the wrong way — and the spring then reverses briefly
+     * before finishing. A one-frame smoothing pass did not fix it because there
+     * was only ever a handful of frames to smooth.
+     *
+     * The average over the gesture cannot do that. It cannot be flipped by the
+     * last stray sample, and it means the same thing as the question being
+     * asked: how fast did the reader move, on the whole. Where a pause makes it
+     * small, the progress the finger reached decides instead.
      */
     let flick = 0;
 
@@ -241,6 +290,7 @@ export function useDetailTransition(initial: number): DetailTransition {
 
       tracking = !inStrip;
       startY = event.touches[0]!.clientY;
+      startTime = performance.now();
       startProgress = progress.current;
       flick = 0;
       stop();
@@ -277,18 +327,15 @@ export function useDetailTransition(initial: number): DetailTransition {
       if (progress.current <= 0 && dy > 0) return;
 
       const now = performance.now();
-      const elapsed = now - lastTime;
+      const elapsed = now - startTime;
+      const moved = event.touches[0]!.clientY - startY;
+
       if (elapsed > 0) {
-        const sample = (((event.touches[0]!.clientY - lastY) / elapsed) * 1000) / DRAG_DISTANCE;
-        // Weighted towards what has come before, so a single stray sample
-        // cannot flip the direction the release will read.
-        flick = flick * 0.72 + sample * 0.28;
-        lastY = event.touches[0]!.clientY;
-        lastTime = now;
+        flick = ((moved / elapsed) * 1000) / DRAG_DISTANCE;
       }
 
       event.preventDefault();
-      dragTo(startProgress - dy / DRAG_DISTANCE);
+      dragTo(startProgress - moved / DRAG_DISTANCE);
     };
 
     const onEnd = (): void => {
@@ -367,5 +414,5 @@ export function useDetailTransition(initial: number): DetailTransition {
     };
   }, []);
 
-  return { rootRef, scrollRef, atList, goTo };
+  return { rootRef, scrollRef, atList, late, goTo };
 }

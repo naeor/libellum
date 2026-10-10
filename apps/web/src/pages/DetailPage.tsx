@@ -45,7 +45,7 @@ export function DetailPage(): React.JSX.Element {
   const [showAllCurrencies, setShowAllCurrencies] = useState(false);
 
   const categoryId = searchParams.get("categoryId");
-  const { rootRef, scrollRef, atList, goTo } = useDetailTransition(saved.progress);
+  const { rootRef, scrollRef, atList, late, goTo } = useDetailTransition(saved.progress);
 
   /**
    * The recording cards fold away when the list state arrives.
@@ -190,30 +190,39 @@ export function DetailPage(): React.JSX.Element {
             {summary.isPending ? (
               <div className="mt-4 h-28 animate-pulse rounded-card bg-white/15" />
             ) : (
-              <>
-                <MainCard className="detail-main-card mt-4" summary={main} currency={mainCode} />
+              /*
+               * One strip holding every currency, primary first.
+               *
+               * It used to be two rows with the primary card above and the rest
+               * beside, and the owner worked out why that kept misbehaving: the
+               * primary card was not in the strip, so it did not scroll with the
+               * others and its width never matched theirs. It is the first child
+               * now, and the only thing that changes is its share of the line —
+               * a full line while the screen is a home page, and a third of one
+               * once it is a list.
+               */
+              <div
+                data-h-scroll
+                className={`mt-4 flex gap-2.5 overflow-x-auto pb-1 [scrollbar-width:none] [scroll-snap-type:x_proximity] ${
+                  late ? "flex-nowrap" : "flex-wrap"
+                }`}
+              >
+                <MainCard className="detail-main-card" summary={main} currency={mainCode} />
 
-                {others.length === 0 ? null : (
-                  <div
-                    data-h-scroll
-                    className="detail-secondary-row mt-3 flex gap-2.5 overflow-x-auto pb-1 [scrollbar-width:none] [scroll-snap-type:x_proximity]"
-                  >
-                    {others.map((item) => (
-                      <SecondaryCard key={item.currency} summary={item} />
-                    ))}
+                {others.map((item) => (
+                  <SecondaryCard key={item.currency} summary={item} />
+                ))}
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowAllCurrencies(true);
-                      }}
-                      className="detail-currency-card h-full w-30 shrink-0 snap-start px-4 text-left text-xs text-white/90"
-                    >
-                      更多币种
-                    </button>
-                  </div>
-                )}
-              </>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAllCurrencies(true);
+                  }}
+                  className="detail-currency-card w-30 shrink-0 snap-start px-4 text-left text-xs text-white/90"
+                >
+                  更多币种
+                </button>
+              </div>
             )}
           </header>
 

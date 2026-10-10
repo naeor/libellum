@@ -146,10 +146,19 @@
   pointer-events: auto;
 }
 
-/* D. The main card. Shrinks in place rather than being swapped for a new one. */
+/* D. The primary card.
+ *
+ * Its share of the line, not its width: a full line while the screen is a home
+ * page, so the smaller cards wrap onto a second row beneath it, and a third of
+ * one once it is a list, so they sit beside it in a single row that scrolls.
+ * `flex-basis` decides both, and it animates — which is what lets one element
+ * be a hero card and then one card among equals.
+ */
 .detail-main-card {
+  flex-basis: calc(100% - var(--p-cur) * (100% - var(--card-narrow)));
+  flex-grow: 0;
+  flex-shrink: 0;
   height: calc(var(--card-tall) - var(--p-cur) * (var(--card-tall) - var(--card-short)));
-  width: calc(100% - var(--p-cur) * (100% - var(--card-narrow)));
   contain: layout paint style;
 }
 
@@ -173,33 +182,6 @@
   font-size: calc(0.75rem - var(--p-cur) * 0.09rem);
 }
 
-/*
- * E. The row of smaller currencies rises to join the main card.
- *
- * The owner's point was that the list state is too short for two rows, so in
- * that state every currency has to be one row of matching cards with the
- * primary one at the left. Rather than moving elements between containers —
- * which needs measuring both of them, and breaks the moment either changes —
- * the row simply walks up: its top margin goes from the gap to the negative of
- * the main card's own height, which lands it exactly on the card's line. Its
- * left padding grows by the same share the card gave up, so the first small
- * card begins where the big one ends.
- *
- * Every number here is one this file already knows. Nothing is measured.
- */
-/*
- * E. The row of smaller currencies rises to join the primary card.
- *
- * It has to land exactly on the card's line, which means rising by the gap plus
- * the card's own height and no more. An earlier version added sixty pixels on
- * top of that, and the owner saw the result: the row climbed past the card, so
- * the primary currency appeared to have been pushed onto a second line.
- */
-.detail-secondary-row {
-  margin-top: calc(var(--card-gap) - var(--p-rise) * (var(--card-gap) + var(--card-short)));
-  padding-left: calc(var(--p-rise) * var(--card-narrow));
-  height: calc(var(--secondary-tall) - var(--p-secondary) * (var(--secondary-tall) - var(--secondary-short)));
-}
 
 /* F. The tool buttons only move; a rotating button would say nothing. */
 .detail-tools {
