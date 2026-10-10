@@ -201,27 +201,47 @@ export function DetailPage(): React.JSX.Element {
                * a full line while the screen is a home page, and a third of one
                * once it is a list.
                */
-              <div
-                ref={stripRef}
-                data-h-scroll
-                className="mt-4 flex flex-wrap gap-2.5 overflow-x-auto pb-1 [scrollbar-width:none] [scroll-snap-type:x_proximity]"
-              >
-                <MainCard className="detail-main-card" summary={main} currency={mainCode} />
+              <>
+                {/*
+                  The hero card. It only ever leaves — it shrinks and slides off
+                  the left edge — and it never has to become one card among
+                  equals.
 
-                {others.map((item) => (
-                  <SecondaryCard key={item.currency} summary={item} />
-                ))}
+                  The owner proposed this arrangement after watching every fault
+                  that comes of asking one element to be two things: text that
+                  overflowed, a balance line that faded but kept its space, a
+                  width that never matched its neighbours. Two elements, each
+                  doing one job, and all of it goes.
+                */}
+                <MainCard className="detail-main-card mt-4" summary={main} currency={mainCode} />
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowAllCurrencies(true);
-                  }}
-                  className="detail-currency-card w-30 shrink-0 snap-start px-4 text-left text-xs text-white/90"
+                {/*
+                  One row, never wrapping: the hero card is not in it, so it has
+                  only ever to lay out small cards. Its first item is the
+                  primary currency's twin, which is nothing until the hero card
+                  has gone and then grows into the row.
+                */}
+                <div
+                  data-h-scroll
+                  className="detail-strip flex flex-nowrap gap-2.5 overflow-x-auto pb-1 [scrollbar-width:none]"
                 >
-                  更多币种
-                </button>
-              </div>
+                  <SmallCard className="detail-twin" summary={main} currency={mainCode} />
+
+                  {others.map((item) => (
+                    <SmallCard key={item.currency} summary={item} currency={item.currency} />
+                  ))}
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAllCurrencies(true);
+                    }}
+                    className="detail-currency-card detail-small-card w-30 shrink-0 px-4 text-left text-xs text-white/90"
+                  >
+                    更多币种
+                  </button>
+                </div>
+              </>
             )}
           </header>
 
@@ -543,27 +563,45 @@ function MainCard({
 }
 
 /**
- * A currency other than the primary one.
+ * One small currency card.
  *
- * A fixed width, not a share of the row.
+ * Every card in the strip is this, including the primary currency's twin, so
+ * they cannot drift apart in size, type or content — which is what the owner
+ * kept seeing when the primary card was also trying to be one of them.
  *
- * A percentage would be measured against the row's *content* box, which shrinks
- * when the row indents to make room for the primary card — so every card got
- * narrower exactly when there was one more of them, which is backwards. A fixed
- * width keeps them all the same and lets the ones that do not fit run off the
- * right edge, which is what the owner asked for: a currency that cannot fit
- * should move along, not shrink everything.
+ * A fixed width rather than a share of the row: a percentage is measured
+ * against the row's content box, and a card that changes width when a
+ * neighbour appears is a card that looks smaller the more there are. The ones
+ * that do not fit run off the right edge instead.
+ *
+ * A currency with nothing in it this month says so, rather than showing zero —
+ * the twin exists in both states, and in a month with no entries it would
+ * otherwise claim the account had spent nothing.
  */
-function SecondaryCard({ summary }: { readonly summary: CurrencySummary }): React.JSX.Element {
+function SmallCard({
+  summary,
+  currency,
+  className = "",
+}: {
+  readonly summary: CurrencySummary | null;
+  readonly currency: string;
+  readonly className?: string;
+}): React.JSX.Element {
   return (
-    <div className="detail-currency-card h-full w-34 shrink-0 snap-start px-4">
-      <span className="text-[11px] text-white/70">{currencyName(summary.currency)}</span>
-      <span className="text-base font-medium tabular-nums">
-        {formatMoney(summary.expenseCents, summary.currency)}
-      </span>
-      <span className="text-[11px] text-white/70 tabular-nums">
-        结余 {formatMoney(summary.balanceCents, summary.currency)}
-      </span>
+    <div className={`detail-currency-card detail-small-card w-34 shrink-0 px-4 ${className}`}>
+      <span className="text-[11px] whitespace-nowrap text-white/70">{currencyName(currency)}</span>
+      {summary === null ? (
+        <span className="text-[11px] whitespace-nowrap text-white/60">暂无数据</span>
+      ) : (
+        <>
+          <span className="text-base font-medium tabular-nums whitespace-nowrap">
+            {formatMoney(summary.expenseCents, summary.currency)}
+          </span>
+          <span className="text-[11px] whitespace-nowrap text-white/70 tabular-nums">
+            结余 {formatMoney(summary.balanceCents, summary.currency)}
+          </span>
+        </>
+      )}
     </div>
   );
 }

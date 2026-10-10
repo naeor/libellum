@@ -25,7 +25,15 @@
    * be tuned on a real phone without hunting through calc() expressions.
    */
   --hero-tall: 360px;
-  --hero-short: 150px;
+  /*
+   * Tall enough for what the list state actually draws.
+   *
+   * Worked out rather than guessed: 24 padding, a 36 wordmark line, a 40 month
+   * row, a 52 strip, 28 padding, and a little over — because a containment box
+   * clips whatever does not fit, and the owner has already seen these cards cut
+   * in half once.
+   */
+  --hero-short: 192px;
   --card-tall: 128px;
   --card-short: 52px;
   --secondary-tall: 74px;
@@ -61,6 +69,20 @@
    * wrong height. Deriving them from one value is what keeps them in step, and
    * it is why the block needs no measurement at all.
    */
+  /*
+   * The currency block, in three acts.
+   *
+   * The primary card leaves first, on its own, so nothing else is moving while
+   * it is on screen to collide with. The small cards settle in the middle. The
+   * primary currency's twin grows into the row last, once the row it is joining
+   * has stopped moving.
+   *
+   * Sequential rather than overlapping, on purpose: every fault this block has
+   * had came from two of its parts moving at the same time.
+   */
+  --p-out: clamp(0, calc(var(--p) / 0.4), 1);
+  --p-small: clamp(0, calc((var(--p) - 0.3) / 0.5), 1);
+  --p-twin: clamp(0, calc((var(--p) - 0.6) / 0.4), 1);
   --p-cur: clamp(0, calc((var(--p) - 0.15) / 0.55), 1);
   /*
    * Rising begins only after narrowing has finished.
@@ -146,42 +168,70 @@
   pointer-events: auto;
 }
 
-/* D. The primary card.
+/*
+ * D. The primary card leaves.
  *
- * Its share of the line, not its width: a full line while the screen is a home
- * page, so the smaller cards wrap onto a second row beneath it, and a third of
- * one once it is a list, so they sit beside it in a single row that scrolls.
- * `flex-basis` decides both, and it animates — which is what lets one element
- * be a hero card and then one card among equals.
+ * It used to shrink into the row and become one card among equals, and the
+ * owner found every fault that comes of asking one element to be two things:
+ * the amount overflowed, the balance line faded but still held space, and its
+ * width never matched its neighbours. He proposed the simpler arrangement -
+ * let it fly out to the left, and give it a twin in the row - and he is right.
+ *
+ * So this element only ever leaves: it shrinks in height and slides off the
+ * left edge.
  */
 .detail-main-card {
-  flex-basis: calc(100% - var(--p-cur) * (100% - var(--card-narrow)));
-  flex-grow: 0;
-  flex-shrink: 0;
-  height: calc(var(--card-tall) - var(--p-cur) * (var(--card-tall) - var(--card-short)));
+  height: calc(var(--card-tall) * (1 - var(--p-out)));
+  opacity: calc(1 - var(--p-out));
+  transform: translate3d(calc(var(--p-out) * -45%), 0, 0);
+  overflow: hidden;
   contain: layout paint style;
 }
 
-/* Its smaller print steps aside rather than being re-wrapped mid-flight. */
+/* Its smaller print is hidden outright rather than faded, so it cannot leave a
+   blank line behind in the space it is vacating. */
 .detail-main-detail {
-  opacity: calc(1 - clamp(0, calc((var(--p-cur) - 0.35) / 0.35), 1));
+  opacity: calc(1 - clamp(0, calc((var(--p-out) - 0.2) / 0.3), 1));
 }
 
-/*
- * The primary card's type shrinks with it.
- *
- * The card is the same element in both states, so its text has to come down
- * too — otherwise "¥260.10" at thirty pixels overflows a fifty-two pixel card
- * and the row turns into a mess, which is exactly what the owner saw.
- */
 .detail-main-amount {
-  font-size: calc(1.875rem - var(--p-cur) * 0.95rem);
+  font-size: 1.875rem;
 }
 
 .detail-main-name {
-  font-size: calc(0.75rem - var(--p-cur) * 0.09rem);
+  font-size: 0.75rem;
 }
 
+/*
+ * E. The strip of small cards.
+ *
+ * Every currency in one scrolling row, all of them the same size and shape.
+ * The gap above it closes as the primary card collapses, so the strip arrives
+ * at the top of the green area without anything having to push it.
+ */
+.detail-strip {
+  margin-top: calc(var(--card-gap) * (1 - var(--p-rise)));
+}
+
+.detail-small-card {
+  height: calc(var(--secondary-tall) - var(--p-small) * (var(--secondary-tall) - var(--secondary-short)));
+}
+
+/*
+ * The primary currency's twin.
+ *
+ * It is the first item of the strip in both states; only its width is nothing
+ * while the hero card is still on screen. Growing the share of the line rather
+ * than the width keeps it inside the flex row rather than overflowing it, and
+ * the content is clipped while there is no room for it.
+ */
+.detail-twin {
+  flex-basis: calc(var(--p-twin) * var(--card-narrow));
+  flex-grow: 0;
+  flex-shrink: 0;
+  opacity: var(--p-twin);
+  overflow: hidden;
+}
 
 /* F. The tool buttons only move; a rotating button would say nothing. */
 .detail-tools {
