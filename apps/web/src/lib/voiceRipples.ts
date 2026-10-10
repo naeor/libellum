@@ -47,13 +47,45 @@ export const RIPPLE_INTERVAL_MIN_MS = 200;
 /**
  * How long one ripple lives, as a multiple of its own interval.
  *
- * Tied to the interval rather than fixed, and that is the whole point: a shout
- * produces rings three times as often, and with a fixed life they would pile up
- * until the display was a grey disc. Scaling the life keeps **about three rings
- * in flight** whatever the pace — which is what makes it read as a series
- * travelling outwards rather than as a pulse or a haze.
+ * Tied to the interval rather than fixed, and that is the point: a shout produces
+ * rings three times as often, and with a fixed life they would pile up until the
+ * display was a grey disc.
+ *
+ * ⚠️ **But not tied to it *inversely*, and that is the owner's correction.**
+ *
+ * The first version made the life exactly proportional to the interval, so the
+ * rings on screen stayed a constant number and only the pace changed. He asked
+ * for that to be softened: "音波寿命可以随着基础速度增加而减少；但是直接按反比的话
+ * 有点太单调，可以让音波寿命减少的速度相对降低一些."
+ *
+ * So the life shrinks more slowly than the interval does. Read the numbers at the
+ * two ends of his range:
+ *
+ * | | interval | life | rings in flight |
+ * |---|---|---|---|
+ * | quiet | 600 ms | 1 500 ms | 2.5 |
+ * | shout | 200 ms | 866 ms | 4.3 |
+ *
+ * A shout therefore **crowds** the display rather than merely ticking faster —
+ * there are more rings as well as quicker ones, which is what "loud" should look
+ * like. Strict proportionality kept the count identical and the correction is
+ * exactly the difference between a metronome and a crowd.
  */
 export const RIPPLE_LIFE_INTERVALS = 2.5;
+
+/**
+ * How much the life resists following the pace, as an exponent.
+ *
+ * `life = base · (interval / base)^EXPONENT`, and the exponent is **below 1 on
+ * purpose**: 1 would be exact proportionality (the version he rejected), and 0
+ * would mean the life never changes at all, which would bring back the grey disc.
+ *
+ * A square root is the honest reading of "减少的速度相对降低一些" — the life still
+ * shortens, just at a gentler rate than the interval does. It is one number rather
+ * than a curve, and it is placed here rather than inlined so the shape of the
+ * correction can be read and changed in one place.
+ */
+export const RIPPLE_LIFE_PACE_EXPONENT = 0.5;
 
 /**
  * How loud a full-scale signal is taken to be, in decibels.
@@ -83,7 +115,12 @@ export function intervalForLevel(level: number): number {
 
 /** How long a ripple born at this pace lives. */
 export function lifeForInterval(intervalMs: number): number {
-  return intervalMs * RIPPLE_LIFE_INTERVALS;
+  const baseLife = RIPPLE_INTERVAL_MS * RIPPLE_LIFE_INTERVALS;
+  const pace = intervalMs / RIPPLE_INTERVAL_MS;
+
+  // See RIPPLE_LIFE_PACE_EXPONENT: a gentler slope than strict proportionality,
+  // so a shout crowds the display instead of only ticking faster.
+  return baseLife * pace ** RIPPLE_LIFE_PACE_EXPONENT;
 }
 
 /** The radius a ripple reaches when it dies, for a **quiet** sound. */

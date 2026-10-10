@@ -154,22 +154,70 @@ export function VoiceRipples({
       context.globalAlpha = 1;
 
       /**
-       * The symbol itself.
+       * The symbol in the middle.
        *
-       * A filled disc with a white ring inside it, which reads as a recording
-       * button at any size — the same shape the platform keyboards use, so it
-       * needs no label to be understood.
+       * ⚠️ **A triangle when stopped, a square when recording** — the owner's
+       * correction, and he is right that it is the convention: every recorder
+       * ever made shows ▶ to start and ■ to stop, and the shape alone says which
+       * one pressing it will do. The first version drew a ring with a ring inside
+       * it, which is a *radio button*, and said nothing about either state.
+       *
+       * The disc behind the shape is what the ripples appear to come from, so it
+       * stays: it is the object, and the shape on it is the control.
        */
       context.beginPath();
       context.arc(centreX, centreY, symbolRadius, 0, Math.PI * 2);
       context.fillStyle = isActive ? accent : soft;
       context.fill();
 
-      context.beginPath();
-      context.arc(centreX, centreY, symbolRadius * 0.52, 0, Math.PI * 2);
-      context.strokeStyle = onAccent;
-      context.lineWidth = Math.max(2, symbolRadius * 0.16);
-      context.stroke();
+      const markSize = symbolRadius * 0.62;
+
+      context.fillStyle = onAccent;
+
+      if (isActive) {
+        /**
+         * ■ Stop.
+         *
+         * A square, with corners barely rounded — a circle here would read as
+         * "recording" rather than "stop", which is the opposite of the truth.
+         *
+         * ⚠️ **`roundRect` is checked for rather than assumed.** It arrived in
+         * iOS 16.4 and Chrome 99, and calling it on an older engine throws — in a
+         * `requestAnimationFrame` callback, which would stop the whole display
+         * rather than degrade it. A square with sharp corners is a perfectly
+         * ordinary stop button, so the fallback is `fillRect` and nobody sees a
+         * difference worth reporting.
+         */
+        const half = markSize * 0.5;
+
+        context.beginPath();
+
+        if (typeof context.roundRect === "function") {
+          context.roundRect(centreX - half, centreY - half, markSize, markSize, markSize * 0.1);
+        } else {
+          context.rect(centreX - half, centreY - half, markSize, markSize);
+        }
+
+        context.fill();
+      } else {
+        /**
+         * ▶ Start.
+         *
+         * Nudged right by a tenth of the mark so it looks centred: a triangle's
+         * visual centre is a third of the way in, not halfway, and a play button
+         * that is geometrically centred reads as slightly left.
+         */
+        const height = markSize;
+        const width = markSize * 0.86;
+        const offset = markSize * 0.08;
+
+        context.beginPath();
+        context.moveTo(centreX - width / 2 + offset, centreY - height / 2);
+        context.lineTo(centreX + width / 2 + offset, centreY);
+        context.lineTo(centreX - width / 2 + offset, centreY + height / 2);
+        context.closePath();
+        context.fill();
+      }
 
       frame = requestAnimationFrame(draw);
     }

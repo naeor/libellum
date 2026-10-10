@@ -55,11 +55,38 @@ describe("intervalForLevel", () => {
     expect(intervalForLevel(-1)).toBe(RIPPLE_INTERVAL_MS);
   });
 
-  it("scales the life with the interval, so the count stays about the same", () => {
-    // What stops a shout from filling the display with rings: three times the
-    // pace means three times the rings unless each one also dies sooner.
-    expect(lifeForInterval(RIPPLE_INTERVAL_MS) / RIPPLE_INTERVAL_MS).toBeCloseTo(2.5);
-    expect(lifeForInterval(RIPPLE_INTERVAL_MIN_MS) / RIPPLE_INTERVAL_MIN_MS).toBeCloseTo(2.5);
+  it("shortens the life as the pace rises, but not in proportion", () => {
+    // ⚠️ The owner's correction: "音波寿命可以随着基础速度增加而减少；但是直接按反比
+    // 的话有点太单调，可以让音波寿命减少的速度相对降低一些."
+    //
+    // Strict proportionality (the version he rejected) would give a life of
+    // exactly one third at the shout end. Below one third of the base would be
+    // wrong in the other direction — that is *faster* than proportional.
+    const baseLife = lifeForInterval(RIPPLE_INTERVAL_MS);
+    const shoutLife = lifeForInterval(RIPPLE_INTERVAL_MIN_MS);
+
+    expect(shoutLife).toBeLessThan(baseLife);
+
+    const proportional = (baseLife * RIPPLE_INTERVAL_MIN_MS) / RIPPLE_INTERVAL_MS;
+    expect(shoutLife).toBeGreaterThan(proportional);
+  });
+
+  it("crowds the display when it is loud, rather than only ticking faster", () => {
+    // The visible consequence, and the reason the correction is worth making: a
+    // shout puts **more** rings in flight as well as quicker ones. Strict
+    // proportionality kept the count identical — a metronome rather than a crowd.
+    const quietInFlight = lifeForInterval(RIPPLE_INTERVAL_MS) / RIPPLE_INTERVAL_MS;
+    const shoutInFlight = lifeForInterval(RIPPLE_INTERVAL_MIN_MS) / RIPPLE_INTERVAL_MIN_MS;
+
+    expect(shoutInFlight).toBeGreaterThan(quietInFlight);
+  });
+
+  it("still resists growing without limit, so the display cannot fill up", () => {
+    // The exponent has to stay below 1 but above 0: at 1 there is no correction,
+    // and at 0 the life never changes and a shout returns to being a grey disc.
+    const shoutInFlight = lifeForInterval(RIPPLE_INTERVAL_MIN_MS) / RIPPLE_INTERVAL_MIN_MS;
+
+    expect(shoutInFlight).toBeLessThan(6);
   });
 });
 

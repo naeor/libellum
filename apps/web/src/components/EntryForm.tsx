@@ -117,49 +117,50 @@ export function ReviewStep({
       </section>
 
       {/*
-        Date and time, side by side, at about three-fifths of the width.
-        
-        **Fixed proportions, not `flex-1`.** The owner reported these two
-        overlapping on his phone, with the time field pushed off the right edge,
-        and the cause is that `input[type=date]` and `input[type=time]` carry a
-        wide intrinsic minimum width in Safari — wider than `flex-1`'s share of a
-        phone screen. Without `min-w-0`, a flex item refuses to shrink below that
-        width, so the pair overflowed and the boxes ran into each other.
-        
-        Both halves of the fix do different jobs:
-        
-          * `min-w-0` lets an item shrink below its content's minimum;
-          * explicit `basis` values give each field a share that does not depend
-            on what it contains — which is what he asked for ("保持固定").
-        
-        ⚠️ **Then he asked for them narrower still** ("这俩的框太宽了……缩短到现在的
-        五分之三左右"). Both fields are always the same width of content — a date is
-        ten characters and a time is five — so a full-width row for each was
-        mostly empty box. `w-3/5` on the row, keeping the 3:2 split inside it.
-        
-        Three to two because `2026-10-10` is twice the length of `18:03` before
-        Safari's own picker glyph is counted, and the date field carries that
-        glyph inside it.
+        Date and time, side by side, with the time field's left edge **on the
+        screen's centre line**.
+
+        **Fixed widths, not `flex-1`.** The owner reported these two overlapping
+        on his phone, with the time field pushed off the right edge, and the cause
+        is that `input[type=date]` and `input[type=time]` carry a wide intrinsic
+        minimum width in Safari — wider than `flex-1`'s share of a phone screen.
+        Without `min-w-0`, a flex item refuses to shrink below that width, so the
+        pair overflowed and the boxes ran into each other.
+
+        ⚠️ **Then he reported the overlap again, and the leftover cause was this:**
+        the row was `w-3/5` of the screen with a 3:2 split inside it, so the date
+        field's right edge sat at 36% of the screen and the gap after it ran from
+        36% to 42%. The time field started at 42% — **close to the centre line but
+        not on it**, and the date box's own border sat only a gap away, which is
+        what "那个框总是会和时间重合" describes.
+
+        So the split is no longer a proportion of a narrower row. `basis-1/2` puts
+        the date's right edge at **exactly 50%**, the time field's left edge at
+        **exactly 50% + gap** — the centre line — and `shrink-0` on both stops
+        Safari's intrinsic minimum from moving either one.
+
+        `min-w-0` stays because it is what allows the intrinsic minimum to be
+        ignored at all; without it the fixed basis is advisory.
       */}
-      <section className="flex w-3/5 gap-3">
-        <Field label="日期" className="basis-3/5 shrink-0">
+      <section className="flex gap-3">
+        <Field label="日期" className="basis-1/2 min-w-0 shrink-0">
           <input
             type="date"
             value={value.date}
             onChange={(event) => {
               patch({ date: event.target.value });
             }}
-            className="w-full rounded-field border border-line bg-surface px-3 py-2.5 text-base text-ink outline-none focus:border-brand"
+            className="w-full min-w-0 rounded-field border border-line bg-surface px-3 py-2.5 text-base text-ink outline-none focus:border-brand"
           />
         </Field>
-        <Field label="时间" className="basis-2/5 shrink-0">
+        <Field label="时间" className="basis-1/2 min-w-0 shrink-0">
           <input
             type="time"
             value={value.time}
             onChange={(event) => {
               patch({ time: event.target.value });
             }}
-            className="w-full rounded-field border border-line bg-surface px-3 py-2.5 text-base text-ink outline-none focus:border-brand"
+            className="w-full min-w-0 rounded-field border border-line bg-surface px-3 py-2.5 text-base text-ink outline-none focus:border-brand"
           />
         </Field>
       </section>
