@@ -34,13 +34,16 @@ import { useMemo } from "react";
 
 import { useAuth } from "../auth/AuthProvider.js";
 import { ApiRequestError, apiFetch, apiFetchFile } from "./api.js";
+import { CACHE_KEY } from "./offline/cache.js";
 import {
   asLocalPage,
   filterLocally,
   findLocalTransaction,
   installLiveSource,
   readLocalTransactions,
+  transactionsFromCache,
 } from "./offline/localLedger.js";
+import { readSnapshot } from "./offline/storage.js";
 import { withLocalFallback } from "./offline/fallback.js";
 import { computeStats, monthRange, summaryFor } from "./offline/localStats.js";
 import { uuidV7 } from "./uuid.js";
@@ -217,6 +220,34 @@ export function useSummary(month: string) {
         local: async () => summaryFor(await readLocalTransactions(), month, monthRange(month)),
       }),
   });
+}
+
+/**
+ * Whether the device holds anything for these filters, synchronously.
+ *
+ * ⚠️ **A one-line gate for the loading state, and it exists because of the tablet.**
+ *
+ * The owner reported screens sitting on a loading state there while the same code felt instant on
+ * his phone. `useTransactions` now has a deadline so a hung database read cannot hang for ever, but
+ * **a deadline still means waiting** — and on a device where the read is slow, waiting is exactly
+ * what the user sees.
+ *
+ * **This answers the only question the skeleton is actually asking — "is there anything to show?"
+ * — without waiting for anything.** If the device holds entries for this view, the screen has
+ * something real to draw and does not need to say "loading"; if it holds nothing, the skeleton is
+ * the honest thing and is left alone.
+ *
+ * Returning a boolean rather than the data is deliberate: **the screen still asks the server, and
+ * still uses the answer.** This only decides whether to show placeholder rows, so it cannot make the
+ * app display stale data or skip a fetch.
+ */
+export function hasLocalTransactions(filters: TransactionFilters): boolean {
+  const raw = readSnapshot<string>(CACHE_KEY);
+  if (raw === null) return false;
+
+  const stored = transactionsFromCache(raw);
+
+  return stored.length > 0 && filterLocally(stored, filters).length > 0;
 }
 
 export function useTransactions(given: TransactionFilters) {

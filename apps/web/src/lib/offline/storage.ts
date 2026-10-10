@@ -92,6 +92,47 @@ export function traceLine(line: TraceLine): string {
   return `${new Date(line.at).toISOString()} ${line.what} ${line.key} — ${line.detail}`;
 }
 
+/**
+ * The last value seen for each key, held in memory.
+ *
+ * ⚠️ **Written for one specific job: showing the ledger on the first frame of a screen, with no
+ * async step at all.**
+ *
+ * The owner reported the tablet's screens sitting on a loading state while his phone did not. Part
+ * of the answer is the deadline added to the local read; **the other part is not needing that read
+ * to finish before drawing anything.** A synchronous copy of what the device has means the screen
+ * can be filled in the same tick it renders, and **a screen that is already showing the user's data
+ * cannot be stuck on a spinner** — whatever the network or the database is doing.
+ *
+ * **Why it can be trusted**: it only ever holds something that was read from, or written to, the
+ * real store during this session. It is a *snapshot of what was there*, never an invention — and
+ * the async read still runs and still corrects it. Its worst case is showing slightly older data
+ * for one frame, which is exactly what a cache is for.
+ *
+ * **Why it is safe to update it this casually**: a stale entry here cannot produce a wrong answer,
+ * because every consumer of the ledger treats it as a hint and the query layer replaces it with the
+ * real thing — from the network when there is one, from the database when there is not.
+ */
+const snapshots = new Map<string, unknown>();
+
+/** What was last seen under this key, synchronously. For first-frame rendering. */
+export function readSnapshot<T>(key: string): T | null {
+  const value = snapshots.get(key);
+
+  return value === undefined ? null : (value as T);
+}
+
+/** Store a snapshot, or forget one when the value is absent. */
+function rememberSnapshot(key: string, value: unknown): void {
+  if (value === undefined || value === null) {
+    snapshots.delete(key);
+
+    return;
+  }
+
+  snapshots.set(key, value);
+}
+
 let databasePromise: Promise<IDBDatabase> | null = null;
 
 /** Whether this environment has IndexedDB at all. */
@@ -220,6 +261,12 @@ export async function readValue<T>(key: string): Promise<T | null> {
 
     trace("read", key, value === undefined ? "键不存在" : summarize(value));
 
+    /**
+     * ⚠️ **Every read refreshes the synchronous copy**, which is what lets a screen draw the
+     * ledger on its first frame instead of after an await.
+     */
+    rememberSnapshot(key, value);
+
     return value === undefined ? null : value;
   } catch (error) {
     /**
@@ -277,6 +324,9 @@ export async function writeValue(key: string, value: unknown): Promise<boolean> 
 
     trace("write", key, summarize(value));
 
+    // ⚠️ Kept in step, so a write is visible to the next synchronous read.
+    rememberSnapshot(key, value);
+
     return true;
   } catch (error) {
     trace(
@@ -291,6 +341,9 @@ export async function writeValue(key: string, value: unknown): Promise<boolean> 
 
 /** Remove one value. */
 export async function removeValue(key: string): Promise<boolean> {
+  // ⚠️ A removed key must not linger in the snapshot, or a screen would draw data that is gone.
+  snapshots.delete(key);
+
   if (!hasIndexedDb()) return false;
 
   try {

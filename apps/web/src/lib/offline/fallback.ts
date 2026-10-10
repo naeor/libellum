@@ -29,6 +29,7 @@
  * rule the owner set out in DEVLOG §9.1.
  */
 import { reportReachability } from "./connectivity.js";
+import { withDeadline } from "./deadline.js";
 import { logOffline } from "./diagnostics.js";
 
 /**
@@ -94,14 +95,51 @@ export async function withLocalFallback<T>(options: FallbackOptions<T>): Promise
   } catch (error) {
     const detail = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
 
-    await logOffline(`${FALLBACK_MARKER} · ${options.label}`, detail);
+    /**
+     * ⚠️ **The local answer has its own deadline, and that is the fix for the tablet.**
+     *
+     * The owner reported identical code working on a phone and leaving a tablet on a loading screen
+     * for ever. The request cannot be the cause: `apiFetch` aborts it after a second. **So something
+     * else in this function never settled** — and there is only one other thing here, the read of
+     * the device's own database.
+     *
+     * **An IndexedDB read can hang rather than fail.** It rejects on an error, but a transaction can
+     * also simply never complete: the page being suspended, another tab holding a version upgrade
+     * open, the browser deciding to stop servicing it. **A promise that never settles produces no
+     * error and no log line — the screen spins for ever and every diagnostic stays silent**, which
+     * is exactly why this took so long to see.
+     *
+     * **And it explains why two devices behaved differently on identical code.** Safari on a tablet
+     * suspends pages far more aggressively than a phone in active use, so the same read that always
+     * came back on the phone could never come back on the tablet — and left no trace, because it was
+     * an absence rather than a failure.
+     *
+     * **A deadline turns an absence into an answer.**
+     */
+    const local = await withDeadline(options.local());
+
+    await logOffline(
+      `${FALLBACK_MARKER} · ${options.label}`,
+      local.timedOut ? `${detail}；⚠️ 本机读取超时` : detail,
+    );
 
     /**
-     * Only a *missing* answer means offline. A 500 still falls back — the local copy is
-     * better than an error page — but it does not claim the network is down.
+     * Only a *missing* answer means offline. A 500 still falls back — the local copy is better than
+     * an error page — but it does not claim the network is down.
      */
     reportReachability(!meansNoAnswer(error), detail);
 
-    return options.local();
+    if (local.timedOut) {
+      /**
+       * ⚠️ **Thrown rather than answered with an empty page.**
+       *
+       * There is no honest value to return, and an empty list would be the app asserting something
+       * it does not know — "you have no entries this month" when the truth is "the device did not
+       * answer". The error state says the true thing, and the log line above says which half failed.
+       */
+      throw new Error(`本机数据读取超时：${options.label}`);
+    }
+
+    return local.value as T;
   }
 }

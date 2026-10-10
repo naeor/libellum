@@ -51,6 +51,7 @@ const MODULES = [
   "/src/lib/offline/connectivity.ts",
   "/src/lib/offline/reset.ts",
   "/src/lib/offline/dbstatus.ts",
+  "/src/lib/offline/deadline.ts",
   "/src/lib/clipboard.ts",
   "/src/lib/version.ts",
   "/src/components/CopyButton.tsx",

@@ -14,7 +14,7 @@ import { useAccountOffline } from "../lib/offline/connectivity.js";
 import { currentMonth, formatDayLabel, formatTimeInZone } from "../lib/datetime.js";
 import { readSession, useDetailTransition, writeSession } from "../lib/detailTransition.js";
 import { currencyName, formatMoney } from "../lib/format.js";
-import { useLedger, useSummary, useTransactions } from "../lib/queries.js";
+import { hasLocalTransactions, useLedger, useSummary, useTransactions } from "../lib/queries.js";
 import { handOverForScan } from "../lib/scanHandoff.js";
 
 /**
@@ -92,7 +92,15 @@ export function DetailPage(): React.JSX.Element {
 
   const summary = useSummary(month);
   const ledger = useLedger();
-  const list = useTransactions({ month, kind, categoryId: categoryId ?? undefined });
+  /**
+   * ⚠️ **Named once, so the query and the loading gate cannot drift apart.**
+   *
+   * The skeleton check below has to ask about the *same* filters the query uses — if they ever
+   * disagreed, a screen with data would show placeholder rows, which is the bug this whole change
+   * is about.
+   */
+  const filters = { month, kind, categoryId: categoryId ?? undefined };
+  const list = useTransactions(filters);
 
   const clearCategoryFilter = (): void => {
     const next = new URLSearchParams(searchParams);
@@ -330,7 +338,19 @@ export function DetailPage(): React.JSX.Element {
               staying and pushing the list down, so nothing below it moves.
             */}
 
-            {list.isPending ? <SkeletonRows /> : null}
+            {/*
+                ⚠️ **Placeholder rows only when there is genuinely nothing to draw.**
+
+                `isPending` alone means "the query has not answered yet" — which on a tablet whose
+                database read is slow is a state the user can sit in while the ledger is already on
+                the device. The owner reported exactly that: the same screen instant on a phone,
+                stuck on a spinner on a tablet.
+
+                `hasLocalTransactions` answers the question the skeleton is really asking — "is
+                there anything to show?" — from a synchronous snapshot, so a device that holds
+                entries shows them and one that holds nothing still gets the honest skeleton.
+              */}
+              {list.isPending && !hasLocalTransactions(filters) ? <SkeletonRows /> : null}
 
             {/*
               ⚠️ **"加载失败" is suppressed when there is nothing the user can do.**
