@@ -124,7 +124,14 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(
       (async () => {
         try {
-          const response = await fetch(request);
+          /**
+           * ⚠️ **`cache: "no-store"`, so the browser is not the second cache in the way.**
+           *
+           * `fetch(request)` for a navigation can itself be answered from the HTTP cache, which
+           * would put the same stale-copy problem one layer down: the service worker asks for
+           * the page, the browser hands back what it stored, and the fix never arrives.
+           */
+          const response = await fetch(request, { cache: "no-store" });
           const cache = await caches.open(SHELL);
           void cache.put("/index.html", response.clone());
           return response;
@@ -151,36 +158,40 @@ self.addEventListener("fetch", (event) => {
   }
 
   /**
-   * Everything else: the cache first, refreshed in the background.
+   * Everything else: **the network first, the cache only when it fails.**
    *
-   * The background refresh is what keeps the app from being permanently stuck on
-   * the version it first saw, without making the user wait for the network on every
-   * load.
+   * ⚠️ **This was cache-first, and that is why the owner kept testing old code.**
+   *
+   * "手机还是一切正常" and "pad上还是看不了" were being diagnosed against builds from two
+   * versions earlier. Cache-first hands back the copy on the device and refreshes in the
+   * background, so **the code that runs is always the one from the previous visit** — and in
+   * development, where Vite serves modules from `/src/...` at stable URLs, that means every
+   * change needs two loads to appear and a diagnostic added today is read tomorrow.
+   *
+   * Network-first costs one round trip on a connection that is up, and the answer is the
+   * current one. When there is no connection it falls back immediately, which is the case the
+   * cache exists for. **A local-first app needs the device to be enough when the network is
+   * gone — not to prefer the device when the network is right there.**
    */
   event.respondWith(
     (async () => {
-      const cached = await caches.match(request);
+      try {
+        const response = await fetch(request);
 
-      const fromNetwork = fetch(request)
-        .then(async (response) => {
-          // `basic` means same-origin and complete; an opaque response is not
-          // something worth keeping.
-          if (response.ok && response.type === "basic") {
-            const cache = await caches.open(SHELL);
-            void cache.put(request, response.clone());
-          }
+        // `basic` means same-origin and complete; an opaque response is not worth keeping.
+        if (response.ok && response.type === "basic") {
+          const cache = await caches.open(SHELL);
+          void cache.put(request, response.clone());
+        }
 
-          return response;
-        })
-        .catch(() => undefined);
+        return response;
+      } catch {
+        const cached = await caches.match(request);
 
-      if (cached !== undefined) return cached;
+        if (cached !== undefined) return cached;
 
-      const response = await fromNetwork;
-
-      if (response !== undefined) return response;
-
-      return new Response("", { status: 504 });
+        return new Response("", { status: 504 });
+      }
     })(),
   );
 });

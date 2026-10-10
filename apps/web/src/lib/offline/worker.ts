@@ -30,6 +30,39 @@ export function canRegisterWorker(): boolean {
  * everything except offline works without it.
  */
 export async function registerServiceWorker(): Promise<boolean> {
+  /**
+   * ⚠️ **Not registered in development, and that is a fix rather than a convenience.**
+   *
+   * The owner spent three rounds testing fixes that had not reached his device — "pad上还是看不了"
+   * answered with the same diagnostic twice, because the copy he pasted had the timestamp of the
+   * previous one. **The cause was this worker**: it served the shell from its cache first, and in
+   * development Vite serves modules from `/src/...` at stable URLs, so **the code that ran was
+   * always the code from the visit before**.
+   *
+   * A cache that makes development unverifiable is worse than no cache during development. The
+   * worker exists for the built application, and `vite build` does not take this branch.
+   *
+   * ⚠️ **And any worker left over from an earlier session is removed**, because otherwise the
+   * person who has one keeps getting the old behaviour while the code says it cannot happen.
+   */
+  if (import.meta.env.DEV) {
+    try {
+      const existing = await navigator.serviceWorker?.getRegistrations();
+
+      for (const registration of existing ?? []) {
+        await registration.unregister();
+      }
+
+      if ((existing ?? []).length > 0) {
+        console.info("[offline] 开发模式：已注销此前注册的 Service Worker，避免拿到旧代码。");
+      }
+    } catch {
+      // Nothing to unregister is the normal case.
+    }
+
+    return false;
+  }
+
   if (!canRegisterWorker()) {
     if (import.meta.env.DEV) {
       console.info(

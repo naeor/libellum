@@ -101,7 +101,21 @@ function serverOptions(): Record<string, unknown> {
   return certificates === undefined ? base : { ...base, https: certificates };
 }
 
+/**
+ * When this build was made, stamped into the bundle.
+ *
+ * ⚠️ **Added because three rounds were spent diagnosing code that had not arrived.** The owner
+ * pasted a diagnostic whose timestamp was identical to the previous one and neither of us
+ * noticed at first — **a report that does not say which build produced it cannot be trusted to
+ * be about the current one.** With this in the report, "you are still running the old bundle"
+ * is visible in one line instead of inferred from a repeated timestamp.
+ */
+const BUILD_STAMP = new Date().toISOString();
+
 export default defineConfig({
+  define: {
+    __BUILD_STAMP__: JSON.stringify(BUILD_STAMP),
+  },
   plugins: [react(), tailwindcss()],
   server: serverOptions(),
 });

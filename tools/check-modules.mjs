@@ -49,6 +49,7 @@ const MODULES = [
   "/src/lib/offline/fallback.ts",
   "/src/lib/offline/connectivity.ts",
   "/src/lib/offline/reset.ts",
+  "/src/lib/clipboard.ts",
   "/src/lib/useVoiceRecorder.ts",
   "/src/lib/uuid.ts",
   "/src/components/ConfirmDialog.tsx",

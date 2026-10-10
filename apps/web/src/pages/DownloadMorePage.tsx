@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { Alert } from "../components/Alert.js";
 import { Button } from "../components/Button.js";
 import { ChoiceDialog, type Choice } from "../components/ChoiceDialog.js";
 import { InnerPage } from "../components/Layouts.js";
+import { copyText, type CopyOutcome } from "../lib/clipboard.js";
 import { cacheFootprint, describeKey, type CacheFootprint } from "../lib/offline/downloadManager.js";
 import { clearOfflineLog, readOfflineLog, type LogEntry } from "../lib/offline/diagnostics.js";
 import { formatBytes, storageBreakdown, type StorageBreakdown } from "../lib/offline/persistence.js";
@@ -29,13 +31,14 @@ import { readTrace, traceLine, readValue } from "../lib/offline/storage.js";
  */
 export function DownloadMorePage(): React.JSX.Element {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   const [log, setLog] = useState<readonly LogEntry[]>([]);
   const [footprint, setFootprint] = useState<CacheFootprint | null>(null);
   const [storage, setStorage] = useState<StorageBreakdown | null>(null);
   const [queries, setQueries] = useState<readonly string[]>([]);
   const [trace, setTrace] = useState<readonly string[]>([]);
-  const [copied, setCopied] = useState(false);
+  const [copyOutcome, setCopyOutcome] = useState<CopyOutcome | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -87,6 +90,14 @@ export function DownloadMorePage(): React.JSX.Element {
   /** Everything a developer would need, as plain text. */
   const report = [
     "Libellum · 离线诊断",
+    /**
+     * ⚠️ **The build first, and it is not decoration.**
+     *
+     * Three rounds were spent diagnosing code that had not reached the device. A report that
+     * does not say which build produced it cannot be trusted to be about the current one — and
+     * the giveaway was subtle: an identical timestamp to the previous report.
+     */
+    `构建：${__BUILD_STAMP__}`,
     `时间：${new Date().toISOString()}`,
     `页面：${window.location.href}`,
     "",
@@ -121,24 +132,68 @@ export function DownloadMorePage(): React.JSX.Element {
   ].join("\n");
 
   return (
-    <InnerPage title="下载管理 · 更多" subtitle="下载记录与存储明细。" backTo="/downloads">
+    <InnerPage
+      title="下载管理 · 更多"
+      subtitle="下载记录与存储明细。"
+      backTo="/downloads"
+      /*
+        ⚠️ **The back control replaces rather than pushes.**
+        
+        The owner found a loop: signing out from this screen bounced between it and the download
+        manager. Part of the cause is history that grows every time a screen is entered from a
+        button rather than from the back stack — so entering here from the manager and pressing
+        返回 should return to the manager, not add a third entry that has to be unwound.
+      */
+      onBack={() => void navigate("/downloads", { replace: true })}
+    >
       <section className="flex flex-col gap-3">
         <Button
           onClick={() => {
-            void navigator.clipboard.writeText(report).then(() => {
-              setCopied(true);
-              window.setTimeout(() => {
-                setCopied(false);
-              }, 3_000);
+            void copyText(report).then((outcome) => {
+              setCopyOutcome(outcome);
+
+              if (outcome === "copied") {
+                window.setTimeout(() => {
+                  setCopyOutcome(null);
+                }, 3_000);
+              }
             });
           }}
         >
-          {copied ? "已复制到剪贴板" : "复制诊断信息"}
+          {copyOutcome === "copied" ? "已复制到剪贴板" : "复制诊断信息"}
         </Button>
+
+        {/*
+          ⚠️ **The manual fallback that the blank clipboard made necessary.**
+
+          "不知道为什么复制到粘贴板后粘贴是一片空白" — the async Clipboard API rejected, the
+          `.then()` had no `.catch()`, and the screen said 已复制 over an empty clipboard. When
+          both automatic routes fail the text is shown selected instead, so the user can copy it
+          by hand rather than being told something untrue.
+        */}
+        {copyOutcome === "manual" ? (
+          <Alert tone="info">这个浏览器不允许自动复制。下面已选中，请长按选择「复制」。</Alert>
+        ) : null}
+
+        {copyOutcome === "manual" || copyOutcome === "failed" ? (
+          <textarea
+            readOnly
+            value={report}
+            rows={8}
+            onFocus={(event) => {
+              event.currentTarget.select();
+            }}
+            className="w-full rounded-field border border-line bg-surface px-3 py-2 font-mono text-[10px] text-ink"
+          />
+        ) : null}
 
         <p className="text-xs leading-relaxed text-muted">
           如果遇到问题，点上面的按钮复制这些内容，发给开发者就能定位。
         </p>
+
+        {/* The build stamp, on screen as well as in the report: comparing this line with the
+            newest build is the fastest way to see that a device is running old code. */}
+        <p className="font-mono text-[10px] text-muted">构建：{__BUILD_STAMP__}</p>
       </section>
 
       <section className="flex flex-col gap-2">
@@ -249,7 +304,9 @@ export function DownloadMorePage(): React.JSX.Element {
         )}
       </section>
 
-      {copied ? <Alert tone="info">已复制。可以直接粘贴给开发者。</Alert> : null}
+      {copyOutcome === "copied" ? (
+        <Alert tone="info">已复制。可以直接粘贴给开发者。</Alert>
+      ) : null}
     </InnerPage>
   );
 }

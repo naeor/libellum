@@ -99,7 +99,28 @@ export function MePage(): React.JSX.Element {
         }}
         onConfirm={() => {
           setConfirmSignOut(false);
-          void logout();
+
+          /**
+           * ⚠️ **Signing out replaces the entry instead of adding one, and that is the fix
+           * for the loop the owner reported.**
+           *
+           * "如果登录的时候处于下载管理更多，退出时会退出到下载管理，然后再退出会返回上一步，
+           * 也就是下载管理更多" — and his image of where it came from was close: "一般登录时也不会
+           * 登录下载管理更多界面，修改一下保底逻辑吧."
+           *
+           * What happened: `RequireAuth` sends a signed-out user to `/login` with
+           * `<Navigate replace>`, which replaces *that one entry* — so every screen the user
+           * had visited is still in the browser's history behind it. Pressing 返回 walks back
+           * through them, `RequireAuth` bounces each one to `/login`, and the user is thrown
+           * forward again. **The history is the bug, not any single screen.**
+           *
+           * `navigate("/login", { replace: true })` moves the current entry rather than pushing
+           * a new one, so signing out leaves one entry behind instead of a trail — and there is
+           * nothing to bounce between because there is nothing behind to reach.
+           */
+          void logout().then(() => {
+            void navigate("/login", { replace: true });
+          });
         }}
       />
     </TabPage>
