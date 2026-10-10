@@ -5,6 +5,7 @@ import { useAuth } from "../auth/AuthProvider.js";
 import { ConfirmDialog } from "../components/ConfirmDialog.js";
 import { DefaultAvatar } from "../components/DefaultAvatar.js";
 import { TabPage } from "../components/Layouts.js";
+import { APP_VERSION } from "../lib/version.js";
 
 /**
  * The account screen.
@@ -37,6 +38,14 @@ export function MePage(): React.JSX.Element {
     { to: "/tags", label: "标签", hint: "出差、可报销等跨分类标记" },
     { to: "/books", label: "我的账本", hint: user.username },
     { to: "/downloads", label: "下载管理", hint: "离线能看哪些月份，以及占用多少空间" },
+    /**
+     * ⚠️ **The version, where somebody looks when something is wrong.**
+     *
+     * The owner asked for it here rather than in 设置: "在账户中加入软件更新部分". That is the
+     * right place — a version screen is consulted when the program is misbehaving, and the
+     * account screen is where the other "about this device and this account" rows live.
+     */
+    { to: "/update", label: "软件更新", hint: `当前版本 ${APP_VERSION}` },
     { to: "/settings", label: "设置", hint: "默认币种、账号安全、显示与数据" },
   ];
 

@@ -16,6 +16,7 @@ import { ChangePasswordPage } from "./pages/ChangePasswordPage.js";
 import { DetailPage } from "./pages/DetailPage.js";
 import { DownloadManagerPage } from "./pages/DownloadManagerPage.js";
 import { DownloadMorePage } from "./pages/DownloadMorePage.js";
+import { SoftwareUpdatePage } from "./pages/SoftwareUpdatePage.js";
 import { MonthDownloadPage } from "./pages/MonthDownloadPage.js";
 import { EntryDetailPage } from "./pages/EntryDetailPage.js";
 import { ExportPage } from "./pages/ExportPage.js";
@@ -144,6 +145,7 @@ function AppRoutes(): React.JSX.Element {
       <Route path="/profile" element={<RequireAuth><ProfilePage /></RequireAuth>} />
       <Route path="/downloads" element={<RequireAuth><DownloadManagerPage /></RequireAuth>} />
         <Route path="/downloads/more" element={<RequireAuth><DownloadMorePage /></RequireAuth>} />
+        <Route path="/update" element={<RequireAuth><SoftwareUpdatePage /></RequireAuth>} />
         <Route path="/downloads/:month" element={<RequireAuth><MonthDownloadPage /></RequireAuth>} />
         <Route path="/settings" element={<RequireAuth><SettingsPage /></RequireAuth>} />
       <Route path="/settings/password" element={<RequireAuth><ChangePasswordPage /></RequireAuth>} />
