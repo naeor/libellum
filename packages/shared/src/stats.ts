@@ -67,7 +67,13 @@ export function startOfMonth(date: string): string {
   return `${date.slice(0, 7)}-01`;
 }
 
-/** The last day of the month, by asking the calendar rather than remembering. */
+/**
+ * The last day of the month, by asking the calendar rather than remembering.
+ *
+ * A month end is not a number that can be written down once: April has thirty
+ * days, February twenty-eight or twenty-nine. Both the analysis screen's heat
+ * map window and `isEndOfMonth` below build on this.
+ */
 export function endOfMonth(date: string): string {
   const { year, month } = partsOf(date);
 
@@ -79,6 +85,13 @@ export function isFirstOfMonth(date: string): boolean {
   return date === startOfMonth(date);
 }
 
+/**
+ * Whether a date is the last day of its own month.
+ *
+ * This is how `comparisonRangeFor` answers "is this range a whole calendar
+ * month?", which is a question the date string alone cannot answer: 2026-10-31
+ * is a month end, 2026-10-30 is not, and the two look equally arbitrary.
+ */
 export function isEndOfMonth(date: string): boolean {
   return date === endOfMonth(date);
 }

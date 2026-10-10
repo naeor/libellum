@@ -686,6 +686,10 @@ export function draftOf(
   const wanted = draft?.channel === null || draft?.channel === undefined ? null : channelNames[draft.channel];
   const method = wanted === null ? undefined : paymentMethods.find((entry) => entry.name === wanted);
 
+  // The reading's own date and time when the screenshot carried them: that is
+  // when the payment actually happened, not a value borrowed from an earlier
+  // entry. When it carried none, the fallback is the current moment — never the
+  // date of the last entry recorded, which is a different purchase's day.
   const date = draft?.occurredLocalDate ?? toLocalDate(now);
   const time = draft?.occurredTime ?? "";
 

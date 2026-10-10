@@ -100,6 +100,11 @@ export function formatMinor(minor: number, decimals: number): string {
  *
  * Only ever sum amounts that share a currency: adding yen to dollars is
  * meaningless, which is why totals are reported per currency.
+ *
+ * The tests are what call this today — the screens total on the server, in
+ * `stats.ts`. It stays here because a sum that has to happen in the browser (a
+ * batch of entries being added up before they are sent, say) must not be
+ * written a second time with floats.
  */
 export function sumMinor(amounts: readonly number[]): number {
   return amounts.reduce((total, amount) => total + amount, 0);

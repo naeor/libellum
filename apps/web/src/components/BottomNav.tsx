@@ -96,7 +96,7 @@ export const TABS: readonly Tab[] = [
 interface EntryAction {
   readonly label: string;
   readonly icon: ReactNode;
-  readonly available: boolean;
+  /** Why the card is disabled, read out with its label. Absent when it has a `to`. */
   readonly hint?: string;
   /** Where the card goes, when it goes anywhere. */
   readonly to?: string;
@@ -105,15 +105,20 @@ interface EntryAction {
 /**
  * The three ways to record something, in the order they appear.
  *
- * Voice and camera say they are not ready when pressed rather than being
- * hidden. A card that looks live and does nothing is worse than one that
- * admits it is not, and hiding them would make the row's shape change the day
+ * Whether a card goes anywhere is expressed by `to` and by nothing else: with
+ * one, it is a link; without one, it is a feature that has not shipped and is
+ * rendered disabled with its own wording. A separate `available` flag used to
+ * sit beside `to` and was never read — two fields answering one question is how
+ * they end up disagreeing about the answer.
+ *
+ * A card that looks live and does nothing is worse than one that admits it is
+ * not, and hiding the unfinished ones would make the row's shape change the day
  * they ship.
  */
 const ENTRY_ACTIONS: readonly EntryAction[] = [
-  { label: "语音", icon: <MicrophoneIcon className="size-6" />, available: false, hint: "即将开放" },
-  { label: "手动", icon: <PenIcon className="size-6" />, available: true, to: "/add" },
-  { label: "拍照", icon: <CameraIcon className="size-6" />, available: true, to: "/scan" },
+  { label: "语音", icon: <MicrophoneIcon className="size-6" />, hint: "即将开放" },
+  { label: "手动", icon: <PenIcon className="size-6" />, to: "/add" },
+  { label: "拍照", icon: <CameraIcon className="size-6" />, to: "/scan" },
 ];
 
 /**

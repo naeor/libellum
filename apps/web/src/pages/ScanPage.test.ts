@@ -1,6 +1,7 @@
 import type { OcrItemResult } from "@libellum/shared";
 import { describe, expect, it } from "vitest";
 
+import { toLocalDate } from "../lib/datetime.js";
 import { draftOf, foldDrafts } from "./ScanPage.js";
 
 /**
@@ -71,10 +72,13 @@ describe("draftOf", () => {
   });
 
   it("falls back to today when the screenshot carried no date", () => {
-    // The two "success" screenshots really do omit the time entirely.
+    // The two "success" screenshots really do omit the time entirely. The
+    // fallback is the *current* date, not the previous draft's: a screenshot
+    // with no date says nothing about when the payment happened, and borrowing
+    // the last entry's day would file it under a day it never belonged to.
     const draft = draftOf(item({ occurredLocalDate: null, occurredTime: null }), CATEGORIES, METHODS, null);
 
-    expect(draft.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(draft.date).toBe(toLocalDate(new Date()));
     expect(draft.time).toBe("");
   });
 

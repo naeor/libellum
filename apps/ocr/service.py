@@ -1,8 +1,8 @@
 """The OCR sidecar.
 
 A long-lived process that reads one JSON request per line on stdin and writes
-one JSON response per line on stdout. Node spawns it once at boot and talks to
-it for the life of the server.
+one JSON response per line on stdout. Node starts it on the first recognition
+request rather than at boot, and then talks to it for the life of the server.
 
 Three decisions worth stating.
 

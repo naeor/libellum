@@ -12,9 +12,12 @@ import { z } from "zod";
 // ---------------------------------------------------------------------------
 
 /**
- * The currencies a book can use. Deliberately a closed list: v1 treats every
- * currency as having two decimal places, which is true for all of these.
- * (JPY has none and would need special handling — recorded as a known limit.)
+ * The currencies a book can use. Deliberately a closed list, so the picker, the
+ * validation and the formatting all work from one set of names.
+ *
+ * Precision is **per currency**, and lives in `money.ts` with the rest of the
+ * money rules: the yen is recorded without decimals (¥1000 is `1000` minor
+ * units, not `100000`) while the others use two.
  */
 export const CURRENCIES = ["CNY", "USD", "EUR", "JPY", "HKD", "GBP"] as const;
 
@@ -179,7 +182,18 @@ export type UpdateTagInput = z.infer<typeof updateTagSchema>;
 
 /** A tag may only be attached so many times to one entry. */
 export const MAX_TAGS_PER_TRANSACTION = 10;
-/** The list view shows this many; the detail view shows them all. */
+
+/**
+ * How many tags a list row would show before collapsing the rest — **a rule
+ * that is not implemented yet.**
+ *
+ * Nothing reads this today: the entry list shows no tags at all, and the detail
+ * screen shows every tag on the entry. It is kept rather than deleted because
+ * the decision it records — five in the list, all of them in the detail — is
+ * still the intended design, and this is the only place that number is written
+ * down. It should be wired into the row at the point the row starts showing
+ * tags.
+ */
 export const TAGS_SHOWN_IN_LIST = 5;
 
 const LOCAL_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;

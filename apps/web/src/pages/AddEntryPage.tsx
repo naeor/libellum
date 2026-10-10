@@ -34,12 +34,18 @@ const DEFAULT_PAYMENT_METHOD_NAME = "其他";
  *
  * Two defaults matter here. A category starts at 暂无分类 and a payment method
  * at 其他, so a first entry can be saved without opening either control. Once
- * there is history both follow the previous entry instead, which is what makes
- * recording a day's receipts quick.
+ * there is history the category, the payment method and the currency follow the
+ * previous entry instead, which is what makes recording a day's receipts quick.
  *
- * The *date* never follows anything: it is always the current time. Inheriting
- * a date from an older entry would silently file today's spending under the
- * wrong day, which is worse than one extra tap.
+ * The *date* never follows anything. Every entry starts at the current time:
+ * the first one on a freshly opened screen, and equally the one after the
+ * "再记一笔" button. Inheriting a date from an older entry would silently file
+ * today's spending under the wrong day — and because the stale value stays
+ * visible in the field, nothing on the screen would look wrong.
+ *
+ * Editing an existing entry is not an exception to that rule but the other side
+ * of it: `EntryDetailPage` shows the past moment because it is changing *that
+ * entry*, which keeps its own time. A new entry never borrows one.
  */
 export function AddEntryPage(): React.JSX.Element {
   const navigate = useNavigate();
@@ -194,14 +200,14 @@ export function AddEntryPage(): React.JSX.Element {
           void navigate("/");
         }}
         onAgain={() => {
+          const next = nextEntryFields(new Date());
+
           focusAfterReset.current = true;
-          setAmountText("");
-          setNote("");
-          setTagIds([]);
+          setAmountText(next.amountText);
+          setNote(next.note);
+          setTagIds([...next.tagIds]);
+          setOccurredAt(next.occurredAt);
           setError(null);
-          // The date is kept on purpose: entering an afternoon's worth of
-          // receipts should not mean setting the date again for each one.
-          // Opening the tab fresh still starts at now.
           setSaved(null);
         }}
       />
@@ -478,4 +484,25 @@ export function AddEntryPage(): React.JSX.Element {
       </form>
     </TabPage>
   );
+}
+
+/** The form fields a new entry starts from, once its moment is known. */
+export interface NextEntryFields {
+  readonly amountText: string;
+  readonly note: string;
+  readonly tagIds: readonly string[];
+  readonly occurredAt: Date;
+}
+
+/**
+ * What "再记一笔" puts the form back into.
+ *
+ * The date is part of the reset, like the amount and the note: it is the moment
+ * the button was pressed, never the moment of the entry just saved. `now` is an
+ * argument rather than a call to the clock inside, so this rule can be asserted
+ * in a test without a browser — the same reason `draftOf` in the scan screen is
+ * a free function.
+ */
+export function nextEntryFields(now: Date): NextEntryFields {
+  return { amountText: "", note: "", tagIds: [], occurredAt: now };
 }

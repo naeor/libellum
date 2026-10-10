@@ -6,8 +6,11 @@ import {
   bucketForPreset,
   comparisonRangeFor,
   daysBetween,
+  endOfMonth,
   rangeForPreset,
+  startOfMonth,
   type Currency,
+  type DateRange,
   type StatsRangeKey,
   type TransactionKind,
 } from "@libellum/shared";
@@ -29,7 +32,7 @@ import { useLedger, useStats } from "../lib/queries.js";
 
 /** The heat map's own two views: the last week, or the current month. */
 const HEAT_RANGES = ["7d", "month"] as const;
-type HeatRange = (typeof HEAT_RANGES)[number];
+export type HeatRange = (typeof HEAT_RANGES)[number];
 
 export function StatsPage(): React.JSX.Element {
   const navigate = useNavigate();
@@ -60,9 +63,7 @@ export function StatsPage(): React.JSX.Element {
   const year = today.slice(0, 4);
   const yearRange = { from: `${year}-01-01`, to: `${year}-12-31` };
 
-  const heatStart =
-    heatRange === "7d" ? rangeForPreset("7d", today).from : `${today.slice(0, 7)}-01`;
-  const monthEnd = `${today.slice(0, 7)}-31`;
+  const heat = heatRangeFor(heatRange, today);
 
   const main = useStats({
     ...range,
@@ -74,12 +75,7 @@ export function StatsPage(): React.JSX.Element {
 
   const yearStats = useStats({ ...yearRange, bucket: "month", currency: currencyInUse });
 
-  const heatStats = useStats({
-    from: heatStart,
-    to: heatRange === "7d" ? today : monthEnd,
-    bucket: "day",
-    currency: currencyInUse,
-  });
+  const heatStats = useStats({ ...heat, bucket: "day", currency: currencyInUse });
 
   const currencies = useMemo(() => {
     const preferred = user?.defaultCurrency ?? "CNY";
@@ -200,7 +196,7 @@ export function StatsPage(): React.JSX.Element {
             <ComparisonPanel
               current={main.data.totals}
               previous={main.data.comparison?.totals ?? null}
-              monthToDate={range.to < monthEndOf(range.to)}
+              monthToDate={range.to < endOfMonth(range.to)}
               currentDays={daysBetween(range.from, range.to)}
               previousDays={
                 main.data.comparison === null
@@ -287,9 +283,17 @@ function Stat({ label, value }: { readonly label: string; readonly value: string
   );
 }
 
-/** Last day of the month a date falls in, as a string. */
-function monthEndOf(date: string): string {
-  const [year, month] = date.split("-").map(Number) as [number, number];
-
-  return new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
+/**
+ * The range the calendar heat map draws.
+ *
+ * Kept out of the component because the last day of a month is exactly the date
+ * that is easy to build wrongly. The screen used to paste "-31" onto the month
+ * string, so April asked for the 31st of April; JavaScript accepts that and
+ * rolls it forward to the 1st of May, and the query then counted the next
+ * month's first day towards this one. `endOfMonth` asks the calendar instead.
+ */
+export function heatRangeFor(heatRange: HeatRange, today: string): DateRange {
+  return heatRange === "7d"
+    ? rangeForPreset("7d", today)
+    : { from: startOfMonth(today), to: endOfMonth(today) };
 }

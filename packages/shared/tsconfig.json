@@ -2,7 +2,14 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "noEmit": true,
-    "declaration": false
+    "declaration": false,
+    // The base config compiles against ES2023 alone, which leaves
+    // `globalThis.crypto` untyped here. This package runs on both sides — the
+    // API and the browser — and uses exactly one host API, `crypto.
+    // getRandomValues`, which every target has. DOM is the declaration that
+    // describes it; nothing else in this package may reach for a browser API
+    // that Node does not also provide.
+    "lib": ["ES2023", "DOM"]
   },
   "include": ["src"]
 }
