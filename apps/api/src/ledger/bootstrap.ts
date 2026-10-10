@@ -1,5 +1,6 @@
 import type { Prisma } from "../generated/prisma/client.js";
 
+import { takeNextBookNumber } from "../auth/recovery-code.js";
 import {
   DEFAULT_BOOK_NAME,
   PAYMENT_METHOD_NAMES,
@@ -16,11 +17,20 @@ type Client = Prisma.TransactionClient;
  * Runs inside the registration transaction, so a failure leaves no half-built
  * account behind — either the person has a usable ledger or they have nothing.
  *
+ * The ledger number is allocated here, from the same counter table the account
+ * number uses, for the same reason: a number that is decided by the server in
+ * one statement cannot be given to two ledgers, however many people sign up at
+ * once.
+ *
  * @returns the new book's id
  */
 export async function createDefaultLedger(client: Client, userId: string): Promise<string> {
   const book = await client.book.create({
-    data: { name: DEFAULT_BOOK_NAME, createdBy: userId },
+    data: {
+      name: DEFAULT_BOOK_NAME,
+      createdBy: userId,
+      bookNumber: await takeNextBookNumber(client),
+    },
     select: { id: true },
   });
 

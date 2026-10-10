@@ -120,6 +120,99 @@ async function ledgerOf(cookie: string) {
   };
 }
 
+describe("ledger numbers", () => {
+  /** The number of an account's own ledger. */
+  async function bookNumberOf(cookie: string): Promise<string | null> {
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/v1/ledger",
+      headers: { cookie },
+    });
+    return (response.json() as { book: { bookNumber: string | null } }).book.bookNumber;
+  }
+
+  it("are allocated from the ledger block, in sequence", async () => {
+    const first = await signUp("mama");
+    const second = await signUp("baba");
+
+    const a = Number(await bookNumberOf(first));
+    const b = Number(await bookNumberOf(second));
+
+    expect(a).toBe(40_000_000);
+    expect(b).toBe(a + 1);
+  });
+
+  it("never collide with account numbers", async () => {
+    // The owner chose the ledger block so the two kinds of number are not
+    // mistaken for one another. This is the assertion behind that choice.
+    const cookie = await signUp("mama");
+
+    const ledger = await app.inject({
+      method: "GET",
+      url: "/api/v1/ledger",
+      headers: { cookie },
+    });
+    const me = await app.inject({
+      method: "GET",
+      url: "/api/v1/auth/me",
+      headers: { cookie },
+    });
+
+    const book = (ledger.json() as { book: { bookNumber: string } }).book.bookNumber;
+    const account = (me.json() as { user: { accountNumber: string } }).user.accountNumber;
+
+    expect(book.slice(0, 2)).toBe("40");
+    expect(account.slice(0, 2)).toBe("10");
+    expect(book).not.toBe(account);
+  });
+
+  it("gives two accounts their own ledger, each numbered", async () => {
+    const mama = await signUp("mama");
+    const baba = await signUp("baba");
+
+    expect(await bookNumberOf(mama)).not.toBe(await bookNumberOf(baba));
+  });
+
+  it("refuses a number that is not eight digits", async () => {
+    const cookie = await signUp("mama");
+    const ledger = await app.inject({
+      method: "GET",
+      url: "/api/v1/ledger",
+      headers: { cookie },
+    });
+    const bookId = (ledger.json() as { book: { id: string } }).book.id;
+
+    // The CHECK constraint, not application code: a short number would break the
+    // "read it out loud" promise the whole scheme rests on.
+    await expect(
+      prisma.book.update({ where: { id: bookId }, data: { bookNumber: "1234" } }),
+    ).rejects.toThrow();
+  });
+
+  it("refuses to give two ledgers the same number", async () => {
+    const mama = await signUp("mama");
+    const baba = await signUp("baba");
+
+    const mamaLedger = await app.inject({
+      method: "GET",
+      url: "/api/v1/ledger",
+      headers: { cookie: mama },
+    });
+    const babaLedger = await app.inject({
+      method: "GET",
+      url: "/api/v1/ledger",
+      headers: { cookie: baba },
+    });
+
+    const taken = (mamaLedger.json() as { book: { bookNumber: string } }).book.bookNumber;
+    const other = (babaLedger.json() as { book: { id: string } }).book.id;
+
+    await expect(
+      prisma.book.update({ where: { id: other }, data: { bookNumber: taken } }),
+    ).rejects.toThrow();
+  });
+});
+
 describe("account numbers", () => {
   /** The number an account ended up with. */
   async function numberOf(cookie: string): Promise<string> {

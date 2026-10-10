@@ -24,7 +24,10 @@ export function registerLedgerRoutes(app: FastifyInstance, options: LedgerRouteO
     const bookId = await currentBookId(prisma, userId);
 
     const [book, categories, paymentMethods, tags] = await Promise.all([
-      prisma.book.findUniqueOrThrow({ where: { id: bookId }, select: { id: true, name: true } }),
+      prisma.book.findUniqueOrThrow({
+        where: { id: bookId },
+        select: { id: true, name: true, bookNumber: true },
+      }),
       prisma.category.findMany({
         where: { bookId },
         orderBy: [{ kind: "asc" }, { sortOrder: "asc" }],

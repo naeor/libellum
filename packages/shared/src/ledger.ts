@@ -100,7 +100,18 @@ export const tagSchema = z.object({
 export type Tag = z.infer<typeof tagSchema>;
 
 export const ledgerMetaResponseSchema = z.object({
-  book: z.object({ id: z.string(), name: z.string() }),
+  book: z.object({
+    id: z.string(),
+    name: z.string(),
+    /**
+     * The ledger's public eight-digit number.
+     *
+     * Nullable only for the sake of rows written before the migration that
+     * introduced it; every ledger created since has one. The client shows it so
+     * two people can confirm out loud that they are looking at the same ledger.
+     */
+    bookNumber: z.string().nullable(),
+  }),
   categories: z.array(categorySchema),
   paymentMethods: z.array(paymentMethodSchema),
   tags: z.array(tagSchema),

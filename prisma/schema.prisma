@@ -163,15 +163,32 @@ model Counter {
 
 /// A ledger.
 ///
-/// v1 creates exactly one per account and never shows a book switcher, but the
-/// table exists from the first migration so that sharing can arrive in v2
-/// without migrating anybody's data.
+/// Every account gets one at signup and can belong to others by invitation. The
+/// book switcher and the 首页 that lists them arrive with the collaboration
+/// stage; the table has been shaped for sharing since the first migration.
 model Book {
   id        String   @id @default(uuid()) @db.Uuid
   name      String
   createdBy String   @map("created_by") @db.Uuid
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  /// Eight-digit public ledger number, for example `40000007`.
+  ///
+  /// The same idea as `User.accountNumber`, and deliberate for the same reason:
+  /// it can be read out loud when two people are checking they are looking at
+  /// the same ledger. Unlike an account number it is **not searchable** — a
+  /// ledger is joined by invitation, never by guessing a number — so it is a
+  /// label rather than an address.
+  ///
+  /// Nullable in the schema because it was added after `books` already had rows;
+  /// the migration numbers them and the allocation path fills it in from then
+  /// on. **New code may assume it is set**; only a row written before this
+  /// migration could be missing one, and there are none left.
+  ///
+  /// The number block starts at 40000000, chosen by the owner so that an account
+  /// number and a ledger number are never mistaken for one another at a glance.
+  bookNumber String? @unique @map("book_number") @db.VarChar(8)
 
   creator        User            @relation("BookCreator", fields: [createdBy], references: [id], onDelete: Cascade)
   members        BookMember[]

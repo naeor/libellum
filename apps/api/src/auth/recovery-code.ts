@@ -66,6 +66,27 @@ export function formatAccountNumber(value: number): string {
 const RESERVED_COUNTER = "account_number";
 
 /**
+ * Where every sequence begins, in one place.
+ *
+ * The migration that seeds them and the test reset that re-seeds them after
+ * clearing the tables must agree; if they drift, tests fail for a reason that
+ * has nothing to do with what they are testing. Both read from here.
+ *
+ * The values are the ones the migrations seeded, and the two account series
+ * carry a note worth keeping: `account_number` is where **invitation codes**
+ * draw from and starts inside the block the owner reserved for the first batch,
+ * while `account_number_direct` is where accounts without a code draw from and
+ * starts above that block. They are separate counters on purpose — merging them
+ * would let a batch of codes push the direct series into the block still being
+ * handed out, giving two accounts one number.
+ */
+export const COUNTER_SEEDS: Readonly<Record<string, number>> = {
+  account_number: 10_000_002,
+  account_number_direct: 10_000_101,
+  book_number: 40_000_000,
+};
+
+/**
  * The counter a signup draws from when its invite reserved no number.
  *
  * Deliberately a *different* counter from the one codes draw on. One counter
@@ -128,6 +149,30 @@ export async function takeNextAccountNumber(tx: CounterClient): Promise<string> 
  */
 export async function reserveAccountNumber(tx: CounterClient): Promise<string> {
   return formatAccountNumber(await takeNextRawAccountNumber(tx, RESERVED_COUNTER));
+}
+
+/**
+ * Where ledger numbers begin.
+ *
+ * The owner picked 40000000 so that a ledger number and an account number are
+ * never confused at a glance — and, he added, so that his own ledger gets the
+ * first one.
+ */
+export const BOOK_NUMBER_FIRST = 40_000_000;
+
+const BOOK_COUNTER = "book_number";
+
+/**
+ * The next ledger number, inside the caller's transaction.
+ *
+ * The same mechanism as account numbers, and the same reason: the counter is
+ * the authority, one statement allocates, and the unique index on
+ * `books.book_number` is the backstop. A ledger number is allocated when the
+ * ledger is created rather than reserved in advance — ledgers are not handed
+ * out on cards the way invitation codes are.
+ */
+export async function takeNextBookNumber(tx: CounterClient): Promise<string> {
+  return formatAccountNumber(await takeNextRawAccountNumber(tx, BOOK_COUNTER));
 }
 
 /**

@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 
 import { buildApp, type BuildAppOptions } from "../src/app.js";
+import { COUNTER_SEEDS } from "../src/auth/recovery-code.js";
 import { createPrismaClient } from "../src/db.js";
 import { assertTestDatabase } from "./setup.js";
 
@@ -68,14 +69,12 @@ export async function resetDatabase(): Promise<void> {
    * would leave the very next signup unable to allocate a number, which is a
    * failure with nothing to do with whatever the test was checking.
    *
-   * The values match the migration, so a test that asserts on an allocated
-   * number gets the same answer here as on a freshly migrated database.
+   * The values come from `COUNTER_SEEDS`, which the migrations also follow, so a
+   * test that asserts on an allocated number gets the same answer here as on a
+   * freshly migrated database.
    */
   await prisma.counter.createMany({
-    data: [
-      { name: "account_number", next: 10_000_002 },
-      { name: "account_number_direct", next: 10_000_101 },
-    ],
+    data: Object.entries(COUNTER_SEEDS).map(([name, next]) => ({ name, next })),
   });
 }
 
