@@ -14,6 +14,7 @@ import { useNavigate } from "react-router";
 import { Alert } from "../components/Alert.js";
 import { Button } from "../components/Button.js";
 import { CameraIcon } from "../components/BottomNav.js";
+import { ChoiceDialog, type Choice } from "../components/ChoiceDialog.js";
 import { EntrySaved } from "../components/EntrySaved.js";
 import { InnerPage } from "../components/Layouts.js";
 import { SkeletonRows } from "../components/States.js";
@@ -65,6 +66,15 @@ export function ScanPage(): React.JSX.Element {
   const [mode, setMode] = useState<Mode>("single");
   const [step, setStep] = useState<Step>({ name: "pick" });
   const [error, setError] = useState<string | null>(null);
+
+  /**
+   * Recognition ran and read nothing, so the user is asked what to do next.
+   *
+   * A flag rather than an error string, because the three ways forward do not
+   * depend on *why* it failed, and the reason is already in the banner behind
+   * the dialog when there is one.
+   */
+  const [nothingReadable, setNothingReadable] = useState(false);
 
   /** Results that could be read, and where we are among them. */
   const [items, setItems] = useState<OcrItemResult[]>([]);
@@ -151,10 +161,8 @@ export function ScanPage(): React.JSX.Element {
     setFiles(combined);
   }
 
-  async function start(chosenMode?: Mode): Promise<void> {
+  async function start(): Promise<void> {
     if (files.length === 0) return;
-
-    const effectiveMode = chosenMode ?? mode;
 
     setError(null);
     setStep({ name: "working", index: 1, total: files.length });
@@ -169,8 +177,21 @@ export function ScanPage(): React.JSX.Element {
       const lost = result.items.length - readable.length;
 
       if (readable.length === 0) {
-        setError("这几张都没能识别出来。可以换一张更清晰的截图，或者直接手动记账。");
+        /**
+         * ⚠️ **Nothing readable: ask, do not decide.**
+         *
+         * The owner's rule, and the first attempt at this got it wrong — it sent
+         * the user straight to the manual form, which silently removed the two
+         * options they might have preferred. Retrying the same picture is the
+         * right move for a transient failure, and going back to choose a clearer
+         * screenshot is the right move for a bad one; only the user knows which
+         * happened.
+         *
+         * No error banner accompanies this. The dialog says what happened, and a
+         * second copy of the same sentence behind it is noise.
+         */
         setStep({ name: "pick" });
+        setNothingReadable(true);
         return;
       }
 
@@ -183,14 +204,23 @@ export function ScanPage(): React.JSX.Element {
       setStep({
         name: "review",
         draft:
-          effectiveMode === "single"
+          mode === "single"
             ? foldDrafts(readable, categories, paymentMethods, lastCategoryId)
             : draftOf(readable[0]!, categories, paymentMethods, lastCategoryId),
         warnings: readable[0]?.draft?.warnings ?? [],
       });
     } catch (caught) {
+      /**
+       * A failure to *reach* recognition, which is a different situation from
+       * recognition succeeding and reading nothing — but the user's options are
+       * the same, so it gets the same dialog rather than a banner that leaves
+       * them to work out what to do. The reason still comes through `error`,
+       * because "the server was unreachable" and "the picture was blurry" call
+       * for different decisions.
+       */
       setError(errorMessage(caught));
       setStep({ name: "pick" });
+      setNothingReadable(true);
     }
   }
 
@@ -290,22 +320,6 @@ export function ScanPage(): React.JSX.Element {
           }}
           onMode={setMode}
           onStart={() => void start()}
-          onModeAndStart={(chosen) => {
-            /**
-             * Choosing "same purchase" or "different purchases" also starts.
-             *
-             * With more than one picture this question is the last thing between
-             * the user and the result, and they have already said "recognise
-             * these" by picking them. Answering and *then* pressing 开始识别 is a
-             * tap the owner asked to remove, so the answer is the go-ahead.
-             *
-             * The choice is passed through rather than read from state: `start`
-             * closes over the render this click happened in, which is the one
-             * before `setMode` has landed.
-             */
-            setMode(chosen);
-            void start(chosen);
-          }}
           onManual={() => void navigate("/add")}
         />
       ) : null}
@@ -361,9 +375,63 @@ export function ScanPage(): React.JSX.Element {
           />
         </div>
       ) : null}
+
+      {/*
+        Recognition read nothing. The user picks the way forward; nothing here
+        decides for them — see the note on `NOTHING_READABLE_CHOICES`.
+      */}
+      <ChoiceDialog
+        open={nothingReadable}
+        title="没能读出这几张截图的信息"
+        description="可以再试一次，或改为手动填写。"
+        choices={NOTHING_READABLE_CHOICES}
+        onChoose={(choice) => {
+          setNothingReadable(false);
+
+          if (choice === "retry") {
+            // The same pictures, unchanged — that is what "再试一次" means, and
+            // it is the reason the hint says so rather than leaving the user to
+            // guess whether a new picker is coming.
+            void start();
+            return;
+          }
+
+          if (choice === "manual") {
+            void navigate("/add");
+            return;
+          }
+
+          /**
+           * Back to the pick step, with the pictures still attached.
+           *
+           * **Deliberately no automatic picker.** The owner was explicit: "这种
+           * 情况下不要帮用户自动点击." Re-opening a picker the moment a dialog
+           * closes is the kind of helpfulness that takes the decision away —
+           * and the user may want to look at what they chose first.
+           */
+        }}
+      />
     </InnerPage>
   );
 }
+
+/**
+ * The three ways forward when recognition reads nothing.
+ *
+ * Declared outside the component so the array is not rebuilt on every render —
+ * `ChoiceDialog` uses it in an effect dependency, and a fresh array each time
+ * would re-run that effect on every keystroke elsewhere on the screen.
+ *
+ * `back` is the dismissive one: Escape and a tap on the backdrop both return to
+ * the pick step, which is where the user can choose a different picture. That is
+ * the owner's "返回拍照记账页面" — **and deliberately not an automatic re-open of
+ * the picker.** He was explicit: "这种情况下不要帮用户自动点击."
+ */
+const NOTHING_READABLE_CHOICES: readonly Choice<"retry" | "manual" | "back">[] = [
+  { id: "retry", label: "再试一次", hint: "用同一张图重新识别", primary: true },
+  { id: "manual", label: "改为手动记账", hint: "自己填写这笔账" },
+  { id: "back", label: "返回拍照页", hint: "可以换一张截图", dismissive: true },
+];
 
 function PickStep({
   files,
@@ -374,7 +442,6 @@ function PickStep({
   onRemove,
   onMode,
   onStart,
-  onModeAndStart,
   onManual,
 }: {
   readonly files: readonly File[];
@@ -385,15 +452,6 @@ function PickStep({
   readonly onRemove: (index: number) => void;
   readonly onMode: (mode: Mode) => void;
   readonly onStart: () => void;
-  /**
-   * Answer the mode question **and** begin, in one press.
-   *
-   * Separate from `onMode` rather than replacing it, because the two do different
-   * things depending on why the question is on screen: the same control also
-   * exists for pictures chosen here, where changing one's mind should not launch
-   * recognition.
-   */
-  readonly onModeAndStart: (mode: Mode) => void;
   readonly onManual: () => void;
 }): React.JSX.Element {
   const pickerRef = useRef<HTMLInputElement>(null);
@@ -500,16 +558,35 @@ function PickStep({
               current={mode}
               title="同一笔消费，分几张凭证"
               hint="金额相加，只核对一次"
-              onSelect={onModeAndStart}
+              onSelect={onMode}
             />
             <ModeOption
               mode="batch"
               current={mode}
               title="几笔不同的消费"
               hint="每张单独核对一次"
-              onSelect={onModeAndStart}
+              onSelect={onMode}
             />
           </div>
+
+          {/*
+            ⚠️ **Answering this question does not start anything, and that is a
+            correction the owner made after using it.**
+            
+            It used to launch recognition on the tap, on the reasoning that the
+            answer was the last thing between the user and the result. He tried
+            it and described exactly what went wrong: "点的那一瞬间，它就已经跳转
+            到识别了，对我来说这个体验并不算好——我没办法百分百确定我点到了合适
+            的位置."
+            
+            A tap that both selects and navigates gives no chance to notice a
+            mis-tap, and the two options here are opposite answers — picking the
+            wrong one produces a wrong ledger entry, not a wrong screen. With
+            several pictures the picker has already saved the trips that mattered,
+            so one deliberate confirmation is cheap; the saving was never worth
+            the uncertainty. Now the choice is visible, and 开始识别 confirms it.
+          */}
+          <p className="text-xs text-muted">选好后点下面的「开始识别」。</p>
         </section>
       ) : null}
 
@@ -656,7 +733,7 @@ function ReviewStep({
       </section>
 
       {/*
-        Date and time, side by side.
+        Date and time, side by side, at about three-fifths of the width.
         
         **Fixed proportions, not `flex-1`.** The owner reported these two
         overlapping on his phone, with the time field pushed off the right edge,
@@ -665,20 +742,22 @@ function ReviewStep({
         phone screen. Without `min-w-0`, a flex item refuses to shrink below that
         width, so the pair overflowed and the boxes ran into each other.
         
-        Both halves of the fix are needed and they do different jobs:
+        Both halves of the fix do different jobs:
         
-          * `min-w-0` lets an item shrink below its content's minimum, which is
-            what stops the overflow;
+          * `min-w-0` lets an item shrink below its content's minimum;
           * explicit `basis` values give each field a share that does not depend
-            on what it contains, which is what the owner actually asked for
-            ("建议他俩的框缩小一些，并且保持固定") — a date and a time are always
-            10 and 5 characters, so a fixed split is the honest layout, and it
-            cannot shift when the values change.
+            on what it contains — which is what he asked for ("保持固定").
         
-        Three to two: `2026-10-10` against `18:03`, plus the picker glyph Safari
-        draws inside the date field.
+        ⚠️ **Then he asked for them narrower still** ("这俩的框太宽了……缩短到现在的
+        五分之三左右"). Both fields are always the same width of content — a date is
+        ten characters and a time is five — so a full-width row for each was
+        mostly empty box. `w-3/5` on the row, keeping the 3:2 split inside it.
+        
+        Three to two because `2026-10-10` is twice the length of `18:03` before
+        Safari's own picker glyph is counted, and the date field carries that
+        glyph inside it.
       */}
-      <section className="flex gap-3">
+      <section className="flex w-3/5 gap-3">
         <Field label="日期" className="basis-3/5 shrink-0">
           <input
             type="date"
