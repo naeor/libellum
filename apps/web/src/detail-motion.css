@@ -262,3 +262,18 @@
     transition: none !important;
   }
 }
+
+/*
+ * In the list state the toggle is pinned under the summary.
+ *
+ * The owner asked for it: expense and income are what the entries below are
+ * filtered by, so they belong with the month and the tool buttons rather than
+ * scrolling away with the rows. It parks directly beneath the green area, which
+ * is itself pinned, so the two read as one header.
+ */
+.detail-toggle-sticky {
+  position: sticky;
+  top: var(--hero-short);
+  z-index: 19;
+  background: var(--color-canvas, #fbfbf9);
+}
