@@ -130,6 +130,23 @@ model RegistrationInvite {
   /// Null for a code generated before numbers were pre-allocated.
   accountNumber String? @unique @map("account_number")
 
+  /// Whether redeeming this code produces an **administrator**.
+  ///
+  /// ⚠️ **This used to be inferred from `accountNumber !== null`, and that was
+  /// wrong** — the owner caught it. "The code reserved a number" and "this
+  /// person should be an administrator" are two different facts, and tying them
+  /// together meant **any invocation that reserved a number minted an
+  /// administrator**: `pnpm invite:create --reserved`, and the whole batch
+  /// generator, both of which are ordinary commands somebody might run for
+  /// somebody who should not have those powers at all.
+  ///
+  /// A stored flag rather than an inference, because a privilege should be
+  /// granted deliberately. The two facts still travel together in practice —
+  /// the batch is admin and ordinary codes are not — but that is a *decision made
+  /// by the command that creates the code*, not a rule the registration path
+  /// derives from an unrelated column.
+  grantsAdmin Boolean @default(false) @map("grants_admin")
+
   /// When the code was withdrawn before anybody used it.
   ///
   /// The owner asked for revocation on 2026-10-10, alongside a default life of

@@ -365,9 +365,9 @@ describe("account numbers", () => {
     expect(await numberOf(direct)).toBe("10000101");
   });
 
-  it("makes an account with a reserved number an administrator", async () => {
+  it("makes an administrator only when the code says so", async () => {
     await prisma.registrationInvite.create({
-      data: { code: "RESERVED-ADMIN", accountNumber: "10000060" },
+      data: { code: "RESERVED-ADMIN", accountNumber: "10000060", grantsAdmin: true },
     });
 
     const response = await app.inject({
@@ -382,14 +382,49 @@ describe("account numbers", () => {
     });
 
     expect(response.statusCode, response.body).toBe(201);
-    // A reserved number means the owner handed this code to somebody, and the
-    // batch he handed out is the batch that may see abandoned ledgers.
     const row = await prisma.user.findUniqueOrThrow({
       where: { username: "reservedadmin" },
       select: { isAdmin: true, accountNumber: true },
     });
     expect(row.accountNumber).toBe("10000060");
     expect(row.isAdmin).toBe(true);
+  });
+
+  it("does not make a reserved number an administrator by itself", async () => {
+    /**
+     * ⚠️ **The bug the owner caught.**
+     *
+     * Registration used to decide administration from `accountNumber !== null`,
+     * so *any* code that reserved a number produced an administrator — including
+     * `invite:create --reserved` and the whole batch generator, which are
+     * ordinary commands somebody might run for a family member.
+     *
+     * Reserving a number and granting administration are now separate facts.
+     * This test is the one that would have caught it: a code with a reserved
+     * number and no flag must produce an ordinary account.
+     */
+    await prisma.registrationInvite.create({
+      data: { code: "RESERVED-PLAIN", accountNumber: "10000061", grantsAdmin: false },
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/register",
+      payload: {
+        inviteCode: "RESERVED-PLAIN",
+        username: "reservedplain",
+        displayName: "普通",
+        password: "reserved-password-2026",
+      },
+    });
+
+    expect(response.statusCode, response.body).toBe(201);
+    const row = await prisma.user.findUniqueOrThrow({
+      where: { username: "reservedplain" },
+      select: { isAdmin: true, accountNumber: true },
+    });
+    expect(row.accountNumber).toBe("10000061");
+    expect(row.isAdmin).toBe(false);
   });
 
   it("leaves an ordinary signup out of the administrators", async () => {

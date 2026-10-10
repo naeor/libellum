@@ -28,8 +28,15 @@ export interface InviteClient {
         note?: string | null;
         accountNumber?: string | null;
         expiresAt?: Date | null;
+        grantsAdmin?: boolean;
       };
-    }): Promise<{ id: string; code: string; accountNumber: string | null; expiresAt: Date | null }>;
+    }): Promise<{
+      id: string;
+      code: string;
+      accountNumber: string | null;
+      expiresAt: Date | null;
+      grantsAdmin: boolean;
+    }>;
   };
   $queryRaw<T>(query: TemplateStringsArray, ...values: unknown[]): Promise<T>;
 }
@@ -39,12 +46,16 @@ export interface CreatedInvite {
   readonly code: string;
   readonly accountNumber: string | null;
   readonly expiresAt: Date | null;
+  readonly grantsAdmin: boolean;
 }
 
 /**
- * Create an ordinary code: expires in seven days, revocable.
+ * Create an ordinary code: expires in seven days, revocable, **not** an
+ * administrator.
  *
  * Use this for "somebody needs an account and I am sending them a code now".
+ * `grantsAdmin` is false and that is a decision, not a default that fell out of
+ * the shape — see `createAdminInvite` for why the two are separate.
  */
 export async function createOrdinaryInvite(
   tx: InviteClient,
@@ -57,17 +68,46 @@ export async function createOrdinaryInvite(
       note,
       accountNumber: null,
       expiresAt: new Date(now.getTime() + INVITE_VALID_MS),
+      grantsAdmin: false,
     },
   });
 }
 
 /**
- * Create a code that reserves the account number it will grant.
+ * Create a code that reserves the account number it will grant **and** produces
+ * an administrator.
  *
  * **No expiry, and that is the point of it.** The owner asked for a batch of
  * these to be written down and handed out slowly; a code that dies in a week
  * cannot be handed out at all. The reservation is what makes the batch possible —
  * the number is decided now, so it can be printed on the card.
+ *
+ * ⚠️ **This is the only way to create an administrator**, deliberately. It used
+ * to be that *any* code reserving a number did it, which meant ordinary commands
+ * minted administrators by accident. Now the privilege is asked for by name.
+ */
+export async function createAdminInvite(
+  tx: InviteClient,
+  note: string | null,
+): Promise<CreatedInvite> {
+  return tx.registrationInvite.create({
+    data: {
+      code: generateInviteCode(),
+      note,
+      accountNumber: await reserveAccountNumber(tx),
+      expiresAt: null,
+      grantsAdmin: true,
+    },
+  });
+}
+
+/**
+ * Create a code that reserves a number **without** granting administration.
+ *
+ * The case the owner's correction made room for: the reserved number is a
+ * convenience — it can be printed on a card and handed over months later — while
+ * being an administrator is a separate thing somebody has to decide. A code can
+ * have either, both, or neither.
  */
 export async function createReservedInvite(
   tx: InviteClient,
@@ -79,6 +119,7 @@ export async function createReservedInvite(
       note,
       accountNumber: await reserveAccountNumber(tx),
       expiresAt: null,
+      grantsAdmin: false,
     },
   });
 }

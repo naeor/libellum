@@ -201,16 +201,19 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
           passwordHash,
           recoveryCodeHash,
           /**
-           * A reserved number means an administrator.
+           * Whether this account administers the platform.
            *
-           * The owner handed the first batch of codes to the people he wants to
-           * be able to look at abandoned ledgers, so the reservation *is* the
-           * grant — no separate column on the invite, and no way for the two to
-           * disagree. Anything allocated by the counter is an ordinary account,
-           * even if its number later drifts into a range that once meant
-           * something.
+           * ⚠️ **Read from the code, not inferred from it.** This used to be
+           * `invite.accountNumber !== null` — "the code reserved a number" —
+           * which meant **every command that reserved a number created an
+           * administrator**, including the ordinary `--reserved` flag and the
+           * whole batch generator. The owner caught it.
+           *
+           * The two facts are separate now: a code can reserve a number without
+           * granting administration (printable on a card, handed over months
+           * later, ordinary powers) and only `createAdminInvite` sets this.
            */
-          isAdmin: invite.accountNumber !== null,
+          isAdmin: invite.grantsAdmin,
         },
       });
 

@@ -82,7 +82,17 @@ export async function resetDatabase(): Promise<void> {
 export async function signUp(app: FastifyInstance, username: string): Promise<string> {
   // Registration upper-cases the code before looking it up, so store it that way.
   const code = `INVITE-${username}`.toUpperCase();
-  await prisma.registrationInvite.create({ data: { code } });
+  /**
+   * `grantsAdmin: false` is stated rather than left to the column default.
+   *
+   * A test helper that quietly produced administrators would make every test
+   * that asserts on ordinary permissions pass for the wrong reason — and the
+   * privilege used to be inferred from a reserved number, which this invite has
+   * none of, so the intent was invisible either way. Saying it out loud costs a
+   * line and removes the doubt. Tests that want an administrator create the flag
+   * themselves.
+   */
+  await prisma.registrationInvite.create({ data: { code, grantsAdmin: false } });
 
   const response = await app.inject({
     method: "POST",

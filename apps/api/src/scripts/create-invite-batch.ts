@@ -3,6 +3,12 @@
  *
  *   pnpm invite:batch 98 --note "首批"
  *
+ * ⚠️ **This generator creates administrators**, and that is why it is separate
+ * from `invite:create`. The owner's first batch — account numbers
+ * 10000002–10000099 — is the set of codes he hands to the people who may see
+ * abandoned ledgers. `createAdminInvite` is the only function that sets that
+ * flag, and this script is one of its two callers.
+ *
  * Written for the owner's plan of 2026-10-10: a block of account numbers is
  * reserved for a first batch of codes, written down, and handed out slowly over
  * months. Everything happens in **one transaction** for two reasons:
@@ -12,11 +18,11 @@
  *  * a failure part-way leaves no codes at all, which is better than half a
  *    batch somebody has to work out the shape of.
  *
- * The codes are printed to standard output. `docs/invite-codes.md` is the file
- * the owner asked them to live in, and it is **git-ignored** — a code in the
- * repository is a code in everybody's hands, and these grant accounts.
+ * The codes are printed to standard output. `docs/邀请码.md` is the file the owner
+ * asked them to live in, and it is **git-ignored** — a code in the repository is
+ * a code in everybody's hands, and these grant accounts *and* administration.
  */
-import { createReservedInvite } from "../auth/invites.js";
+import { createAdminInvite } from "../auth/invites.js";
 import { createPrismaClient } from "../db.js";
 import { loadEnv } from "../env.js";
 
@@ -37,15 +43,12 @@ const created = await prisma.$transaction(async (tx) => {
 
   for (let index = 0; index < count; index += 1) {
     /**
-     * The batch generator makes **reserved** codes: each carries the account
-     * number it will grant and does not expire.
-     *
-     * That is the whole purpose of a batch — it is written down and handed out
-     * slowly, which a seven-day code cannot survive. `createReservedInvite`
-     * also reserves the number from the counter inside this same transaction, so
-     * the numbers come out contiguous and a failure leaves no half-batch.
+     * `createAdminInvite`, not `createReservedInvite`: this batch is the owner's
+     * administrator batch. Reserving the number is part of it — the codes are
+     * written down and handed out over months — but the administration is the
+     * separate thing the call states, which is the whole point of the flag.
      */
-    const invite = await createReservedInvite(tx, note);
+    const invite = await createAdminInvite(tx, note);
     rows.push({ code: invite.code, accountNumber: invite.accountNumber });
   }
 

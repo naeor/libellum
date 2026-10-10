@@ -263,38 +263,6 @@ export function DetailPage(): React.JSX.Element {
             the seam between the two halves, and a control that moved while the
             things above it collapsed would make the whole change look loose.
           */}
-          {/*
-            Which ledger this is.
-            
-            The owner asked for this on every screen once several ledgers exist,
-            and it earns its place even before then: the number is what two people
-            say out loud to confirm they are looking at the same one. A ledger a
-            reader has been invited into can be called anything, so the name alone
-            is not enough.
-            
-            Placed here rather than inside the green area because the header's
-            height is the one thing the transition animates, with its padding
-            worked out from real device measurements — a second line in there
-            would have to be added to `--hero-tall` and `--hero-short` and
-            re-tuned on a phone. This row keeps its height either way: the label
-            is absolutely positioned, so it cannot push the control below it and
-            cannot change what the transition sees.
-            
-            It stays in both states. In the list state the reader is further from
-            the top of the page, and that is exactly when "which ledger am I
-            adding to" is worth being able to check at a glance.
-          */}
-          {ledger.data === undefined ? null : (
-            <div className="relative px-6 pt-4">
-              <span className="absolute left-6 top-0 -translate-y-1/2 rounded-full bg-canvas px-2 text-[11px] text-muted">
-                当前账本：{ledger.data.book.name}
-                {ledger.data.book.bookNumber === null ? null : (
-                  <span className="ml-1 font-mono">{ledger.data.book.bookNumber}</span>
-                )}
-              </span>
-            </div>
-          )}
-
           <div className={`detail-toggle-bar px-6 pt-4 ${atList ? "detail-toggle-sticky" : ""}`}>
             <div className="flex gap-1 rounded-full bg-line/70 p-1">
               {(["expense", "income"] as const).map((option) => (
@@ -413,6 +381,48 @@ export function DetailPage(): React.JSX.Element {
           </div>
         </div>
       </div>
+
+      {/*
+        Which ledger this is.
+        
+        The owner asked for this on every screen once several ledgers exist, and
+        it earns its place even before then: the number is what two people say
+        out loud to confirm they are looking at the same one. A ledger somebody
+        has been invited into can be called anything, so the name alone is not
+        enough.
+        
+        ⚠️ **Moved here at his request, and the placement is the point.** It was
+        first tried above the expense/income control, floating on a pill over the
+        seam — he called it ugly, and he was right: it cut the control off from
+        the list it belongs to and looked like a stray label. 
+        
+        It now sits **above the bar and outside it**: to the left, in line with
+        the 明细 and 分析 tabs directly beneath it, so it reads as a caption for
+        the whole screen rather than a badge on one control.
+        
+        Two constraints that decided the exact placement:
+        
+          * **Outside the bar, not inside it.** Inside, it would be a sixth thing
+            competing with five tabs for a phone's width, and it would move
+            whenever the tab row did.
+          * **Still part of the column, not the scrolling region.** Being a flex
+            sibling of the scroll area means it cannot be scrolled away — "which
+            ledger am I adding to" is a question you ask mid-list, so the answer
+            has to be there mid-list. It also cannot affect the transition: the
+            green area's height is the only thing that animates.
+        
+        Hidden while the recording cards are open, because those cards are 100px
+        of buttons immediately above this line and a caption underneath a menu is
+        just noise.
+      */}
+      {ledger.data === undefined || entryOpen ? null : (
+        <p className="shrink-0 truncate px-6 pt-2 text-[11px] text-muted">
+          当前账本：{ledger.data.book.name}
+          {ledger.data.book.bookNumber === null ? null : (
+            <span className="ml-1.5 font-mono">{ledger.data.book.bookNumber}</span>
+          )}
+        </p>
+      )}
 
       <LedgerNav
         open={entryOpen}
