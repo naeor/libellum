@@ -22,6 +22,7 @@
     "db:studio": "prisma studio",
     "db:reset": "prisma migrate reset",
     "invite:create": "pnpm --filter @libellum/api invite:create",
+    "invite:batch": "pnpm --filter @libellum/api invite:batch",
     "docs:build": "node tools/build-docs.mjs"
   },
   "devDependencies": {

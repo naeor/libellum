@@ -120,6 +120,127 @@ async function ledgerOf(cookie: string) {
   };
 }
 
+describe("account numbers", () => {
+  /** The number an account ended up with. */
+  async function numberOf(cookie: string): Promise<string> {
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/v1/auth/me",
+      headers: { cookie },
+    });
+    return (response.json() as { user: { accountNumber: string } }).user.accountNumber;
+  }
+
+  it("are allocated in sequence, not at random", async () => {
+    const first = await signUp("mama");
+    const second = await signUp("baba");
+
+    expect(Number(await numberOf(second))).toBe(Number(await numberOf(first)) + 1);
+  });
+
+  it("gives an invite's reserved number to the account it registers", async () => {
+    // The owner's requirement in one test: a code is written down carrying the
+    // number it will grant, so a batch can be handed out before anyone uses it.
+    await prisma.registrationInvite.create({
+      data: { code: "RESERVED-ONE", accountNumber: "10000042" },
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/register",
+      payload: {
+        inviteCode: "RESERVED-ONE",
+        username: "reserved",
+        displayName: "预留编号",
+        password: "reserved-password-2026",
+      },
+    });
+
+    expect(response.statusCode, response.body).toBe(201);
+    expect((response.json() as { user: { accountNumber: string } }).user.accountNumber).toBe(
+      "10000042",
+    );
+  });
+
+  it("does not let a reserved number disturb the ordinary sequence", async () => {
+    /**
+     * The flaw this guards was found while building it: one counter serving both
+     * jobs means a batch of codes pushes it past the reserved block, and the
+     * next account without a code is allocated *inside* the block the owner is
+     * still handing out — two accounts, one number.
+     */
+    await prisma.registrationInvite.create({
+      data: { code: "RESERVED-TWO", accountNumber: "10000050" },
+    });
+
+    await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/register",
+      payload: {
+        inviteCode: "RESERVED-TWO",
+        username: "reservedtwo",
+        displayName: "预留",
+        password: "reserved-password-2026",
+      },
+    });
+
+    const direct = await signUp("mama");
+
+    expect(await numberOf(direct)).toBe("10000101");
+  });
+
+  it("makes an account with a reserved number an administrator", async () => {
+    await prisma.registrationInvite.create({
+      data: { code: "RESERVED-ADMIN", accountNumber: "10000060" },
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/register",
+      payload: {
+        inviteCode: "RESERVED-ADMIN",
+        username: "reservedadmin",
+        displayName: "管理员",
+        password: "reserved-password-2026",
+      },
+    });
+
+    expect(response.statusCode, response.body).toBe(201);
+    // A reserved number means the owner handed this code to somebody, and the
+    // batch he handed out is the batch that may see abandoned ledgers.
+    const row = await prisma.user.findUniqueOrThrow({
+      where: { username: "reservedadmin" },
+      select: { isAdmin: true, accountNumber: true },
+    });
+    expect(row.accountNumber).toBe("10000060");
+    expect(row.isAdmin).toBe(true);
+  });
+
+  it("leaves an ordinary signup out of the administrators", async () => {
+    const cookie = await signUp("mama");
+
+    const row = await prisma.user.findUniqueOrThrow({
+      where: { accountNumber: await numberOf(cookie) },
+      select: { isAdmin: true },
+    });
+    expect(row.isAdmin).toBe(false);
+  });
+
+  it("refuses to put the same reserved number on two invites", async () => {
+    await prisma.registrationInvite.create({
+      data: { code: "DUP-ONE", accountNumber: "10000070" },
+    });
+
+    // The unique index is the backstop for the whole scheme: if two codes could
+    // reserve one number, two people would end up sharing it.
+    await expect(
+      prisma.registrationInvite.create({
+        data: { code: "DUP-TWO", accountNumber: "10000070" },
+      }),
+    ).rejects.toThrow();
+  });
+});
+
 describe("ledger bootstrap", () => {
   it("gives a new account a book, the preset categories and payment methods", async () => {
     const cookie = await signUp("mama");

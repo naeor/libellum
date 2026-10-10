@@ -118,6 +118,21 @@ if (python === null) {
       "Libellum S6 · 导出与导入 · 设计决定",
       ["S6-导出与导入-设计决定.pdf"],
     ],
+    [
+      "协作与多账本-设计决定.md",
+      "协作与多账本-设计决定.docx",
+      "Libellum · 协作与多账本 · 设计决定",
+      ["协作与多账本-设计决定.pdf"],
+    ],
+    /**
+     * The colour inventory exports too, even though it is a reference rather
+     * than a narrative document: the owner asked for it by name, and a `.docx`
+     * is what he reads on a phone.
+     *
+     * `COLORS.md` is an English filename with a Chinese export name, which is
+     * why this list exists at all rather than deriving one from the other.
+     */
+    ["COLORS.md", "颜色清单.docx", "Libellum · 颜色清单与语义分类", ["颜色清单.pdf"]],
   ];
 
   // Remove the stale PDFs **first**, not last. They are from an earlier export

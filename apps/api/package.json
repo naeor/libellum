@@ -11,7 +11,8 @@
     "start": "node --env-file-if-exists=../../.env --import tsx src/server.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "invite:create": "node --env-file-if-exists=../../.env --import tsx src/scripts/create-invite.ts"
+    "invite:create": "node --env-file-if-exists=../../.env --import tsx src/scripts/create-invite.ts",
+    "invite:batch": "node --env-file-if-exists=../../.env --import tsx src/scripts/create-invite-batch.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.2",

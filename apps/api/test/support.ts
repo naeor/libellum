@@ -58,6 +58,25 @@ export async function resetDatabase(): Promise<void> {
   await prisma.session.deleteMany();
   await prisma.registrationInvite.deleteMany();
   await prisma.user.deleteMany();
+  await prisma.counter.deleteMany();
+
+  /**
+   * Re-seed the counters.
+   *
+   * They are not test data — they are part of the schema's starting state, and
+   * the migration that creates them seeds them once. A reset that emptied them
+   * would leave the very next signup unable to allocate a number, which is a
+   * failure with nothing to do with whatever the test was checking.
+   *
+   * The values match the migration, so a test that asserts on an allocated
+   * number gets the same answer here as on a freshly migrated database.
+   */
+  await prisma.counter.createMany({
+    data: [
+      { name: "account_number", next: 10_000_002 },
+      { name: "account_number_direct", next: 10_000_101 },
+    ],
+  });
 }
 
 /** Register a fresh account and return its session cookie. */

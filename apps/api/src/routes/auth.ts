@@ -17,8 +17,8 @@ import { createRequireAuth } from "../auth/guard.js";
 import { LoginThrottle } from "../auth/login-throttle.js";
 import { getDummyHash, hashPassword, verifyPassword } from "../auth/password.js";
 import {
-  generateAccountNumber,
   generateRecoveryCode,
+  takeNextAccountNumber,
   normalizeRecoveryCode,
 } from "../auth/recovery-code.js";
 import {
@@ -69,31 +69,11 @@ function toSessionUser(user: UserRow): SessionUser {
 }
 
 /**
- * Account numbers are unique, so a collision needs a retry rather than an
- * error. With 40 bits of randomness a clash is vanishingly unlikely, but
- * "unlikely" is not "impossible" and the unique index would otherwise reject
- * an otherwise valid signup.
+ * Account numbers are unique and now allocated from a server-owned counter, so
+ * this helper is gone: it used to generate a random candidate and retry on a
+ * clash, which was the right shape while numbers were random and is the wrong
+ * shape now. See `takeNextAccountNumber`.
  */
-async function allocateAccountNumber(tx: {
-  user: {
-    findUnique(args: {
-      where: { accountNumber: string };
-      select: { id: true };
-    }): Promise<{ id: string } | null>;
-  };
-}): Promise<string> {
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    const candidate = generateAccountNumber();
-    const taken = await tx.user.findUnique({
-      where: { accountNumber: candidate },
-      select: { id: true },
-    });
-
-    if (!taken) return candidate;
-  }
-
-  throw new Error("could not allocate a unique account number");
-}
 
 function setSessionCookie(reply: FastifyReply, token: string, secure: boolean): void {
   reply.setCookie(SESSION_COOKIE_NAME, token, {
@@ -187,7 +167,18 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
     const recoveryCodeHash = await hashPassword(normalizeRecoveryCode(recoveryCode));
 
     const user = await prisma.$transaction(async (tx) => {
-      const accountNumber = await allocateAccountNumber(tx);
+      /**
+       * The number comes from the invite when the invite reserved one, and from
+       * the counter otherwise.
+       *
+       * A reserved number is *not* re-checked against `users`: the migration put
+       * a unique index on `registration_invites.account_number`, so the same
+       * number cannot sit on two codes, and the block those codes draw from was
+       * placed below the counter's starting point. The unique index on
+       * `users.account_number` still fails the insert if that reasoning is ever
+       * wrong, which is the point of having it.
+       */
+      const accountNumber = invite.accountNumber ?? (await takeNextAccountNumber(tx));
 
       const created = await tx.user.create({
         data: {
@@ -196,6 +187,17 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
           displayName: body.displayName,
           passwordHash,
           recoveryCodeHash,
+          /**
+           * A reserved number means an administrator.
+           *
+           * The owner handed the first batch of codes to the people he wants to
+           * be able to look at abandoned ledgers, so the reservation *is* the
+           * grant — no separate column on the invite, and no way for the two to
+           * disagree. Anything allocated by the counter is an ordinary account,
+           * even if its number later drifts into a range that once meant
+           * something.
+           */
+          isAdmin: invite.accountNumber !== null,
         },
       });
 
