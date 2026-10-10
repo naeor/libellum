@@ -21,6 +21,7 @@
     "db:deploy": "prisma migrate deploy",
     "db:studio": "prisma studio",
     "db:reset": "prisma migrate reset",
+    "dev:cert": "node tools/make-dev-cert.mjs",
     "invite:create": "pnpm --filter @libellum/api invite:create",
     "invite:batch": "pnpm --filter @libellum/api invite:batch",
     "docs:build": "node tools/build-docs.mjs"

@@ -37,6 +37,87 @@ const CANDIDATE_TYPES = [
 
 export type RecorderState = "idle" | "starting" | "recording" | "stopping";
 
+/**
+ * Why the microphone cannot be used, when it cannot.
+ *
+ * ⚠️ **The distinction that this exists for.** `getUserMedia` and `MediaRecorder`
+ * are secure-context APIs, so over `http://192.168.0.184:5173` — how a phone on
+ * the home Wi-Fi reaches the dev machine — `navigator.mediaDevices` is
+ * `undefined`. The first version of this reported that as "这个浏览器不支持录音",
+ * which is wrong twice over: the browser supports it perfectly, **and no
+ * permission prompt appears because there is no API to prompt for.**
+ *
+ * The owner read that message and went looking at his browser. The cause was the
+ * URL. Naming it costs one string and saves that trip.
+ */
+export type RecorderBlocker = "insecure-context" | "unsupported" | null;
+
+/**
+ * The browser facts this file needs, as a parameter.
+ *
+ * Taken as an argument with a default of "read the globals" so the decision can
+ * be tested **without a DOM** — the web package's test environment is `node`,
+ * which has no `window`, and adding jsdom for two boolean checks would cost more
+ * than the seam does. It is also honest about what the function depends on.
+ */
+export interface MediaContext {
+  readonly isSecureContext: boolean;
+  readonly protocol: string;
+  readonly hasGetUserMedia: boolean;
+  readonly hasMediaRecorder: boolean;
+}
+
+function readMediaContext(): MediaContext {
+  if (typeof window === "undefined") {
+    return { isSecureContext: false, protocol: "", hasGetUserMedia: false, hasMediaRecorder: false };
+  }
+
+  return {
+    isSecureContext: window.isSecureContext,
+    protocol: window.location.protocol,
+    hasGetUserMedia: typeof navigator.mediaDevices?.getUserMedia === "function",
+    hasMediaRecorder: typeof MediaRecorder !== "undefined",
+  };
+}
+
+/** Whether the page is in a context where the browser defines media APIs. */
+export function isSecureContextForMedia(context: MediaContext = readMediaContext()): boolean {
+  // `isSecureContext` is the browser's own answer and already handles
+  // `localhost`, so it is trusted over a hand-written check of protocol and
+  // hostname. The protocol is the fallback for a browser without the flag.
+  return context.isSecureContext || context.protocol === "https:";
+}
+
+/**
+ * Which of the two reasons applies, or `null` when recording is available.
+ *
+ * Checked in this order because the insecure context is the one that *looks* like
+ * the other: a secure-context API that does not exist is indistinguishable from
+ * a browser that does not have it, unless the context is asked about first.
+ */
+export function detectBlocker(context: MediaContext = readMediaContext()): RecorderBlocker {
+  if (!isSecureContextForMedia(context)) return "insecure-context";
+  if (!context.hasGetUserMedia || !context.hasMediaRecorder) return "unsupported";
+
+  return null;
+}
+
+/** How to say the problem, and what the user can do about it. */
+export function describeBlocker(blocker: RecorderBlocker): string | null {
+  if (blocker === "insecure-context") {
+    return (
+      "这个地址不是安全连接，浏览器不提供录音能力。请改用 https 地址打开" +
+      "（手机访问时用启动窗口里打印的 https 地址），或者改用手动记账。"
+    );
+  }
+
+  if (blocker === "unsupported") {
+    return "这个浏览器不支持录音。可以改用手动记账，功能不受影响。";
+  }
+
+  return null;
+}
+
 export interface VoiceRecorder {
   readonly state: RecorderState;
   /** Draw amplitudes, one per line, refreshed every frame while recording. */
@@ -46,8 +127,10 @@ export interface VoiceRecorder {
   readonly elapsed: number;
   /** A message worth showing, e.g. the microphone was refused. */
   readonly error: string | null;
-  /** Whether the browser can do this at all. */
+  /** Whether this page can record at all. */
   readonly supported: boolean;
+  /** Why not, when it cannot. */
+  readonly blocker: RecorderBlocker;
   readonly start: () => Promise<void>;
   readonly stop: () => void;
 }
@@ -97,10 +180,8 @@ export function useVoiceRecorder(
   const onRecordedRef = useRef(onRecorded);
   onRecordedRef.current = onRecorded;
 
-  const supported =
-    typeof navigator !== "undefined" &&
-    typeof navigator.mediaDevices?.getUserMedia === "function" &&
-    typeof MediaRecorder !== "undefined";
+  const supported = detectBlocker() === null;
+  const blocker = detectBlocker();
 
   /** Stop everything and let the microphone go. Safe to call twice. */
   const release = useCallback(() => {
@@ -245,6 +326,7 @@ export function useVoiceRecorder(
     elapsed,
     error,
     supported,
+    blocker,
     start,
     stop,
   };

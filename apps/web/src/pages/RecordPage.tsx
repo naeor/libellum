@@ -8,7 +8,7 @@ import { InnerPage } from "../components/Layouts.js";
 import { VoiceLines } from "../components/VoiceLines.js";
 import { errorMessage } from "../lib/api.js";
 import { useTranscribe } from "../lib/queries.js";
-import { useVoiceRecorder, type Recording } from "../lib/useVoiceRecorder.js";
+import { describeBlocker, useVoiceRecorder, type Recording } from "../lib/useVoiceRecorder.js";
 
 /**
  * Recording a spoken entry.
@@ -123,9 +123,7 @@ export function RecordPage(): React.JSX.Element {
       </button>
 
       {recorder.supported ? null : (
-        <Alert tone="info">
-          这个浏览器不支持录音。可以改用手动记账，功能不受影响。
-        </Alert>
+        <Alert tone="info">{describeBlocker(recorder.blocker) ?? ""}</Alert>
       )}
 
       {transcribe.isPending ? (

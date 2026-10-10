@@ -90,3 +90,6 @@ docs/邀请码.md
 docs/invite-codes.md
 docs/邀请码-*.md
 !docs/邀请码-示例.md
+
+# ---- 开发用 HTTPS 证书（私钥不进仓库，哪怕是自签的）----
+apps/web/.certs/
