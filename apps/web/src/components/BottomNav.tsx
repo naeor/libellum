@@ -122,22 +122,22 @@ interface EntryAction {
  * A card that looks live and does nothing is worse than one that admits it is
  * not, and hiding the unfinished ones would make the row's shape change the day
  * they ship.
- */
-/**
- * The three ways to record.
  *
- * ⚠️ **拍照 no longer links anywhere.** It opens the image picker itself and
- * then goes to recognition, which is the owner's two-taps-fewer change: the card
- * used to load a screen whose first act was to ask for the same picture, so the
- * user pressed 拍照, waited for a screen, and pressed 选择截图 to do what they had
- * already said they wanted.
+ * ⚠️ **拍照 no longer links anywhere.** It opens the image picker itself and then
+ * goes to recognition, which is the owner's two-taps-fewer change: the card used
+ * to load a screen whose first act was to ask for the same picture, so the user
+ * pressed 拍照, waited for a screen, and pressed 选择截图 to say what they had
+ * already said.
  *
- * `to` is now used only by 手动. 拍照 keeps a route as its **fallback** for the
- * case where the picker cannot be opened at all — the page it lands on can offer
- * the button itself, and the user is not stuck.
+ * `to` is still used by 手动 and 语音. 拍照 keeps one as its **fallback** for the
+ * case where the picker cannot be opened at all — the page it lands on offers the
+ * button itself, so the user is not stuck.
+ *
+ * **All three cards lead somewhere now**, which is the first time that has been
+ * true: 语音 sat disabled with "即将开放" until the recorder shipped.
  */
 const ENTRY_ACTIONS: readonly EntryAction[] = [
-  { label: "语音", icon: <MicrophoneIcon className="size-6" />, hint: "即将开放" },
+  { label: "语音", icon: <MicrophoneIcon className="size-6" />, to: "/record" },
   { label: "手动", icon: <PenIcon className="size-6" />, to: "/add" },
   { label: "拍照", icon: <CameraIcon className="size-6" />, to: "/scan", picksImages: true },
 ];

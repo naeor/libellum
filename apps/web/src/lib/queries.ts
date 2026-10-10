@@ -14,6 +14,7 @@ import {
   type StatsResponse,
   type SummaryResponse,
   type Transaction,
+  type TranscribeResponse,
   type TransactionListResponse,
   type UpdateCategoryInput,
   type UpdatePaymentMethodInput,
@@ -290,6 +291,40 @@ export function useCheckDuplicates(): UseMutationResult<
       });
 
       return response.duplicates;
+    },
+  });
+}
+
+/**
+ * Send a recording, get back what was heard and the fields read out of it.
+ *
+ * Multipart through `apiFetch`'s `formData` option, which is the same path the
+ * screenshot upload takes — so the timeout, the offline check and the error
+ * translation are shared rather than reimplemented. (The first version of this
+ * called `fetch` directly and rebuilt all three; `apiFetch` already had them.)
+ *
+ * A **longer timeout than the default**, because this is the one request in the
+ * app that waits on a language model: thirty seconds of audio on a small server
+ * is seconds of work, and the default would abandon it while it was still going.
+ */
+export function useTranscribe(): UseMutationResult<TranscribeResponse, Error, Blob> {
+  return useMutation({
+    mutationFn: async (audio: Blob) => {
+      const form = new FormData();
+      /**
+       * A filename is required for the server to treat it as a file part at all,
+       * and the extension matches what the browser actually recorded — Safari
+       * writes an MP4 container, Chrome a WebM one. The server sniffs the real
+       * bytes either way; this is for anything reading logs.
+       */
+      const extension = audio.type.includes("mp4") ? "mp4" : "webm";
+      form.append("audio", audio, `recording.${extension}`);
+
+      return apiFetch<TranscribeResponse>("/voice/transcribe", {
+        method: "POST",
+        formData: form,
+        timeoutMs: 120_000,
+      });
     },
   });
 }

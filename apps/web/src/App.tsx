@@ -23,6 +23,7 @@ import { StatsPage } from "./pages/StatsPage.js";
 import { RecoverPage } from "./pages/RecoverPage.js";
 import { RegisterPage } from "./pages/RegisterPage.js";
 import { RegenerateRecoveryCodePage } from "./pages/RegenerateRecoveryCodePage.js";
+import { RecordPage } from "./pages/RecordPage.js";
 import { ScanPage } from "./pages/ScanPage.js";
 import { SettingsPage } from "./pages/SettingsPage.js";
 
@@ -129,6 +130,7 @@ function AppRoutes(): React.JSX.Element {
       />
 
       <Route path="/scan" element={<RequireAuth><ScanPage /></RequireAuth>} />
+        <Route path="/record" element={<RequireAuth><RecordPage /></RequireAuth>} />
       <Route path="/export" element={<RequireAuth><ExportPage /></RequireAuth>} />
       <Route path="/import" element={<RequireAuth><ImportPage /></RequireAuth>} />
       <Route path="/profile" element={<RequireAuth><ProfilePage /></RequireAuth>} />
