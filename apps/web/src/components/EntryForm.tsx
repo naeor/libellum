@@ -117,50 +117,60 @@ export function ReviewStep({
       </section>
 
       {/*
-        Date and time, side by side, with the time field's left edge **on the
-        screen's centre line**.
+        Date and time, with the time field's left edge **on the screen's centre
+        line**, and both boxes narrower than they were.
 
-        **Fixed widths, not `flex-1`.** The owner reported these two overlapping
-        on his phone, with the time field pushed off the right edge, and the cause
-        is that `input[type=date]` and `input[type=time]` carry a wide intrinsic
-        minimum width in Safari — wider than `flex-1`'s share of a phone screen.
-        Without `min-w-0`, a flex item refuses to shrink below that width, so the
-        pair overflowed and the boxes ran into each other.
+        **The geometry, because this took three reports to get right.**
 
-        ⚠️ **Then he reported the overlap again, and the leftover cause was this:**
-        the row was `w-3/5` of the screen with a 3:2 split inside it, so the date
-        field's right edge sat at 36% of the screen and the gap after it ran from
-        36% to 42%. The time field started at 42% — **close to the centre line but
-        not on it**, and the date box's own border sat only a gap away, which is
-        what "那个框总是会和时间重合" describes.
+        Two requirements pull against each other, and separating *the row's width*
+        from *the boxes' widths* is what lets both hold:
 
-        So the split is no longer a proportion of a narrower row. `basis-1/2` puts
-        the date's right edge at **exactly 50%**, the time field's left edge at
-        **exactly 50% + gap** — the centre line — and `shrink-0` on both stops
-        Safari's intrinsic minimum from moving either one.
+          * the row is `basis-1/2` — half the screen — with `justify-between`, so
+            the space between the two fields is exactly the screen's left half and
+            its midpoint **is** the centre line. That is what puts the time
+            field's left edge on the line **by construction**, at every screen
+            width. No proportion is involved, so no proportion can be slightly
+            wrong;
+          * the time field is `w-16` (64px) and `shrink-0`, and the date field
+            takes what is left, so neither box is a mostly-empty half-column the
+            way it was.
 
-        `min-w-0` stays because it is what allows the intrinsic minimum to be
-        ignored at all; without it the fixed basis is advisory.
+        ⚠️ **Every earlier attempt placed the time field with a *proportion*, and
+        a proportion cannot land on the centre line.** The row was `w-3/5` split
+        3:2, putting the time field at 42% — "往右偏了差不多一个字". Then both
+        halves became `basis-1/2` across the full screen, which fixed that error
+        and made a new one: the second column began at 50% **plus half the gap**,
+        and the gap is what the owner then measured.
+
+        ⚠️ **What the arithmetic rules out.** A half-width row with the fields at
+        its two ends leaves the time field only `row − date − gap` — 68px at
+        375px and 40px at 320px if the date keeps a full date's width. A 64px
+        time box and a `gap-2` leave the date 107px at 375px and 92px at 320px,
+        which is the smallest that still shows all ten characters.
+
+        `min-w-0` on both the fields and the inputs is what allows the date input
+        to shrink at all: without it Safari's intrinsic minimum width wins and the
+        pair overflows — the original overlap.
       */}
-      <section className="flex gap-3">
-        <Field label="日期" className="basis-1/2 min-w-0 shrink-0">
+      <section className="flex flex-col gap-4 min-[360px]:basis-1/2 min-[360px]:flex-row min-[360px]:items-start min-[360px]:justify-between min-[360px]:gap-2">
+        <Field label="日期" className="min-w-0 min-[360px]:flex-1">
           <input
             type="date"
             value={value.date}
             onChange={(event) => {
               patch({ date: event.target.value });
             }}
-            className="w-full min-w-0 rounded-field border border-line bg-surface px-3 py-2.5 text-base text-ink outline-none focus:border-brand"
+            className="w-full min-w-0 rounded-field border border-line bg-surface px-1.5 py-2.5 text-base text-ink outline-none focus:border-brand"
           />
         </Field>
-        <Field label="时间" className="basis-1/2 min-w-0 shrink-0">
+        <Field label="时间" className="min-[360px]:w-15 min-[360px]:shrink-0">
           <input
             type="time"
             value={value.time}
             onChange={(event) => {
               patch({ time: event.target.value });
             }}
-            className="w-full min-w-0 rounded-field border border-line bg-surface px-3 py-2.5 text-base text-ink outline-none focus:border-brand"
+            className="w-full min-w-0 rounded-field border border-line bg-surface px-1.5 py-2.5 text-base text-ink outline-none focus:border-brand"
           />
         </Field>
       </section>

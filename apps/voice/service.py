@@ -74,6 +74,46 @@ MAX_SECONDS = 60
 MODEL_NAME = os.environ.get("LIBELLUM_WHISPER_MODEL", "small")
 THREADS = int(os.environ.get("LIBELLUM_WHISPER_THREADS", "4"))
 
+# ---------------------------------------------------------------------------
+# The hint that steers recognition towards bookkeeping.
+# ---------------------------------------------------------------------------
+
+"""
+The owner's idea, and a good one: **"既然识别声用的是AI，可不可以给他一些提示词，
+比如说让他把听到的声音往金钱记账方面去靠一靠？"**
+
+Whisper takes an `initial_prompt` — text prepended before decoding that biases
+what it expects to hear next. It is the nearest thing the model has to "the
+subject is money", so this is exactly the right lever.
+
+**The wording is chosen around three rules.**
+
+1. **Only words that are easy to mishear as something else, or that the user is
+   likely to say.** 微信 and 支付宝 are the obvious ones: a general model hearing
+   "微信" with no context may write 威信 or 维新. 余额, 收款, 零钱 have the same
+   problem in ordinary speech.
+
+2. **No category names.** The temptation is to list 餐饮、交通、房租、水电 so the
+   model "knows the domain" — but the categories are user-editable, and a prompt
+   full of them would **plant words the speaker never said**, which is the one
+   failure this feature cannot afford: an amount is confirmable at a glance, an
+   invented note is not.
+
+3. **Short.** A long prompt crowds out the actual audio in the model's context
+   window and costs time on every request. It biases the decoder, it does not
+   teach it, so a line is enough.
+
+`carry_initial_prompt` is left **off**, which is whisper's default and the right
+choice here: carrying it into every decode window would repeat the bias and make
+the model progressively more likely to hallucinate the prompt's own words into
+silence.
+"""
+INITIAL_PROMPT = os.environ.get(
+    "LIBELLUM_WHISPER_PROMPT",
+    "记账。微信支付，支付宝，银行卡，花呗，信用卡，余额，零钱，红包，转账，"
+    "收款，付款，退款，工资，报销，房租，水电费，话费，加油，停车费，打车，外卖。",
+)
+
 
 def decode_audio(payload: str) -> np.ndarray:
     """Decode any container the browser produced into 16 kHz mono float32.
@@ -184,6 +224,9 @@ def main() -> int:
                 # it avoids whisper inventing continuity between two recordings
                 # that have nothing to do with each other.
                 no_context=True,
+                # The bookkeeping hint. See INITIAL_PROMPT above for what is in it
+                # and, more importantly, what is deliberately not.
+                initial_prompt=INITIAL_PROMPT,
             )
 
             text = "".join(getattr(segment, "text", "") for segment in segments).strip()
