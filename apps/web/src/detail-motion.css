@@ -143,7 +143,7 @@
  * what the wordmark and the tools occupy.
  */
 .detail-month-row {
-  transform: translate3d(0, calc(var(--p-month) * var(--row-one) * -1), 0);
+  transform: translate3d(0, calc(var(--p-month) * var(--row-one) * -1 - var(--p) * 4px), 0);
   /*
    * The gap above the month closes as the transition runs. It is the last part
    * of the green area that was still fixed, and without it the list state's
@@ -238,8 +238,16 @@
  * he asked, so they cannot give anything back — and the only slack left is the
  * spacing around them. This is that slack.
  */
+/*
+ * The small cards rise as a block in the list state.
+ *
+ * A transform rather than a margin, so all of them move together and the green
+ * boundary does not have to move at all — which is what the owner asked for:
+ * clearance under the cards, bought from the slack the layout already had.
+ */
 .detail-strip {
   margin-top: calc(16px - var(--p) * 24px);
+  transform: translate3d(0, calc(var(--p) * -8px), 0);
 }
 
 /*
@@ -288,7 +296,7 @@
 
 /* F. The tool buttons only move; a rotating button would say nothing. */
 .detail-tools {
-  transform: translate3d(0, calc(var(--p-tools) * 10px), 0);
+  transform: translate3d(0, calc(var(--p-tools) * 10px - var(--p) * 4px), 0);
 }
 
 /*

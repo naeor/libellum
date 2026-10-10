@@ -293,14 +293,17 @@ export function DetailPage(): React.JSX.Element {
               The heading belongs to the display state. It collapses rather than
               staying and pushing the list down, so nothing below it moves.
             */}
-            <div className="detail-recent-heading flex items-end justify-between pt-4">
+            /* Centred rather than baseline-aligned: the heading and the link are
+               different sizes, and aligning their baselines left the two
+               looking like they belonged to different rows. */
+            <div className="detail-recent-heading flex items-center justify-between pt-[11px]">
               <h2 className="text-xs text-muted">最近记录</h2>
               <button
                 type="button"
                 onClick={() => {
                   goTo(1);
                 }}
-                className="pb-1 text-xs text-brand-dark"
+                className="text-xs text-brand-dark"
               >
                 查看全部
               </button>
