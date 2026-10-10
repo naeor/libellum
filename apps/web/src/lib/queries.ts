@@ -27,6 +27,7 @@ import {
   useMutation,
   useQuery,
   useQueryClient,
+  type QueryClient,
   type UseMutationResult,
 } from "@tanstack/react-query";
 import { useMemo } from "react";
@@ -37,6 +38,7 @@ import {
   asLocalPage,
   filterLocally,
   findLocalTransaction,
+  installLiveSource,
   readLocalTransactions,
 } from "./offline/localLedger.js";
 import { withLocalFallback } from "./offline/fallback.js";
@@ -150,6 +152,47 @@ export function useLedger() {
   });
 }
 
+/**
+ * Every transaction currently in the in-memory cache.
+ *
+ * ⚠️ **The live copy, read straight from the query client**, for the case the stored blob has
+ * not caught up yet. The two are merged by the caller, so whichever is newer contributes what
+ * it has — see `readLocalTransactions`.
+ *
+ * Every transaction-list query is visited, including the filtered ones the tabs create, and
+ * the results are de-duplicated by id because the same entry legitimately appears in more
+ * than one view.
+ */
+export function transactionsIn(queryClient: QueryClient): readonly Transaction[] {
+  const found = new Map<string, Transaction>();
+
+  for (const query of queryClient.getQueryCache().getAll()) {
+    const key = query.queryKey;
+    if (!Array.isArray(key) || key[0] !== "transactions") continue;
+
+    const data = query.state.data as
+      | { readonly pages?: readonly TransactionListResponse[]; readonly items?: readonly Transaction[] }
+      | undefined;
+
+    if (data === undefined) continue;
+
+    const pages = data.pages ?? (data.items === undefined ? [] : [{ items: data.items, nextCursor: null }]);
+
+    for (const page of pages) {
+      for (const item of page.items ?? []) found.set(item.id, item);
+    }
+  }
+
+  return [...found.values()];
+}
+
+/**
+ * Whether the account is cut off from the server.
+ *
+ * Kept for the call sites that only need a boolean; the shared state is the authority, and it
+ * is offline when **either** the browser says so **or** a request failed to get an answer.
+ */
+
 export function useSummary(month: string) {
   return useQuery({
     queryKey: queryKeys.summary(month),
@@ -182,6 +225,24 @@ export function useTransactions(given: TransactionFilters) {
    * whether they passed three fields or four. See `transactionFilters`.
    */
   const filters = transactionFilters(given);
+
+  const queryClient = useQueryClient();
+
+  /**
+   * ⚠️ **Teach the local reader where the in-memory copy is.**
+   *
+   * The owner found this by using a second device: the phone worked offline and the tablet
+   * did not, with the same ledger and the same download. **The two copies of the cache are
+   * not equally up to date** — the persister writes on a throttle, so between a change and
+   * the write the live cache holds data the stored one does not. On the phone the window had
+   * always closed before the network was unplugged; on the tablet it had not, so the
+   * fallback read the stored copy, found a month missing, and showed nothing while the data
+   * sat in memory.
+   *
+   * Installed from here because this is where React and the query cache meet, and it is
+   * idempotent — every render of this hook offers the same reader, and the last one wins.
+   */
+  installLiveSource(() => transactionsIn(queryClient));
 
   return useInfiniteQuery({
     queryKey: queryKeys.transactions(filters),

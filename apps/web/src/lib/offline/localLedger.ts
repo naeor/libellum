@@ -1,5 +1,6 @@
 import type { Transaction, TransactionListResponse } from "@libellum/shared";
 
+import { logOffline } from "./diagnostics.js";
 import { readValue } from "./storage.js";
 
 /**
@@ -107,9 +108,77 @@ export function transactionsFromCache(raw: string | null): readonly Transaction[
   return [...found.values()];
 }
 
-/** Read the cache and return every entry it holds. */
+/**
+ * Read the cache and return every entry it holds.
+ *
+ * ⚠️ **The stored copy first, then the live one — and the second half is not belt and
+ * braces, it is a real difference between two devices.**
+ *
+ * The owner reported that this worked on his phone and not on his iPad: same ledger, same
+ * download, and the tablet still showed nothing offline. **The two copies of the cache are
+ * not equally up to date**, and the reason is in the persister: it writes to storage on a
+ * throttle, so between a change and the write there is a window where the *live* cache has
+ * data the stored one does not.
+ *
+ * On the phone the window had always closed by the time the user unplugged the network. On
+ * the tablet it had not — so the fallback read the stored copy, found a month missing, and
+ * showed nothing, with the data sitting in memory the whole time.
+ *
+ * **Reading both and merging closes that window by construction.** Whichever copy is newer,
+ * the answer includes what it has; and this is the same principle as the rest of this file,
+ * one layer down.
+ */
 export async function readLocalTransactions(): Promise<readonly Transaction[]> {
-  return transactionsFromCache(await readValue<string>(CACHE_KEY));
+  /**
+   * A hook the query layer installs, so the live cache can be consulted without this module
+   * importing it — which would be a cycle, and would tie a storage concern to React.
+   */
+  const live = liveSource?.() ?? [];
+
+  if (live.length > 0) {
+    await logOffline("DIAGNOSTIC:local-read", `内存 ${String(live.length)} 条`);
+  }
+
+  const raw = await readValue<string>(CACHE_KEY);
+  const fromDisk = transactionsFromCache(raw);
+
+  /**
+   * ⚠️ **The counts are logged, because this is the read path that failed silently.**
+   *
+   * "Shows nothing offline" has many possible causes and no symptom of its own: the stored
+   * blob could be absent, present but unparsable, parsable with no transaction queries, or
+   * full of transactions the filter then excludes. Every one of those looks identical on
+   * screen, and each needs a different fix.
+   */
+  await logOffline(
+    "DIAGNOSTIC:local-read",
+    `磁盘 ${raw === null ? "无缓存键" : `${String(raw.length)} 字节`} → ${String(fromDisk.length)} 条，内存 ${String(live.length)} 条`,
+  );
+
+  if (fromDisk.length === 0) return live;
+  if (live.length === 0) return fromDisk;
+
+  // Merged by id, so an entry present in both is counted once.
+  const merged = new Map<string, Transaction>();
+
+  for (const transaction of fromDisk) merged.set(transaction.id, transaction);
+  for (const transaction of live) merged.set(transaction.id, transaction);
+
+  return [...merged.values()];
+}
+
+/**
+ * Where the live cache is read from.
+ *
+ * Installed once by the query layer. A module-level hook rather than an import because the
+ * alternative is a cycle — `queries.ts` imports this file for the fallback — and because a
+ * storage module has no business knowing about React.
+ */
+let liveSource: (() => readonly Transaction[]) | null = null;
+
+/** Called by the query layer, once, with a reader for the in-memory cache. */
+export function installLiveSource(reader: () => readonly Transaction[]): void {
+  liveSource = reader;
 }
 
 /**

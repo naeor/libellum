@@ -3,10 +3,12 @@ import { useQueryClient } from "@tanstack/react-query";
 
 import { Alert } from "../components/Alert.js";
 import { Button } from "../components/Button.js";
+import { ChoiceDialog, type Choice } from "../components/ChoiceDialog.js";
 import { InnerPage } from "../components/Layouts.js";
 import { cacheFootprint, describeKey, type CacheFootprint } from "../lib/offline/downloadManager.js";
 import { clearOfflineLog, readOfflineLog, type LogEntry } from "../lib/offline/diagnostics.js";
 import { formatBytes, storageBreakdown, type StorageBreakdown } from "../lib/offline/persistence.js";
+import { resetEverything } from "../lib/offline/reset.js";
 import { readValue } from "../lib/offline/storage.js";
 
 /**
@@ -33,6 +35,7 @@ export function DownloadMorePage(): React.JSX.Element {
   const [storage, setStorage] = useState<StorageBreakdown | null>(null);
   const [queries, setQueries] = useState<readonly string[]>([]);
   const [copied, setCopied] = useState(false);
+  const [confirmReset, setConfirmReset] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
@@ -124,6 +127,37 @@ export function DownloadMorePage(): React.JSX.Element {
         </p>
       </section>
 
+      <section className="flex flex-col gap-2">
+        <Button
+          variant="danger"
+          onClick={() => {
+            setConfirmReset(true);
+          }}
+        >
+          清除本应用的全部本地数据
+        </Button>
+
+        <p className="text-xs leading-relaxed text-muted">
+          会删掉本机上的账本副本、应用缓存和离线记录，然后重新加载。
+          服务器上的数据不受影响，联网后可以重新下载。
+        </p>
+      </section>
+
+      <ChoiceDialog
+        open={confirmReset}
+        title="清除本机全部数据？"
+        description="服务器上的账目不会被删除。清除后需要重新下载才能离线查看。"
+        choices={RESET_CHOICES}
+        onChoose={(choice) => {
+          setConfirmReset(false);
+          if (choice !== "reset") return;
+
+          void resetEverything().finally(() => {
+            window.location.reload();
+          });
+        }}
+      />
+
       {storage === null ? null : (
         <section className="flex flex-col gap-1.5 rounded-card border border-line bg-surface px-4 py-3 text-sm">
           <h2 className="text-xs text-muted">占用构成</h2>
@@ -205,3 +239,15 @@ export function DownloadMorePage(): React.JSX.Element {
     </InnerPage>
   );
 }
+
+/**
+ * What to offer before wiping the device's copy.
+ *
+ * 清除并重新加载 names both halves of what happens, because the reload is not incidental —
+ * the app cannot run with its own cache removed. 先不清理 is the dismissive option, since
+ * closing the dialog is the same as doing nothing.
+ */
+const RESET_CHOICES: readonly Choice<"reset" | "cancel">[] = [
+  { id: "reset", label: "清除并重新加载", hint: "需要联网重新下载", primary: true },
+  { id: "cancel", label: "先不清理", dismissive: true },
+];
