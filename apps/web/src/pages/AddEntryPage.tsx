@@ -196,6 +196,9 @@ export function AddEntryPage(): React.JSX.Element {
         paymentName={
           paymentMethods.find((method) => method.id === saved.paymentMethodId)?.name ?? null
         }
+        // The manual form records one entry at a time, so nothing is ever
+        // waiting behind it and both ways onward are offered.
+        remaining={0}
         onHome={() => {
           void navigate("/");
         }}

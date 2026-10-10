@@ -37,6 +37,7 @@ function render(props: Partial<Parameters<typeof EntrySaved>[0]> = {}): string {
       entry={entry()}
       categoryName="餐饮"
       paymentName="微信"
+      remaining={0}
       onHome={() => undefined}
       onAgain={() => undefined}
       {...props}
@@ -61,7 +62,7 @@ describe("EntrySaved", () => {
     expect(html).toContain("微信");
   });
 
-  it("offers both ways onward", () => {
+  it("offers both ways onward when nothing is left", () => {
     const html = render();
 
     expect(html).toContain("再记一笔");
@@ -74,6 +75,32 @@ describe("EntrySaved", () => {
     const html = render();
 
     expect(html.indexOf("再记一笔")).toBeLessThan(html.indexOf("返回主页"));
+  });
+
+  it("offers no way home in the middle of a batch", () => {
+    /**
+     * The owner's correction: going home mid-batch abandons the screenshots
+     * still waiting, and those are the reason the person is on this screen.
+     */
+    const html = render({ remaining: 2 });
+
+    expect(html).toContain("继续记账");
+    expect(html).not.toContain("返回主页");
+  });
+
+  it("says how many are left, counting only what is ahead", () => {
+    // He read "还需两次" as "two more after this one" while the screen meant
+    // "two including this one", so the two readings differed by one. The count
+    // is now stated as what remains rather than as a total.
+    expect(render({ remaining: 2 })).toContain("还有 2 张");
+    expect(render({ remaining: 1 })).toContain("还有 1 张");
+  });
+
+  it("brings the way home back on the last entry of a batch", () => {
+    const html = render({ remaining: 0 });
+
+    expect(html).toContain("返回主页");
+    expect(html).not.toContain("继续记账");
   });
 
   it("announces itself to a screen reader", () => {

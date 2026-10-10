@@ -92,6 +92,13 @@ export function ChartLabPage(): React.JSX.Element {
       </Section>
 
       <Section title="记账完成页（保存后出现）">
+        {/*
+          Both shapes, because they differ in a way a screenshot has to show:
+          the last entry of a batch offers a way home, and one part-way through
+          a batch does not — going home there would abandon the screenshots
+          still waiting. This page exists to make that difference visible
+          without having to photograph three receipts to see it.
+        */}
         <div className="-m-4 overflow-hidden rounded-card">
           <EntrySaved
             entry={{
@@ -113,6 +120,36 @@ export function ChartLabPage(): React.JSX.Element {
             }}
             categoryName="餐饮"
             paymentName="微信"
+            remaining={0}
+            onHome={() => undefined}
+            onAgain={() => undefined}
+          />
+        </div>
+      </Section>
+
+      <Section title="记账完成页 · 一批还没做完（中途没有返回主页）">
+        <div className="-m-4 overflow-hidden rounded-card">
+          <EntrySaved
+            entry={{
+              id: "preview-batch",
+              kind: "expense",
+              amountCents: 3850,
+              currency: "CNY",
+              categoryId: "c1",
+              categoryName: "餐饮",
+              categoryIsSystem: false,
+              paymentMethodId: "p1",
+              paymentMethodName: "微信",
+              occurredAt: "2026-10-09T04:00:00.000Z",
+              occurredLocalDate: "2026-10-09",
+              occurredTz: "Asia/Shanghai",
+              note: null,
+              tags: [],
+              version: 1,
+            }}
+            categoryName="餐饮"
+            paymentName="微信"
+            remaining={2}
             onHome={() => undefined}
             onAgain={() => undefined}
           />

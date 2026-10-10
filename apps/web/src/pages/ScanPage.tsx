@@ -266,12 +266,6 @@ export function ScanPage(): React.JSX.Element {
 
       {step.name === "saved" ? (
         <div className="flex flex-col gap-4">
-          {mode === "batch" && cursor + 1 < items.length ? (
-            <Alert tone="success">
-              已保存。还有 {items.length - cursor - 1} 张需要核对。
-            </Alert>
-          ) : null}
-
           <EntrySaved
             entry={step.entry}
             categoryName={
@@ -280,6 +274,15 @@ export function ScanPage(): React.JSX.Element {
             paymentName={
               paymentMethods.find((method) => method.id === step.entry.paymentMethodId)?.name ?? null
             }
+            /**
+             * How many are left **after** this one.
+             *
+             * The owner read "还需两次" as "two more after filling this in" while
+             * the screen meant "two including this one", so the two readings
+             * differed by one and the wrong reading was the natural one. Subtracting
+             * the cursor states it directly: the count is of what is still ahead.
+             */
+            remaining={mode === "single" ? 0 : Math.max(0, items.length - cursor - 1)}
             onHome={() => void navigate("/")}
             onAgain={() => {
               // In a batch, "one more" means the next screenshot in it; in the
@@ -581,8 +584,31 @@ function ReviewStep({
         ))}
       </section>
 
+      {/*
+        Date and time, side by side.
+        
+        **Fixed proportions, not `flex-1`.** The owner reported these two
+        overlapping on his phone, with the time field pushed off the right edge,
+        and the cause is that `input[type=date]` and `input[type=time]` carry a
+        wide intrinsic minimum width in Safari — wider than `flex-1`'s share of a
+        phone screen. Without `min-w-0`, a flex item refuses to shrink below that
+        width, so the pair overflowed and the boxes ran into each other.
+        
+        Both halves of the fix are needed and they do different jobs:
+        
+          * `min-w-0` lets an item shrink below its content's minimum, which is
+            what stops the overflow;
+          * explicit `basis` values give each field a share that does not depend
+            on what it contains, which is what the owner actually asked for
+            ("建议他俩的框缩小一些，并且保持固定") — a date and a time are always
+            10 and 5 characters, so a fixed split is the honest layout, and it
+            cannot shift when the values change.
+        
+        Three to two: `2026-10-10` against `18:03`, plus the picker glyph Safari
+        draws inside the date field.
+      */}
       <section className="flex gap-3">
-        <Field label="日期">
+        <Field label="日期" className="basis-3/5 shrink-0">
           <input
             type="date"
             value={value.date}
@@ -592,7 +618,7 @@ function ReviewStep({
             className="w-full rounded-field border border-line bg-surface px-3 py-2.5 text-base text-ink outline-none focus:border-brand"
           />
         </Field>
-        <Field label="时间">
+        <Field label="时间" className="basis-2/5 shrink-0">
           <input
             type="time"
             value={value.time}
@@ -666,15 +692,26 @@ function ReviewStep({
   );
 }
 
+/**
+ * A labelled form control.
+ *
+ * `min-w-0` is not decoration: this is a flex item, and without it the item
+ * refuses to shrink below its content's intrinsic minimum width. Safari gives
+ * `input[type=date]` and `input[type=time]` a wide minimum, which is how the
+ * date and time fields came to overlap on a phone. The caller passes a `basis`
+ * when the two fields beside each other should keep fixed proportions.
+ */
 function Field({
   label,
   children,
+  className = "flex-1",
 }: {
   readonly label: string;
   readonly children: React.ReactNode;
+  readonly className?: string;
 }): React.JSX.Element {
   return (
-    <label className="flex flex-1 flex-col gap-1.5">
+    <label className={`flex min-w-0 flex-col gap-1.5 ${className}`}>
       <span className="text-xs text-muted">{label}</span>
       {children}
     </label>
