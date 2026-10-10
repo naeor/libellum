@@ -1,4 +1,4 @@
-import { hasIndexedDb } from "./storage.js";
+import { hasIndexedDb, readValue } from "./storage.js";
 
 /**
  * Asking the browser to keep what it has been given.
@@ -68,6 +68,94 @@ export async function storageReport(): Promise<StorageReport> {
     };
   } catch {
     return empty;
+  }
+}
+
+/**
+ * Where the origin's storage has actually gone.
+ *
+ * ⚠️ **Written because the owner's figures did not add up, and nothing on screen could
+ * explain the gap.** He saw **52.5 MB used** while the download manager reported a query
+ * cache of **127 KB** — the ledger itself being about that size. Four hundred times the
+ * difference is not a rounding error, and there was no way to see what the rest was.
+ *
+ * `navigator.storage.estimate()` reports one number for the whole origin: the database,
+ * the caches, and whatever the browser is holding on our behalf. It cannot say which is
+ * which — **and Chrome counts things it may not have written to disk yet**, so the figure
+ * can run ahead of the data.
+ *
+ * So this weighs the pieces that are ours:
+ *
+ *  * **the query cache** — the ledger copy, the one that matters;
+ *  * **the service worker's shell cache** — the app's own HTML, JS and CSS;
+ *  * **the diagnostics log** — bounded, but ours, and it should be visible.
+ *
+ * **Whatever is left over is the browser's business**, and saying so is better than
+ * implying the ledger takes 52 MB when it takes 127 KB.
+ */
+export interface StorageBreakdown {
+  readonly totalBytes: number;
+  readonly queryCacheBytes: number;
+  readonly shellCacheBytes: number;
+  readonly diagnosticsBytes: number;
+  /** The remainder: browser overhead, and data not yet written to disk. */
+  readonly otherBytes: number;
+}
+
+/** Measure the pieces this application controls. */
+export async function storageBreakdown(): Promise<StorageBreakdown> {
+  const report = await storageReport();
+
+  const queryCacheBytes = await byteLengthOf("query-cache");
+  const diagnosticsBytes = await byteLengthOf("offline-log");
+
+  let shellCacheBytes = 0;
+
+  try {
+    if (typeof caches !== "undefined") {
+      for (const name of await caches.keys()) {
+        const cache = await caches.open(name);
+
+        for (const request of await cache.keys()) {
+          const response = await cache.match(request);
+
+          if (response === undefined) continue;
+
+          /**
+           * `content-length` when the browser kept it, otherwise the body's own length.
+           *
+           * A cached response is a stream, so measuring it means reading it — which is why
+           * this only runs on a screen the user opens deliberately.
+           */
+          const declared = Number(response.headers.get("content-length") ?? "0");
+
+          shellCacheBytes += declared > 0 ? declared : (await response.clone().blob()).size;
+        }
+      }
+    }
+  } catch {
+    // A cache that cannot be measured counts as nothing, rather than breaking the page.
+  }
+
+  return {
+    totalBytes: report.usageBytes,
+    queryCacheBytes,
+    shellCacheBytes,
+    diagnosticsBytes,
+    otherBytes: Math.max(0, report.usageBytes - queryCacheBytes - shellCacheBytes - diagnosticsBytes),
+  };
+}
+
+/** How many bytes one stored value takes, as JSON. */
+async function byteLengthOf(key: string): Promise<number> {
+  const value = await readValue<unknown>(key);
+
+  if (value === null) return 0;
+
+  try {
+    return JSON.stringify(value).length;
+  } catch {
+    return 0;
   }
 }
 

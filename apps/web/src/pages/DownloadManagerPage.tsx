@@ -23,7 +23,8 @@ import {
   canStoreOffline,
   formatBytes,
   requestPersistentStorage,
-  storageReport,
+  storageBreakdown,
+  type StorageBreakdown,
 } from "../lib/offline/persistence.js";
 
 /**
@@ -52,6 +53,7 @@ export function DownloadManagerPage(): React.JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [log, setLog] = useState<readonly LogEntry[]>([]);
   const [footprint, setFootprint] = useState<CacheFootprint | null>(null);
+  const [storage, setStorage] = useState<StorageBreakdown | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -60,7 +62,7 @@ export function DownloadManagerPage(): React.JSX.Element {
       const [transactions, never, report] = await Promise.all([
         readLocalTransactions(),
         readNeverMonths(),
-        storageReport(),
+        storageBreakdown(),
       ]);
 
       /**
@@ -78,7 +80,8 @@ export function DownloadManagerPage(): React.JSX.Element {
       const stored = storedMonthsIn(queryClient);
 
       setRows(monthRows(transactions, never, stored, new Date()));
-      setUsage(report.usageBytes);
+      setUsage(report.totalBytes);
+      setStorage(report);
       setLog(await readOfflineLog());
       setFootprint(await cacheFootprint(queryClient));
     } catch {
@@ -149,6 +152,22 @@ export function DownloadManagerPage(): React.JSX.Element {
           invisible, never read again, and counted in the total. Showing the breakdown is
           what makes the number understandable; the button is what makes it fixable.
         */}
+        {/*
+          ⚠️ **The breakdown of the whole origin, not just our cache.**
+
+          He saw 52.5 MB used against a 127 KB query cache — four hundred times the
+          difference — and nothing on screen could explain it. Most of that figure is the
+          browser's own accounting: the app shell, and data Chrome counts before writing it
+          to disk. Saying so is better than letting the ledger take the blame.
+        */}
+        {storage === null ? null : (
+          <p className="text-xs text-muted">
+            占用构成：账本数据 {formatBytes(storage.queryCacheBytes)} · 应用本体{" "}
+            {formatBytes(storage.shellCacheBytes)} · 运行记录 {formatBytes(storage.diagnosticsBytes)} ·
+            浏览器其它 {formatBytes(storage.otherBytes)}
+          </p>
+        )}
+
         {footprint === null ? null : (
           <p className="text-xs text-muted">
             存储明细：缓存 {formatBytes(footprint.cacheBytes)}，其中{" "}

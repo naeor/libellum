@@ -39,6 +39,7 @@ import {
   findLocalTransaction,
   readLocalTransactions,
 } from "./offline/localLedger.js";
+import { withLocalFallback } from "./offline/fallback.js";
 import { computeStats, monthRange, summaryFor } from "./offline/localStats.js";
 import { uuidV7 } from "./uuid.js";
 
@@ -152,20 +153,26 @@ export function useLedger() {
 export function useSummary(month: string) {
   return useQuery({
     queryKey: queryKeys.summary(month),
-    queryFn: async () => {
-      if (isOffline()) {
-        /**
-         * The month's totals, added up on the device.
-         *
-         * The detail screen shows these above every list, so without this the
-         * figures would be missing exactly when the list below them is available —
-         * which reads as a broken screen rather than as an offline one.
-         */
-        return summaryFor(await readLocalTransactions(), month, monthRange(month));
-      }
-
-      return apiFetch<SummaryResponse>("/summary", { query: { month } });
-    },
+    queryFn: () =>
+      /**
+       * ⚠️ **Network first, device second — not "device if the browser says offline".**
+       *
+       * The owner put the rule better than the code did: "先去读网络数据，被拒绝/超过两秒
+       * 没有收到数据然后直接改成用本地数据就可以了吧？" The old version asked
+       * `navigator.onLine`, which is a phone's *guess*: it says online in a lift, on a
+       * train, and on a Wi-Fi network whose router stopped forwarding. In all of those the
+       * app waited, failed, and showed nothing while a good copy of the month sat on the
+       * device.
+       *
+       * The question is not "does the browser think we are online" but "did the answer
+       * arrive".
+       */
+      withLocalFallback({
+        label: `summary ${month}`,
+        network: (timeoutMs) =>
+          apiFetch<SummaryResponse>("/summary", { query: { month }, timeoutMs }),
+        local: async () => summaryFor(await readLocalTransactions(), month, monthRange(month)),
+      }),
   });
 }
 
@@ -178,33 +185,37 @@ export function useTransactions(given: TransactionFilters) {
 
   return useInfiniteQuery({
     queryKey: queryKeys.transactions(filters),
-    queryFn: async ({ pageParam }) => {
+    queryFn: ({ pageParam }) =>
       /**
-       * ⚠️ **Filtered views are answered from the device too.**
+       * ⚠️ **Filtered views are answered from the device too — and the network is tried
+       * first, whatever the browser claims.**
        *
-       * The spending tab, the income tab and any category filter are *different
-       * queries with different keys* — so even with every month downloaded, switching
-       * to 收入 asked something the cache had never been asked and got nothing. The
-       * owner saw exactly that: "切换到收入界面……什么都看不到".
-       *
-       * The stored copy is not per-view, so the answer does not have to be either:
+       * The spending tab, the income tab and any category filter are *different queries
+       * with different keys*, so even with every month downloaded, switching to 收入 asked
+       * something the cache had never been asked and got nothing — "切换到收入界面……什么都
+       * 看不到". The stored copy is not per-view, so the answer does not have to be either:
        * filter it here and hand back one page, with no cursor, because everything the
        * device has is already in hand.
+       *
+       * The local page keeps `nextCursor: null` deliberately: there is no server to page
+       * through, and offering a cursor would put a "载入更多" button on screen that fetches
+       * nothing.
        */
-      if (isOffline()) {
-        return asLocalPage(filterLocally(await readLocalTransactions(), filters));
-      }
-
-      return apiFetch<TransactionListResponse>("/transactions", {
-        query: {
-          month: filters.month,
-          kind: filters.kind,
-          categoryId: filters.categoryId,
-          currency: filters.currency,
-          cursor: pageParam,
-        },
-      });
-    },
+      withLocalFallback({
+        label: `transactions ${filters.month ?? "?"}${filters.kind === undefined ? "" : ` ${filters.kind}`}`,
+        network: (timeoutMs) =>
+          apiFetch<TransactionListResponse>("/transactions", {
+            query: {
+              month: filters.month,
+              kind: filters.kind,
+              categoryId: filters.categoryId,
+              currency: filters.currency,
+              cursor: pageParam,
+            },
+            timeoutMs,
+          }),
+        local: async () => asLocalPage(filterLocally(await readLocalTransactions(), filters)),
+      }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.nextCursor ?? undefined,
   });
@@ -225,42 +236,41 @@ export function useTransactions(given: TransactionFilters) {
  * the query layer's job. So each call site says what to do without a network, and
  * only the analysis screen has anything interesting to say.
  *
- * **Only when the browser says there is no connection.** A request that fails while
- * online is a different problem — a server that is down, a proxy in the way — and
- * quietly answering *that* from the device would hide the thing the user needs to
- * know about.
+ * ⚠️ **`navigator.onLine` is no longer the trigger** — see `withLocalFallback`. The
+ * browser's answer is a guess that is wrong in a lift, on a train, and on any Wi-Fi
+ * network whose router has stopped forwarding, and in each of those cases the app used
+ * to wait, fail and show nothing while the data sat on the device. What matters is
+ * whether the answer arrived, not what the browser believes.
  */
-function isOffline(): boolean {
-  return typeof navigator !== "undefined" && !navigator.onLine;
-}
 
 export function useTransaction(id: string) {
   return useQuery({
     queryKey: queryKeys.transaction(id),
-    queryFn: async () => {
-      if (isOffline()) {
-        /**
-         * Looked up among the entries already stored, not fetched.
-         *
-         * A stored month is not a summary: `transactionSchema` carries the category
-         * name, the payment method and the tags, which is everything this screen
-         * displays. **Throwing when it is genuinely absent is deliberate** — an entry
-         * the device has never seen cannot be shown offline, and pretending otherwise
-         * would produce a blank screen with no explanation.
-         */
-        const found = findLocalTransaction(await readLocalTransactions(), id);
+    queryFn: () =>
+      /**
+       * Looked up among the entries already stored when the network does not answer.
+       *
+       * A stored month is not a summary: `transactionSchema` carries the category name,
+       * the payment method and the tags, which is everything this screen displays.
+       * **Throwing when it is genuinely absent is deliberate** — an entry the device has
+       * never seen cannot be shown without a network, and pretending otherwise would
+       * produce a blank screen with no explanation.
+       */
+      withLocalFallback({
+        label: `transaction ${id.slice(0, 8)}`,
+        network: (timeoutMs) => apiFetch<Transaction>(`/transactions/${id}`, { timeoutMs }),
+        local: async () => {
+          const found = findLocalTransaction(await readLocalTransactions(), id);
 
-        if (found !== null) return found;
+          if (found !== null) return found;
 
-        throw new ApiRequestError(
-          0,
-          "offline",
-          "这一笔还没有存到本机，离线时看不到。联网后会自动补上。",
-        );
-      }
-
-      return apiFetch<Transaction>(`/transactions/${id}`);
-    },
+          throw new ApiRequestError(
+            0,
+            "not_stored",
+            "这一笔还没有存到本机，离线时看不到。联网后会自动补上。",
+          );
+        },
+      }),
     enabled: id !== "",
   });
 }
@@ -275,39 +285,41 @@ export function useTransaction(id: string) {
 export function useStats(query: StatsQuery) {
   return useQuery({
     queryKey: queryKeys.stats(query),
-    queryFn: async () => {
-      if (isOffline()) {
-        /**
-         * ⚠️ **Computed on the device instead of fetched.**
-         *
-         * This is what makes the analysis screen work offline, and it works because
-         * the entries are already here — every kind, amount, currency, category and
-         * date the endpoint sums. `computeStats` mirrors the server's rules *and*
-         * reuses the server's own `fillSeriesGaps`, so an offline total equals the
-         * online one. It has to: two different answers with no way to tell which is
-         * right would be worse than no offline analysis at all.
-         */
-        return computeStats(await readLocalTransactions(), {
-          from: query.from,
-          to: query.to,
-          bucket: query.bucket,
-          currency: query.currency,
-          compareFrom: query.compareFrom,
-          compareTo: query.compareTo,
-        });
-      }
-
-      return apiFetch<StatsResponse>("/stats", {
-        query: {
-          from: query.from,
-          to: query.to,
-          bucket: query.bucket,
-          currency: query.currency,
-          compareFrom: query.compareFrom,
-          compareTo: query.compareTo,
-        },
-      });
-    },
+    queryFn: () =>
+      /**
+       * ⚠️ **Computed on the device when the network does not answer.**
+       *
+       * This is what makes the analysis screen work offline, and it works because the
+       * entries are already here — every kind, amount, currency, category and date the
+       * endpoint sums. `computeStats` mirrors the server's rules *and* reuses the server's
+       * own `fillSeriesGaps`, so an offline total equals the online one. It has to: two
+       * different answers with no way to tell which is right would be worse than no
+       * offline analysis at all.
+       */
+      withLocalFallback({
+        label: `stats ${query.from}..${query.to}`,
+        network: (timeoutMs) =>
+          apiFetch<StatsResponse>("/stats", {
+            query: {
+              from: query.from,
+              to: query.to,
+              bucket: query.bucket,
+              currency: query.currency,
+              compareFrom: query.compareFrom,
+              compareTo: query.compareTo,
+            },
+            timeoutMs,
+          }),
+        local: async () =>
+          computeStats(await readLocalTransactions(), {
+            from: query.from,
+            to: query.to,
+            bucket: query.bucket,
+            currency: query.currency,
+            compareFrom: query.compareFrom,
+            compareTo: query.compareTo,
+          }),
+      }),
     // A statistic is derived from entries; when none change, it cannot change.
     staleTime: 60_000,
   });

@@ -45,6 +45,7 @@ const MODULES = [
   "/src/lib/offline/localStats.ts",
   "/src/lib/offline/downloadManager.ts",
   "/src/lib/offline/diagnostics.ts",
+  "/src/lib/offline/fallback.ts",
   "/src/lib/useVoiceRecorder.ts",
   "/src/lib/uuid.ts",
   "/src/components/ConfirmDialog.tsx",
