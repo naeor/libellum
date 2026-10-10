@@ -276,3 +276,15 @@ node tools/seed-test-account.mjs --user mama --password "mama-password-2026" --d
 
 > **阶段顺序已于 2026-10-10 重排（v3.0）**：横切工作（双语、主题）移到最后，
 > 离线优先与协作提前到上线之前。见 `ROADMAP.md` §2。
+
+### 语音这一块可以调的东西
+
+| 环境变量 | 作用 | 默认 |
+|---|---|---|
+| `LIBELLUM_WHISPER_MODEL` | 模型档位（`base` 快 / **`small` 默认** / `medium` 准） | `small` |
+| `LIBELLUM_WHISPER_THREADS` | 转写线程数 | `4` |
+| `LIBELLUM_WHISPER_PROMPT` | **往记账方向偏置的提示词** | 内置一段（见下） |
+
+**默认提示词**只放**容易听错的词**（微信 / 支付宝 / 花呗 …），
+**刻意不放分类名**——分类是用户可改的，而一堆分类名会**让模型说出用户没说过的话**。
+想调整就直接改这个环境变量，服务重启即生效。

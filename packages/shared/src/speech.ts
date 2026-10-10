@@ -18,6 +18,9 @@
  */
 import { z } from "zod";
 
+import { matchCategory, type CategoryCandidate } from "./categoryMatch.js";
+import { findChineseAmount } from "./chineseNumerals.js";
+
 /**
  * A spoken amount: digits, a decimal part, and an optional yuan/kuai marker.
  *
@@ -112,12 +115,55 @@ export function parseSpokenEntry(spoken: string): SpokenEntry {
    * Taken out because the amount is a *field*, not part of the description: a
    * note reading "午饭 38 块" next to an amount of 38 says the number twice, and
    * the second copy is the one that goes stale when the amount is corrected.
+   *
+   * ⚠️ **Chinese numerals are tried first, and that order is the point.**
+   *
+   * The owner noticed the recogniser "对汉字大写的数字不太敏感" — and it was not the
+   * recogniser: whisper writes 三十八 for an unclear "三十八" and 叁佰捌拾 for a
+   * formal one, and this function only understood digits. Trying Chinese first
+   * also settles the ambiguous cases correctly: in "三百块" the digits pattern
+   * sees nothing, and in "三个人吃饭三百块" it would see the 三 — a number, but not
+   * the price.
    */
+  const chinese = findChineseAmount(original);
+
+  if (chinese !== null) {
+    const withoutAmount = original.slice(0, chinese.index) + " " + original.slice(chinese.index + chinese.length);
+
+    return { amount: chinese.value, kind, note: cleanNote(withoutAmount) };
+  }
+
   const match = AMOUNT_PATTERN.exec(original);
   const amount = match?.[1] ?? null;
   const withoutAmount = match === null ? original : original.replace(match[0], " ");
 
   return { amount, kind, note: cleanNote(withoutAmount) };
+}
+
+/**
+ * Read a spoken sentence, including which category it sounds like.
+ *
+ * A separate function rather than an extra parameter on `parseSpokenEntry`, so
+ * that the pure sentence-reading stays testable without a category list — and so
+ * that a caller with no categories to offer (a script, a test, the first sync
+ * before the ledger has loaded) has something to call.
+ *
+ * `categoryId` is `null` when nothing matched. **That is not a failure**: the
+ * category field is one tap away, and a wrong guess that looks plausible is worse
+ * than an empty field the user fills in.
+ */
+export function parseSpokenEntryWithCategory(
+  spoken: string,
+  categories: readonly CategoryCandidate[],
+): SpokenEntry & { readonly categoryId: string | null; readonly categoryMatched: readonly string[] } {
+  const entry = parseSpokenEntry(spoken);
+  const match = matchCategory(spoken, categories, entry.kind);
+
+  return {
+    ...entry,
+    categoryId: match?.id ?? null,
+    categoryMatched: match?.matched ?? [],
+  };
 }
 
 /**
@@ -213,6 +259,20 @@ export const transcribeResponseSchema = z.object({
   kind: z.enum(["expense", "income"]),
   /** The sentence with the noise removed — a starting note, not a summary. */
   note: z.string(),
+  /**
+   * A category the sentence sounds like, or `null` when nothing fitted.
+   *
+   * `null` is not a failure: the category field is one tap away, and a wrong guess
+   * that looks plausible is worse than an empty field.
+   */
+  categoryId: z.string().nullable(),
+  /**
+   * The words that matched, so the interface can show its reasoning.
+   *
+   * "听到「午饭」，已选：餐饮" — the same principle as showing the transcript: a
+   * field the app filled in silently is a field the user cannot check.
+   */
+  categoryMatched: z.array(z.string()),
   /** How long the audio was, and how long the transcription took. */
   audioSeconds: z.number(),
   seconds: z.number(),

@@ -50,6 +50,10 @@ export interface SpokenDraftHandover {
   /** Digits as spoken, or null when no amount was heard. */
   readonly amount: string | null;
   readonly kind: "expense" | "income";
+  /** A category the sentence sounds like, or null when nothing fitted. */
+  readonly categoryId: string | null;
+  /** The words that matched, so the form can show its reasoning. */
+  readonly categoryMatched: readonly string[];
 }
 
 let pendingSpoken: SpokenDraftHandover | null = null;

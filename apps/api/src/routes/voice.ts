@@ -1,16 +1,20 @@
 import {
   MAX_SPEECH_BYTES,
   isSpeechless,
-  parseSpokenEntry,
+  parseSpokenEntryWithCategory,
   transcribeResponseSchema,
 } from "@libellum/shared";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 
+import type { PrismaClient } from "../db.js";
+import { currentBookId } from "../ledger/access.js";
 import { badRequest, tooManyRequests } from "../lib/errors.js";
 import { TranscriptionRejected, type VoiceService } from "../voice/client.js";
 
 interface VoiceRouteOptions {
   readonly requireAuth: (request: FastifyRequest) => Promise<void>;
+  /** Needed to read the ledger's categories, for the category guess. */
+  readonly prisma: PrismaClient;
   /** Only this one method is needed, so a stub can stand in without the rest. */
   readonly voice: Pick<VoiceService, "transcribe">;
 }
@@ -28,7 +32,7 @@ interface VoiceRouteOptions {
  * matters the moment there is a second client, and costs nothing today.
  */
 export function registerVoiceRoutes(app: FastifyInstance, options: VoiceRouteOptions): void {
-  const { requireAuth, voice } = options;
+  const { requireAuth, prisma, voice } = options;
 
   app.post("/api/v1/voice/transcribe", { preHandler: requireAuth }, async (request) => {
     if (!request.isMultipart()) {
@@ -85,7 +89,6 @@ export function registerVoiceRoutes(app: FastifyInstance, options: VoiceRouteOpt
 
     try {
       const result = await voice.transcribe(audio);
-      const spoken = parseSpokenEntry(result.text);
 
       /**
        * Silence is reported as a success with empty fields, not as an error.
@@ -100,16 +103,43 @@ export function registerVoiceRoutes(app: FastifyInstance, options: VoiceRouteOpt
           amount: null,
           kind: "expense",
           note: "",
+          categoryId: null,
+          categoryMatched: [],
           audioSeconds: result.audioSeconds,
           seconds: result.seconds,
         });
       }
+
+      /**
+       * The category guess needs the ledger, so it is read here.
+       *
+       * **Read from the database rather than sent by the client**, and that is the
+       * point: a client could be out of date, or could name a category from a
+       * different ledger, and the API would then reject the saved entry with a
+       * message the user cannot act on. The server already knows which categories
+       * this person has.
+       *
+       * `currentBookId` rather than a hand-written query: it is the one place that
+       * decides which book "the" book is, and a second copy of that rule is how the
+       * two come to disagree.
+       */
+      const bookId = await currentBookId(prisma, request.currentUser!.id);
+
+      const categories = await prisma.category.findMany({
+        where: { bookId },
+        orderBy: [{ kind: "asc" }, { sortOrder: "asc" }],
+        select: { id: true, name: true, kind: true, isArchived: true },
+      });
+
+      const spoken = parseSpokenEntryWithCategory(result.text, categories);
 
       return transcribeResponseSchema.parse({
         text: result.text,
         amount: spoken.amount,
         kind: spoken.kind,
         note: spoken.note,
+        categoryId: spoken.categoryId,
+        categoryMatched: spoken.categoryMatched,
         audioSeconds: result.audioSeconds,
         seconds: result.seconds,
       });

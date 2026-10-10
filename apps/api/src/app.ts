@@ -171,7 +171,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     registerStatsRoutes(app, { prisma: options.prisma, requireAuth });
     registerClassificationRoutes(app, { prisma: options.prisma, requireAuth });
     registerRecognizeRoutes(app, { requireAuth, ocr });
-    registerVoiceRoutes(app, { requireAuth, voice });
+    registerVoiceRoutes(app, { requireAuth, prisma: options.prisma, voice });
     registerExportRoutes(app, { prisma: options.prisma, requireAuth });
     registerImportRoutes(app, { prisma: options.prisma, requireAuth });
   }

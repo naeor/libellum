@@ -201,6 +201,8 @@ export function RecordPage(): React.JSX.Element {
                 text,
                 amount: transcribe.data.amount,
                 kind: transcribe.data.kind,
+                categoryId: transcribe.data.categoryId,
+                categoryMatched: transcribe.data.categoryMatched,
               });
 
               void navigate("/voice/review");

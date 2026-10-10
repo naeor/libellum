@@ -70,14 +70,38 @@ export function VoiceReviewPage(): React.JSX.Element {
   const paymentMethods = ledger.data?.paymentMethods ?? [];
 
   /**
-   * The category a new entry starts on: whatever was used last.
+   * The category a new entry starts on.
    *
-   * The same guess the camera path makes. Screenshots never carry a category and
-   * neither does speech — nobody says "午饭，餐饮分类" — so the honest default is
-   * the last one used, one tap away from being changed.
+   * ⚠️ **What was said wins over what was used last**, which is the opposite of
+   * the camera path's rule and deliberately so. A screenshot carries no hint about
+   * the category, so the last one used is the only evidence available. A sentence
+   * often carries one — "午饭三十八" is food — and the server has already worked
+   * out which of *this* ledger's categories it sounds like. Falling back to the
+   * last used one only when nothing matched.
    */
   const recent = useTransactions({ month: currentMonth(), kind: spoken?.kind ?? "expense" });
   const lastCategoryId = recent.data?.pages[0]?.items[0]?.categoryId ?? null;
+
+  /**
+   * Whether a category id is usable: it has to exist, be the right kind and not
+   * be archived. The server checked before answering, but the list can change
+   * between the recording and this screen.
+   */
+  const usable = (id: string | null | undefined): string | null =>
+    id !== null &&
+    id !== undefined &&
+    categories.some((category) => category.id === id && !category.isArchived)
+      ? id
+      : null;
+
+  const heardCategoryId = usable(spoken?.categoryId);
+  const categoryId = heardCategoryId ?? usable(lastCategoryId);
+
+  /** The sentence the category came from, when it came from the sentence. */
+  const categoryReason =
+    heardCategoryId === null || spoken === null || spoken.categoryMatched.length === 0
+      ? null
+      : spoken.categoryMatched.join("、");
 
   const draft = useMemo<ReviewDraft>(
     () => ({
@@ -86,15 +110,11 @@ export function VoiceReviewPage(): React.JSX.Element {
       currency: "CNY",
       date: toLocalDate(new Date()),
       time: "",
-      categoryId:
-        lastCategoryId !== null &&
-        categories.some((category) => category.id === lastCategoryId && !category.isArchived)
-          ? lastCategoryId
-          : null,
+      categoryId,
       paymentMethodId: null,
       note: spoken?.text ?? "",
     }),
-    [spoken, lastCategoryId, categories],
+    [spoken, categoryId],
   );
 
   /**
@@ -186,6 +206,26 @@ export function VoiceReviewPage(): React.JSX.Element {
       <p className="rounded-field bg-canvas px-4 py-3 text-sm leading-relaxed text-muted">
         听到：{spoken.text}
       </p>
+
+      {/*
+        Why the category is already filled in.
+
+        The rule that applies to the amount applies to every field the app fills by
+        itself: a value that looks plausible and is wrong is the failure to design
+        against, so the app has to say where the value came from. "已选：餐饮" alone
+        leaves the user wondering whether it was a guess; naming the word it
+        latched onto turns it into something checkable at a glance.
+      */}
+      {categoryReason === null ? null : (
+        <p className="text-xs text-muted">
+          听到「{categoryReason}」，已把分类选为
+          <span className="text-ink">
+            {" "}
+            {categories.find((category) => category.id === heardCategoryId)?.name ?? ""}
+          </span>
+          。如果不对，在上面的分类里改一下就好。
+        </p>
+      )}
 
       <ReviewStep
         draft={draft}

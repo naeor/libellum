@@ -62,11 +62,24 @@ export type {
 } from "./stats.js";
 
 export {
+  chineseNumeralToDigits,
+  findChineseAmount,
+  isNumeralChar,
+} from "./chineseNumerals.js";
+
+export {
+  matchCategory,
+  type CategoryCandidate,
+  type CategoryMatch,
+} from "./categoryMatch.js";
+
+export {
   MAX_SPEECH_BYTES,
   MAX_SPEECH_SECONDS,
   cleanNote,
   isSpeechless,
   parseSpokenEntry,
+  parseSpokenEntryWithCategory,
   transcribeResponseSchema,
   type SpokenEntry,
   type TranscribeResponse,
