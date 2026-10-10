@@ -1,40 +1,48 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { useOfflineFillStatus } from "../lib/offline/fillContext.js";
-import {
-  canStoreOffline,
-  formatBytes,
-  requestPersistentStorage,
-  storageReport,
-} from "../lib/offline/persistence.js";
+import { formatBytes, requestPersistentStorage, storageReport } from "../lib/offline/persistence.js";
 
 /**
- * A quiet line about what this device has, and what it is still fetching.
+ * The download notice: while it is happening, and for ten seconds after.
  *
- * ⚠️ **It exists because "offline doesn't work" was partly true and could not be
- * seen.** The detail screen loads one month at a time, so only the months somebody
- * had opened were ever available without a network. The owner found exactly that on
- * a plane — "曾经打开过的数据" and nothing else — and there was nothing on screen to
- * explain it or to show it being fixed. A fill that runs invisibly leaves the user
- * unable to tell "still downloading" from "not supported".
+ * ⚠️ **It used to be permanent**, and the owner was right that this was wrong on
+ * two counts: "不仅不太美观，用户平时也可能看不见" — a bar that is always there stops
+ * being read, so the one time it matters it is invisible. His design is a notice
+ * that appears when there is news, lingers briefly so it can be read, and then gets
+ * out of the way, with the details living somewhere the user chooses to look.
  *
- * **Only shown when it has something to say.** A permanent "offline ready" badge
- * would be noise on a screen whose job is somebody's spending. It appears while
- * history is still being fetched, when the browser is on a metered connection and
- * the download has been left alone, and when the browser has declined to keep
- * anything — that last one because it is a fact worth learning here rather than on
- * a plane.
+ * So:
  *
- * It **reads** the fill rather than starting one, and reads the session's state from
- * the provider rather than from the auth context — this line is rendered by
- * `TabPage`, which screens render directly, and a component about storage has no
- * business requiring an `AuthProvider` to exist.
+ *  * **while downloading** it stays, on every screen, with the month count;
+ *  * **for ten seconds after finishing** it stays, showing what was stored;
+ *  * then it withdraws;
+ *  * and it says where the detail is — the download manager on the account screen.
+ *
+ * A failure is the exception: "the browser will not keep this" is not news that
+ * expires, so that line stays until it is no longer true.
+ *
+ * It **reads** the fill rather than starting one — see `OfflineFillProvider` — and
+ * takes whether anybody is signed in from that provider rather than from the auth
+ * context, because a line about storage has no business requiring an `AuthProvider`.
  */
+const LINGER_MS = 10_000;
+
 export function OfflineStatus(): React.JSX.Element | null {
   const { fill, ready } = useOfflineFillStatus();
 
   const [persisted, setPersisted] = useState<boolean | null>(null);
   const [usage, setUsage] = useState<number | null>(null);
+
+  /**
+   * Whether the finishing summary is still on screen.
+   *
+   * Held separately from the fill's own state because the fill is finished the
+   * moment it is finished, and this is about how long the *news* stays. Copying
+   * "done" into a second piece of state would be the bug where the bar never goes
+   * away because something keeps re-setting it.
+   */
+  const [lingering, setLingering] = useState(false);
 
   useEffect(() => {
     if (!ready) return;
@@ -55,45 +63,93 @@ export function OfflineStatus(): React.JSX.Element | null {
     };
   }, [ready]);
 
+  const running = fill?.running ?? false;
+
   /**
-   * Whether there is anything worth a line.
+   * ⚠️ **Counted from the moment it stops running**, not from a mount.
    *
-   * Computed before the early return so the component has one exit rather than
-   * three, and so the condition reads as one sentence: "say something when work is
-   * happening, when work stopped early, when it was skipped, or when something is
-   * already stored and the browser has not promised to keep it".
+   * A timer started when the component first rendered would withdraw the notice
+   * while the download was still going — the one thing it exists to show. The
+   * effect depends on `running`, so each transition into "finished" starts its own
+   * ten seconds.
    */
-  const worthSaying = useMemo(() => {
+  useEffect(() => {
+    if (!running) return;
+
+    // Downloading again: the summary from the last run is no longer the news.
+    setLingering(false);
+
+    return undefined;
+  }, [running]);
+
+  useEffect(() => {
+    const stopped = fill?.stopped ?? null;
+    const done = fill?.done ?? 0;
+
+    if (running || (done === 0 && stopped === null) || fill?.skippedMetered === true) return;
+
+    setLingering(true);
+    const timer = window.setTimeout(() => {
+      setLingering(false);
+    }, LINGER_MS);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [running, fill?.done, fill?.stopped, fill?.skippedMetered]);
+
+  /**
+   * Whether the browser has refused to keep the data.
+   *
+   * ⚠️ **This one does not expire.** "Your records may be cleared" is not news that
+   * goes stale, and it is precisely the thing the user should learn at home rather
+   * than on a plane.
+   */
+  const wontKeep = persisted === false && (fill?.done ?? 0) > 0;
+
+  const visible = useMemo(() => {
     if (fill === null) return false;
-    if (fill.running || fill.stopped !== null || fill.skippedMetered) return true;
+    if (running || lingering || wontKeep) return true;
 
-    return fill.done > 0;
-  }, [fill]);
+    return fill.skippedMetered;
+  }, [fill, running, lingering, wontKeep]);
 
-  if (!ready || fill === null || !canStoreOffline() || !worthSaying) return null;
+  if (!ready || fill === null || !visible) return null;
 
   return (
     <div
       role="status"
-      className="flex flex-col gap-1 border-b border-line bg-canvas px-5 py-2 text-[11px] leading-relaxed text-muted"
+      className="flex flex-col gap-0.5 border-b border-line bg-canvas px-5 py-2 text-[11px] leading-relaxed text-muted"
     >
-      {fill.running ? (
-        <p>
-          正在把历史记录存到本机，离线时也能查看（{fill.done}/{fill.total} 个月）…
-        </p>
+      {running ? (
+        <>
+          <p>
+            正在把历史记录存到本机，离线时也能查看（{fill.done}/{fill.total} 个月）…
+          </p>
+          <p>可以在「账户 → 下载管理」里查看和调整。</p>
+        </>
       ) : null}
+
+      {!running && lingering && fill.stopped === null ? (
+        <>
+          <p>
+            历史记录已存到本机（{fill.total} 个月
+            {usage === null ? "" : `，占用 ${formatBytes(usage)}`}），离线时也能查看。
+          </p>
+          <p>可以在「账户 → 下载管理」里查看和调整。</p>
+        </>
+      ) : null}
+
+      {!running && lingering && fill.stopped !== null ? <p>{fill.stopped}</p> : null}
 
       {fill.skippedMetered ? (
         <p>当前是流量网络，暂时没有下载历史记录。连上 Wi-Fi 后会自动继续。</p>
       ) : null}
 
-      {fill.stopped === null ? null : <p>{fill.stopped}</p>}
-
-      {fill.done > 0 && !fill.running ? (
+      {wontKeep ? (
         <p>
-          历史记录已存到本机（{fill.total} 个月
-          {usage === null ? "" : `，占用 ${formatBytes(usage)}`}）
-          {persisted === false ? "。⚠️ 浏览器未承诺长期保留，长期不使用可能被清除。" : "。"}
+          ⚠️ 浏览器没有承诺长期保留这些数据，长期不使用可能被清除。保持在 Wi-Fi
+          下打开应用可以让它继续保留。
         </p>
       ) : null}
     </div>

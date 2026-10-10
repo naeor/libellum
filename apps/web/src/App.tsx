@@ -14,6 +14,7 @@ import { AddEntryPage } from "./pages/AddEntryPage.js";
 import { BooksPage } from "./pages/BooksPage.js";
 import { ChangePasswordPage } from "./pages/ChangePasswordPage.js";
 import { DetailPage } from "./pages/DetailPage.js";
+import { DownloadManagerPage } from "./pages/DownloadManagerPage.js";
 import { EntryDetailPage } from "./pages/EntryDetailPage.js";
 import { ExportPage } from "./pages/ExportPage.js";
 import { ImportPage } from "./pages/ImportPage.js";
@@ -139,7 +140,8 @@ function AppRoutes(): React.JSX.Element {
       <Route path="/export" element={<RequireAuth><ExportPage /></RequireAuth>} />
       <Route path="/import" element={<RequireAuth><ImportPage /></RequireAuth>} />
       <Route path="/profile" element={<RequireAuth><ProfilePage /></RequireAuth>} />
-      <Route path="/settings" element={<RequireAuth><SettingsPage /></RequireAuth>} />
+      <Route path="/downloads" element={<RequireAuth><DownloadManagerPage /></RequireAuth>} />
+        <Route path="/settings" element={<RequireAuth><SettingsPage /></RequireAuth>} />
       <Route path="/settings/password" element={<RequireAuth><ChangePasswordPage /></RequireAuth>} />
       <Route
         path="/settings/recovery-code"

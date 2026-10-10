@@ -36,6 +36,7 @@ export function MePage(): React.JSX.Element {
     { to: "/payment-methods", label: "支付方式", hint: "微信、支付宝、银行卡、现金等" },
     { to: "/tags", label: "标签", hint: "出差、可报销等跨分类标记" },
     { to: "/books", label: "我的账本", hint: user.username },
+    { to: "/downloads", label: "下载管理", hint: "离线能看哪些月份，以及占用多少空间" },
     { to: "/settings", label: "设置", hint: "默认币种、账号安全、显示与数据" },
   ];
 

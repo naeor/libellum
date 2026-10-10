@@ -32,7 +32,9 @@ import {
 import { useMemo } from "react";
 
 import { useAuth } from "../auth/AuthProvider.js";
-import { apiFetch, apiFetchFile } from "./api.js";
+import { ApiRequestError, apiFetch, apiFetchFile } from "./api.js";
+import { findLocalTransaction, readLocalTransactions } from "./offline/localLedger.js";
+import { computeStats } from "./offline/localStats.js";
 import { uuidV7 } from "./uuid.js";
 
 /**
@@ -163,10 +165,57 @@ export function useTransactions(filters: TransactionFilters) {
   });
 }
 
+/**
+ * ⚠️ **The two screens that broke offline, answered from the device instead.**
+ *
+ * The owner's report was precise: with twenty megabytes stored locally he could see
+ * every month's list and still could not open an entry or look at the analysis
+ * screen. Both were asking the server a question the device could already answer —
+ * `GET /transactions/:id` and `GET /stats` — and `apiFetch` refuses immediately when
+ * `navigator.onLine` is false, so the query never got as far as its own cache.
+ *
+ * **A fallback per call site rather than a change to `apiFetch`.** The list screens
+ * already work offline because their answers are cached under the same key; making
+ * `apiFetch` return cached data would require it to understand query keys, which is
+ * the query layer's job. So each call site says what to do without a network, and
+ * only the analysis screen has anything interesting to say.
+ *
+ * **Only when the browser says there is no connection.** A request that fails while
+ * online is a different problem — a server that is down, a proxy in the way — and
+ * quietly answering *that* from the device would hide the thing the user needs to
+ * know about.
+ */
+function isOffline(): boolean {
+  return typeof navigator !== "undefined" && !navigator.onLine;
+}
+
 export function useTransaction(id: string) {
   return useQuery({
     queryKey: queryKeys.transaction(id),
-    queryFn: () => apiFetch<Transaction>(`/transactions/${id}`),
+    queryFn: async () => {
+      if (isOffline()) {
+        /**
+         * Looked up among the entries already stored, not fetched.
+         *
+         * A stored month is not a summary: `transactionSchema` carries the category
+         * name, the payment method and the tags, which is everything this screen
+         * displays. **Throwing when it is genuinely absent is deliberate** — an entry
+         * the device has never seen cannot be shown offline, and pretending otherwise
+         * would produce a blank screen with no explanation.
+         */
+        const found = findLocalTransaction(await readLocalTransactions(), id);
+
+        if (found !== null) return found;
+
+        throw new ApiRequestError(
+          0,
+          "offline",
+          "这一笔还没有存到本机，离线时看不到。联网后会自动补上。",
+        );
+      }
+
+      return apiFetch<Transaction>(`/transactions/${id}`);
+    },
     enabled: id !== "",
   });
 }
@@ -181,8 +230,29 @@ export function useTransaction(id: string) {
 export function useStats(query: StatsQuery) {
   return useQuery({
     queryKey: queryKeys.stats(query),
-    queryFn: () =>
-      apiFetch<StatsResponse>("/stats", {
+    queryFn: async () => {
+      if (isOffline()) {
+        /**
+         * ⚠️ **Computed on the device instead of fetched.**
+         *
+         * This is what makes the analysis screen work offline, and it works because
+         * the entries are already here — every kind, amount, currency, category and
+         * date the endpoint sums. `computeStats` mirrors the server's rules *and*
+         * reuses the server's own `fillSeriesGaps`, so an offline total equals the
+         * online one. It has to: two different answers with no way to tell which is
+         * right would be worse than no offline analysis at all.
+         */
+        return computeStats(await readLocalTransactions(), {
+          from: query.from,
+          to: query.to,
+          bucket: query.bucket,
+          currency: query.currency,
+          compareFrom: query.compareFrom,
+          compareTo: query.compareTo,
+        });
+      }
+
+      return apiFetch<StatsResponse>("/stats", {
         query: {
           from: query.from,
           to: query.to,
@@ -191,7 +261,8 @@ export function useStats(query: StatsQuery) {
           compareFrom: query.compareFrom,
           compareTo: query.compareTo,
         },
-      }),
+      });
+    },
     // A statistic is derived from entries; when none change, it cannot change.
     staleTime: 60_000,
   });
