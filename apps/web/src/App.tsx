@@ -4,6 +4,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router";
 
 import { AuthProvider, useAuth } from "./auth/AuthProvider.js";
 import { ErrorBoundary } from "./components/ErrorBoundary.js";
+import { AppShell } from "./components/Layouts.js";
 import { UndoProvider } from "./components/UndoProvider.js";
 import { AboutPage } from "./pages/AboutPage.js";
 import { AddEntryPage } from "./pages/AddEntryPage.js";
@@ -170,7 +171,14 @@ export default function App(): React.JSX.Element {
         <AuthProvider>
           <UndoProvider>
             <BrowserRouter>
-              <AppRoutes />
+              {/*
+                Inside the router, because the recording menu folds itself when
+                the reader moves to another screen — which it can only notice
+                from the location.
+              */}
+              <AppShell>
+                <AppRoutes />
+              </AppShell>
             </BrowserRouter>
           </UndoProvider>
         </AuthProvider>

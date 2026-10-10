@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams } from "react-router";
 
 import { useAuth } from "../auth/AuthProvider.js";
 import { BottomNav } from "../components/BottomNav.js";
+import { useEntryMenu } from "../components/Layouts.js";
 import { MonthPicker } from "../components/MonthPicker.js";
 import { EmptyState, ErrorState, SkeletonRows } from "../components/States.js";
 import { SyncBanner } from "../components/SyncBanner.js";
@@ -48,17 +49,22 @@ export function DetailPage(): React.JSX.Element {
   const { rootRef, scrollRef, stripRef, atList, goTo } = useDetailTransition(saved.progress);
 
   /**
-   * The recording cards fold away when the list state arrives.
+   * The recording menu is shared with every other screen.
    *
-   * The owner asked for this: the summary has just collapsed to give the
-   * entries more room, and leaving three cards open underneath would spend
-   * that room again on a menu. They are one press away whenever they are
-   * wanted, and the transition itself is the signal that they have closed.
+   * The ledger used to own this state, which was the wrong shape: the cards are
+   * the app's way of starting a record, and they are wanted on every screen. The
+   * one thing the ledger does differently is fold them when the reader scrolls
+   * down into the list — the summary has just collapsed to give the entries
+   * room, and leaving a menu open would spend exactly what was won.
    */
-  const [entryOpen, setEntryOpen] = useState(() => saved.progress < 1);
+  const menu = useEntryMenu();
+  const entryOpen = menu.open;
 
   useEffect(() => {
-    if (atList) setEntryOpen(false);
+    if (atList) menu.close();
+    // `menu.close` is stable for a given open state, and depending on `menu`
+    // would re-run this on every toggle — closing the menu the moment it opened.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [atList]);
 
   useEffect(() => {
@@ -378,11 +384,8 @@ export function DetailPage(): React.JSX.Element {
 
       <LedgerNav
         open={entryOpen}
-        onToggle={() => {
-          setEntryOpen((value) => !value);
-        }}
+        onToggle={menu.toggle}
         onNavigate={(to) => void navigate(to)}
-        collapsible={!atList}
       />
 
       <MonthPicker
@@ -415,40 +418,29 @@ export function DetailPage(): React.JSX.Element {
  * its scrolling region — the transition needs to know where the list is — and
  * because the bar's expansion has to reserve real space in this page's column.
  *
- * **The cards are only a switch in the display state.** Once the reader has
- * moved down into the list, the frame around them exists to give the entries
- * room, and a menu that unfolds there would spend exactly what was just won.
- * In the list state the centre button records directly, which is one press
- * either way.
+ * The cards behave the same here as on every other screen — pressing the button
+ * unfolds three ways to record. The difference is only that the ledger folds
+ * them itself when the reader scrolls into the list; see the call site.
  */
 function LedgerNav({
   open,
   onToggle,
   onNavigate,
-  collapsible,
 }: {
   readonly open: boolean;
   readonly onToggle: () => void;
   readonly onNavigate: (to: string) => void;
-  /** False in the list state: no cards to open, so no switch. */
-  readonly collapsible: boolean;
 }): React.JSX.Element {
-  const expanded = collapsible && open;
-
   return (
     <>
       <div
         aria-hidden="true"
-        className={`shrink-0 transition-[height] duration-200 ease-out ${expanded ? "h-[100px]" : "h-0"}`}
+        className={`shrink-0 transition-[height] duration-200 ease-out ${open ? "h-[100px]" : "h-0"}`}
       />
       <BottomNav
         active="/"
         onNavigate={onNavigate}
-        cards={
-          collapsible
-            ? { mode: "toggle", expanded, active: true, onToggle }
-            : { mode: "none", to: "/add", active: true }
-        }
+        cards={{ mode: "toggle", expanded: open, active: true, onToggle }}
       />
     </>
   );

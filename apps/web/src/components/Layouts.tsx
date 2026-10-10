@@ -1,8 +1,111 @@
-import { useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { useLocation } from "react-router";
 
 import { BottomNav, type EntryCards } from "./BottomNav.js";
 import { SyncBanner } from "./SyncBanner.js";
 import { useGoBack } from "../lib/connectivity.js";
+
+/**
+ * Whether the three recording cards are open, and who may close them.
+ *
+ * **The owner's design goal, in his words**: recording should be startable from
+ * as many screens as possible. The three ways to record — voice, by hand, by
+ * photograph — have nowhere else to live, so the centre button unfolds them
+ * wherever the reader happens to be.
+ *
+ * This used to be local state inside each frame, which made every tab its own
+ * island: the analysis screen could not close a menu the ledger had opened, and
+ * nothing could close a menu on navigation. One piece of state for the whole app
+ * is what makes "open anywhere, closed when you move on" expressible.
+ *
+ * The state lives in context rather than in the router, deliberately: it is
+ * *interface* state, it should not survive a reload, and it should not appear in
+ * a URL somebody can share.
+ */
+interface EntryMenuValue {
+  readonly open: boolean;
+  readonly toggle: () => void;
+  readonly close: () => void;
+}
+
+const EntryMenuContext = createContext<EntryMenuValue>({
+  open: false,
+  toggle: () => undefined,
+  close: () => undefined,
+});
+
+/** For a screen that wants to close the menu itself — the ledger, on scrolling. */
+export function useEntryMenu(): EntryMenuValue {
+  return useContext(EntryMenuContext);
+}
+
+/**
+ * What happens to the menu, as a pure function.
+ *
+ * A pure function so the rule can be *tested* rather than described: the
+ * behaviour lives in a `useEffect` that a test without a DOM cannot reach, and a
+ * rule that is only asserted in a comment is a rule that drifts.
+ *
+ *  * **Pressing the button always unfolds the three options.** Never a jump to
+ *    the manual form: somebody who wanted the camera would have had to open the
+ *    menu anyway, so the jump only ever cost them a press.
+ *  * **Arriving at any screen folds them**, so a page starts with its own
+ *    content rather than with a menu somebody opened for a different one. The
+ *    ledger is not an exception at the moment of arrival; it only differs in
+ *    *when* it folds — see the third case.
+ *  * **Scrolling down into the ledger's list folds them**, because the summary
+ *    has just collapsed to give the entries room and an open menu would spend
+ *    exactly what was won. This is a fold within a screen rather than on
+ *    arrival, which is why it is a separate event.
+ */
+export type MenuEvent =
+  | { readonly type: "toggle" }
+  | { readonly type: "arrivedSomewhere" }
+  | { readonly type: "scrolledIntoList" };
+
+export function menuAfter(open: boolean, event: MenuEvent): boolean {
+  switch (event.type) {
+    case "toggle":
+      return !open;
+    case "arrivedSomewhere":
+    case "scrolledIntoList":
+      return false;
+  }
+}
+
+/**
+ * Holds the menu for every tab, and folds it when the reader moves on.
+ */
+export function AppShell({ children }: { readonly children: React.ReactNode }): React.JSX.Element {
+  const { pathname } = useLocation();
+  const [open, setOpen] = useState(false);
+
+  // The pathname *after* the first render. Comparing against it means the fold
+  // cannot fire for the page the reader is already on when the app starts —
+  // otherwise a reload of the ledger would arrive with its menu already shut.
+  const previous = useRef(pathname);
+  useEffect(() => {
+    if (previous.current !== pathname) {
+      previous.current = pathname;
+      setOpen((current) => menuAfter(current, { type: "arrivedSomewhere" }));
+    }
+  }, [pathname]);
+
+  const value = useMemo<EntryMenuValue>(
+    () => ({
+      open,
+      toggle: () => {
+        setOpen((current) => menuAfter(current, { type: "toggle" }));
+      },
+      close: () => {
+        setOpen((current) => menuAfter(current, { type: "scrolledIntoList" }));
+      },
+    }),
+    [open],
+  );
+
+  return <EntryMenuContext.Provider value={value}>{children}</EntryMenuContext.Provider>;
+}
 
 /**
  * Frame for the five tab destinations.
@@ -15,12 +118,10 @@ import { useGoBack } from "../lib/connectivity.js";
  * user has to scroll back down to reach the tabs. With the page itself never
  * scrolling, there is nothing for that toolbar to react to.
  *
- * **The recording cards are the ledger's, not the app's.** Every tab used to
- * default them open, which meant the analysis, collaborator and account screens
- * each gave up a hundred pixels to a menu nobody had asked for — and pressing
- * the centre button there unfolded a menu rather than going anywhere. A screen
- * that wants the cards passes `entryCards`; a screen that does not gets a centre
- * button that simply records. See `EntryCards` in `BottomNav`.
+ * **Every tab gets the three recording options.** That is the owner's design
+ * goal rather than an oversight: recording should be startable from wherever the
+ * reader is, and the camera and voice routes have no other home. What a tab does
+ * *not* get is the menu left open behind it — see `AppShell`.
  */
 export function TabPage({
   active,
@@ -30,7 +131,6 @@ export function TabPage({
   scrollRef,
   rootRef,
   rootClassName = "",
-  entryCards,
 }: {
   readonly active: string;
   readonly onNavigate: (to: string) => void;
@@ -44,21 +144,8 @@ export function TabPage({
   /** The outermost element, for a screen that drives its own animation. */
   readonly rootRef?: React.RefObject<HTMLDivElement | null>;
   readonly rootClassName?: string;
-  /** Omitted by every tab except the ledger — see the note above. */
-  readonly entryCards?: EntryCards | undefined;
 }): React.JSX.Element {
-  /**
-   * Whether the three recording cards are showing.
-   *
-   * Only meaningful when this screen owns them. The ledger drives that with its
-   * own display/list state, because there the cards are part of the layout
-   * rather than a menu: they belong to the display state and fold away when the
-   * reader moves down into the list.
-   */
-  const [entryOpen, setEntryOpen] = useState(false);
-
-  const cards: EntryCards =
-    entryCards ?? { mode: "none", to: "/add", active: active === "/add" };
+  const menu = useEntryMenu();
 
   return (
     <div ref={rootRef} className={`flex h-dvh flex-col overflow-hidden ${rootClassName}`}>
@@ -75,38 +162,22 @@ export function TabPage({
         The scroll region shrinks by this much while they are out, so nothing
         ever passes behind them — they are in the layout rather than on top of
         it. Animating the height keeps the list from jumping as they fold away.
-
-        Zero height when this screen has no cards, which is every tab except the
-        ledger: reserving space for a menu that cannot open would be the same
-        waste the cards were removed to avoid.
       */}
       <div
         aria-hidden="true"
         className={`shrink-0 transition-[height] duration-200 ease-out ${
-          cards.mode === "toggle" && entryOpen ? "h-[100px]" : "h-0"
+          menu.open ? "h-[100px]" : "h-0"
         }`}
       />
 
       <BottomNav
         active={active}
         onNavigate={onNavigate}
-        cards={
-          cards.mode === "toggle"
-            ? {
-                mode: "toggle",
-                expanded: entryOpen,
-                active: false,
-                onToggle: () => {
-                  setEntryOpen((open) => !open);
-                },
-              }
-            : cards
-        }
+        cards={{ mode: "toggle", expanded: menu.open, active: false, onToggle: menu.toggle }}
       />
     </div>
   );
 }
-
 /**
  * Frame for screens reached *from* a tab: back control at the top, no bottom
  * bar, because a form is a place you leave, not a place you switch away from.

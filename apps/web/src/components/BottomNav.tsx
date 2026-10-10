@@ -122,36 +122,30 @@ const ENTRY_ACTIONS: readonly EntryAction[] = [
 ];
 
 /**
- * How the three recording cards behave, if they exist at all.
+ * How the three recording cards behave.
  *
- *  * `toggle` — the centre button unfolds them and folds them away again.
- *  * `navigate` — pressing the button goes to the given path instead.
- *  * absent — the cards are **gone entirely**, and the button takes the reader to
- *    `/add`.
+ * **They are a switch everywhere, and that is deliberate.** An earlier version
+ * made the centre button navigate to the manual form on screens other than the
+ * ledger, on the reasoning that a menu is only wanted where it is part of the
+ * layout. That was wrong, and the owner said why: he added the camera and the
+ * planned voice recording *because* there was nowhere to put them, and a button
+ * that jumps straight to the manual form makes those two harder to reach on
+ * every screen that is not the ledger. The menu opens wherever the reader is.
  *
- * The absent case is the owner's decision and it earns its existence: the cards
- * are a *menu*, and a menu that is open by default on the analysis, collaborator
- * and account screens spends space those screens need for their own content.
- * Rather than defaulting them closed everywhere and leaving a switch that
- * unfolds a menu nobody asked for, they simply do not exist off the ledger.
- *
- * The centre button stays a real destination either way, so recording something
- * is never more than one press away.
+ * What a screen does control is whether the menu is *left* open behind it — see
+ * `AppShell` in `Layouts`.
  */
-export type EntryCards =
-  | {
-      readonly mode: "toggle";
-      readonly expanded: boolean;
-      readonly onToggle: () => void;
-      readonly active: boolean;
-    }
-  | { readonly mode: "navigate"; readonly to: string; readonly active: boolean }
-  | { readonly mode: "none"; readonly to: string; readonly active: boolean };
+export type EntryCards = {
+  readonly mode: "toggle";
+  readonly expanded: boolean;
+  readonly onToggle: () => void;
+  readonly active: boolean;
+};
 
 /**
- * The bottom bar, whose centre button is a switch rather than a destination.
+ * The bottom bar, whose centre button unfolds three ways to record.
  *
- * Pressing it turns the `+` forty-five degrees into an `×` and unfolds three
+ * Pressing it turns the `+` forty-five degrees into an `×` and unfolds the
  * cards above it. Pressing it again folds them away. The rotation is the whole
  * animation — a plus rotated forty-five degrees *is* a cross, so there is no
  * second icon to swap in and nothing to keep in sync.
@@ -170,10 +164,7 @@ export function BottomNav({
   readonly onNavigate: (to: string) => void;
   readonly cards: EntryCards;
 }): React.JSX.Element {
-  /** The cards are drawn only when something can open them. */
-  const open = cards.mode === "toggle" && cards.expanded;
-  /** The `+` rotates into an `×` only while the cards are actually out. */
-  const turned = open;
+  const open = cards.expanded;
   return (
     // Not `fixed`: the frame that owns this bar is the full dynamic viewport
     // height and only scrolls its middle region, so the bar never ends up
@@ -183,21 +174,20 @@ export function BottomNav({
       className="relative z-10 shrink-0 border-t border-line bg-surface pb-[env(safe-area-inset-bottom)]"
     >
       {/*
-        Kept mounted and animated, rather than added and removed: an element
-        that appears instantly has nothing to animate, and the fade is what
-        makes the row read as coming out of the button.
+        The cards sit above the bar rather than floating over the list. Real
+        space is reserved for them by the frame, so nothing ever passes behind
+        them — see the note in `TabPage`.
 
-        Not rendered at all when the cards cannot be opened — there is nothing to
-        animate into, and a hidden menu that still exists in the DOM is a menu
-        somebody will eventually focus.
+        Kept mounted and animated rather than added and removed: an element that
+        appears instantly has nothing to animate, and the fade is what makes the
+        row read as coming out of the button.
       */}
-      {cards.mode === "toggle" ? (
-        <div
-          aria-hidden={!open}
-          className={`absolute inset-x-0 bottom-full transition-all duration-200 ease-out ${
-            open ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-2 opacity-0"
-          }`}
-        >
+      <div
+        aria-hidden={!open}
+        className={`absolute inset-x-0 bottom-full transition-all duration-200 ease-out ${
+          open ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-2 opacity-0"
+        }`}
+      >
           {/*
             pb-[26px]: the row sits a little lower than it first did. The cross
             button is raised 32px above the bar, so the cards' lower edge comes
@@ -240,8 +230,7 @@ export function BottomNav({
               );
             })}
           </ul>
-        </div>
-      ) : null}
+      </div>
 
       <ul className="mx-auto flex w-full max-w-md items-end justify-around px-2">
         {TABS.map((tab) => {
@@ -256,36 +245,22 @@ export function BottomNav({
                   so it reads as the one deliberate action rather than a fifth
                   destination.
 
-                  A button that switches, or a link that goes somewhere — never
-                  both, because a control that sometimes unfolds a menu and
-                  sometimes navigates is a control nobody can predict.
+                  It is always a switch now. See `EntryCards` above for why that
+                  reversal happened.
                 */}
-                {cards.mode === "toggle" ? (
-                  <button
-                    type="button"
-                    onClick={cards.onToggle}
-                    aria-expanded={open}
-                    aria-label={open ? "收起记账方式" : "展开记账方式"}
-                    className="mx-auto -mt-8 mb-2 flex size-16 items-center justify-center rounded-full bg-brand text-white shadow-lg ring-4 ring-surface transition hover:bg-brand-dark"
-                  >
-                    <PlusIcon
-                      className={`size-8 transition-transform duration-200 ease-out ${
-                        turned ? "rotate-45" : "rotate-0"
-                      }`}
-                    />
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onNavigate(cards.to);
-                    }}
-                    aria-label="记一笔"
-                    className="mx-auto -mt-8 mb-2 flex size-16 items-center justify-center rounded-full bg-brand text-white shadow-lg ring-4 ring-surface transition hover:bg-brand-dark"
-                  >
-                    <PlusIcon className="size-8" />
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={cards.onToggle}
+                  aria-expanded={open}
+                  aria-label={open ? "收起记账方式" : "展开记账方式"}
+                  className="mx-auto -mt-8 mb-2 flex size-16 items-center justify-center rounded-full bg-brand text-white shadow-lg ring-4 ring-surface transition hover:bg-brand-dark"
+                >
+                  <PlusIcon
+                    className={`size-8 transition-transform duration-200 ease-out ${
+                      open ? "rotate-45" : "rotate-0"
+                    }`}
+                  />
+                </button>
               </li>
             );
           }
