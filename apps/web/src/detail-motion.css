@@ -375,5 +375,5 @@
   position: sticky;
   top: var(--hero-short);
   z-index: 19;
-  background: var(--color-canvas, #fbfbf9);
+  background: var(--color-canvas);
 }

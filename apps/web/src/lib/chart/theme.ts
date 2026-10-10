@@ -7,11 +7,29 @@
  *  * **colour is never the only signal** — every series also gets a marker
  *    shape, so a legend and a chart stay readable for someone who cannot
  *    separate the hues, or is looking at a washed-out screen in daylight.
+ *
+ * ⚠️ **This file holds values, not tokens — read `docs/COLORS.md` §4 before
+ * touching it.** Charts are the one place the theme cannot reach: the colours
+ * are handed to SVG as strings and asserted in tests, so they have to be
+ * literals rather than `var(--…)`. Two consequences worth knowing:
+ *
+ *  * **A chart series is not the accent colour.** `#55997a` used to be first in
+ *    this list *and* the interface accent, so the first slice of every donut was
+ *    the same green as the button above it — a reader could not tell which was
+ *    the theme and which was data. The list now starts on a deeper, more muted
+ *    green, which keeps the accent being the accent.
+ *  * **This palette may change independently of the theme.** It is chosen for
+ *    distinguishability rather than for matching, so a future dark mode wants
+ *    its own ramp here, not a recoloured copy of this one.
  */
 
-/** Eight hues, ordered so neighbouring entries differ in both hue and lightness. */
+/**
+ * Eight hues, ordered so neighbouring entries differ in both hue and lightness.
+ *
+ * The first entry is deliberately *not* the accent green — see the note above.
+ */
 export const CATEGORICAL_COLORS: readonly string[] = [
-  "#55997a",
+  "#3f7a5f",
   "#4a7fb5",
   "#c08a3e",
   "#b8574f",
@@ -36,6 +54,10 @@ export function categoricalColor(index: number): string {
  * Index 0 means "nothing recorded" and is a neutral grey rather than the
  * lightest green — an empty day and a very cheap day are different facts and
  * should not look the same.
+ *
+ * This is a **ramp**: five steps of one hue, chosen so adjacent steps stay
+ * distinguishable. It is not "several greens that happen to differ", and it must
+ * not be collapsed into one token.
  */
 export const HEAT_COLORS: readonly string[] = [
   "#eef1ef",

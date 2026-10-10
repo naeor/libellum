@@ -27,27 +27,66 @@
 }
 
 /*
- * Libellum theme.
+ * Libellum theme — the blocks the whole interface is built from.
  *
- * Light, calm and friendly: a near-white canvas, one low-saturation green as
- * the only accent, soft corners and generous spacing. Nothing shouts.
+ * Light, calm and friendly: a near-white canvas, one low-saturation green as the
+ * only accent, soft corners and generous spacing. Nothing shouts.
+ *
+ * ⚠️ **Read `docs/COLORS.md` before changing anything here.** Every token is
+ * classified there by what it *is*, because that is what decides how it may be
+ * changed. The two halves of this theme are not the same kind of thing:
+ *
+ *  * **The base set** (`--bg-*`, `--text-*`, `--border-*`) is about *lightness*.
+ *    Swapping it for a dark set is what "dark mode" will mean, and it changes
+ *    every surface at once.
+ *  * **The accent block** (`--accent-*`) is about *hue*. Changing it is what
+ *    "theme colour" will mean.
+ *
+ * They multiply rather than add: which green is right depends on how dark the
+ * background is — a green that reads well on near-white is muddy on near-black,
+ * and needs to be lighter and less saturated there. That is why the two are
+ * meant to be done together, and why each is a separate block here rather than
+ * one flat list of colours.
+ *
+ * The **status block** is a third, independent axis: success, warning and danger
+ * keep their meaning whatever the base or the accent is, so they are their own
+ * group and are *not* derived from the accent.
+ *
+ * The names say where a colour goes, not what it looks like. `--color-brand`
+ * became `--accent` for that reason: "brand" describes a decision, "accent"
+ * describes a job, and only the second one survives a change of mind.
  */
 @theme {
+  /* ---- Base set: lightness ------------------------------------------- */
+  /* The page behind everything, and the cards on it. */
   --color-canvas: #fafcfb;
   --color-surface: #ffffff;
 
-  --color-brand: #55997a;
-  --color-brand-dark: #447d63;
-  --color-brand-soft: #edf5f0;
-
+  /* Text, in two weights, plus the hairlines that separate things. */
   --color-ink: #24312b;
   --color-muted: #6b7f76;
   --color-line: #e3ede7;
 
+  /* ---- Accent block: hue --------------------------------------------- */
+  /*
+   * `brand-*` keeps its name because 467 class usages depend on it, but the
+   * meaning is "the one accent colour". `accent-ink` is the accent's own
+   * readable-on-light text tone, which the charts use for small labels so that
+   * a chart's grey does not have to borrow the muted text colour — the two have
+   * different jobs and different contrast requirements.
+   */
+  --color-brand: #55997a;
+  --color-brand-dark: #447d63;
+  --color-brand-soft: #edf5f0;
+  --color-accent-ink: #8fa39a;
+
+  /* ---- Status block: meaning ----------------------------------------- */
+  /* Not derived from the accent: a failure is red in every theme. */
   --color-danger: #b8574f;
   --color-danger-dark: #9c4740;
   --color-danger-soft: #fbefee;
 
+  /* ---- Shape ---------------------------------------------------------- */
   --radius-card: 1.25rem;
   --radius-field: 0.875rem;
 

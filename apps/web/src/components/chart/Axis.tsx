@@ -1,7 +1,7 @@
 import type { ChartLayout } from "./ChartFrame.js";
 
 const LABEL_SIZE = 10;
-const AXIS_COLOR = "#8fa39a";
+const AXIS_COLOR = "var(--color-accent-ink)";
 
 /**
  * How many labels to skip so they do not collide.

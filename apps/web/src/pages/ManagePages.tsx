@@ -6,6 +6,7 @@ import { ConfirmDialog } from "../components/ConfirmDialog.js";
 import { InnerPage } from "../components/Layouts.js";
 import { SkeletonRows } from "../components/States.js";
 import { errorMessage } from "../lib/api.js";
+import { CATEGORICAL_COLORS } from "../lib/chart/theme.js";
 import {
   useCategoryMutations,
   useLedger,
@@ -354,7 +355,27 @@ export function PaymentMethodsPage(): React.JSX.Element {
   );
 }
 
-const TAG_COLORS = ["#55997a", "#b8574f", "#4a7fb5", "#c08a3e", "#7a6bb0", "#5d8c8c"];
+/**
+ * The swatches offered when creating a tag.
+ *
+ * Taken from the chart palette rather than written out again, because a tag
+ * colour and a chart series colour are the same kind of thing: a value the user
+ * picks, which has to be distinguishable from the ones beside it. Two lists
+ * meant the same green could drift into two slightly different greens — and it
+ * already had: the old list here contained the accent green, so the first
+ * swatch was the button colour.
+ */
+const TAG_COLORS = CATEGORICAL_COLORS;
+
+/**
+ * The colour a new tag starts on.
+ *
+ * `CATEGORICAL_COLORS` is a non-empty constant, so the first entry always
+ * exists; the assertion says that rather than a `?? "#…"` fallback, which would
+ * have been a colour literal outside the token file — the one thing
+ * `docs/COLORS.md` §7 forbids.
+ */
+const DEFAULT_TAG_COLOR = CATEGORICAL_COLORS[0] as string;
 
 export function TagsPage(): React.JSX.Element {
   const navigate = useNavigate();
@@ -362,7 +383,7 @@ export function TagsPage(): React.JSX.Element {
   const { create, remove } = useTagMutations();
 
   const [name, setName] = useState("");
-  const [color, setColor] = useState(TAG_COLORS[0] ?? "#55997a");
+  const [color, setColor] = useState(DEFAULT_TAG_COLOR);
   const [pending, setPending] = useState<{ id: string; name: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
 

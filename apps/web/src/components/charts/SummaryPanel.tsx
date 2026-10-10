@@ -218,7 +218,7 @@ export function YearOverview({
                     y={y(peak) - 4}
                     textAnchor="middle"
                     fontSize={10}
-                    fill="#8fa39a"
+                    fill="var(--color-accent-ink)"
                   >
                     {formatAxisAmount(peak, currency)}
                   </text>

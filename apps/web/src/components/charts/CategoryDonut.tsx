@@ -82,7 +82,7 @@ export function CategoryDonut({
                 y={cy - 4}
                 textAnchor="middle"
                 fontSize={11}
-                fill="#8fa39a"
+                fill="var(--color-accent-ink)"
               >
                 合计
               </text>
@@ -92,7 +92,7 @@ export function CategoryDonut({
                 textAnchor="middle"
                 fontSize={15}
                 fontWeight={600}
-                fill="#1f2d27"
+                fill="var(--color-ink)"
               >
                 {formatMoney(total, currency)}
               </text>

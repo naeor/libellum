@@ -9,12 +9,17 @@
  * this file is the only thing that changes. Deliberately quiet: a default
  * avatar is something the owner did not choose, so it should not look like a
  * statement.
+ *
+ * The colours come from the theme's variables rather than from literals, so this
+ * follows the accent colour like everything else. See `docs/COLORS.md`: the
+ * petals are the accent, the disc behind them is the surface, and the centre dot
+ * is the accent's soft tint.
  */
 export function DefaultAvatar({ className = "size-24" }: { readonly className?: string }): React.JSX.Element {
   return (
     <svg viewBox="0 0 96 96" className={className} aria-hidden="true">
-      <circle cx="48" cy="48" r="48" fill="#ffffff" fillOpacity="0.92" />
-      <g transform="translate(48 50)" fill="#55997a">
+      <circle cx="48" cy="48" r="48" fill="var(--color-surface)" fillOpacity="0.92" />
+      <g transform="translate(48 50)" fill="var(--color-brand)">
         {[0, 60, 120, 180, 240, 300].map((angle) => (
           <ellipse
             key={angle}
@@ -26,7 +31,7 @@ export function DefaultAvatar({ className = "size-24" }: { readonly className?: 
             transform={`rotate(${String(angle)})`}
           />
         ))}
-        <circle r="7.5" fill="#edf5f0" />
+        <circle r="7.5" fill="var(--color-brand-soft)" />
         <circle r="3.6" />
       </g>
     </svg>

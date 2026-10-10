@@ -51,7 +51,7 @@ export function RecoveryCodeCard({
           onChange={(event) => {
             setConfirmed(event.target.checked);
           }}
-          className="mt-0.5 size-4 accent-[#55997a]"
+          className="mt-0.5 size-4 accent-[var(--color-brand)]"
         />
         <span>我已妥善保存该恢复码</span>
       </label>

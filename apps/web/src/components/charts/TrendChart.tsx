@@ -226,8 +226,8 @@ function ActiveMarker({
         strokeOpacity={0.45}
         strokeWidth={1}
       />
-      <rect x={left} y={top} width={width} height={height} rx={6} fill="#ffffff" stroke="#e3eae6" />
-      <text x={left + 8} y={top + 15} fontSize={10} fill="#8fa39a">
+      <rect x={left} y={top} width={width} height={height} rx={6} fill="var(--color-surface)" stroke="var(--color-line)" />
+      <text x={left + 8} y={top + 15} fontSize={10} fill="var(--color-accent-ink)">
         {label}
       </text>
       <text x={left + 8} y={top + 29} fontSize={11} fill={EXPENSE_COLOR}>
