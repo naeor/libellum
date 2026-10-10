@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
-import { Alert } from "../components/Alert.js";
 import { CopyButton } from "../components/CopyButton.js";
 import { InnerPage } from "../components/Layouts.js";
 import { useAccountOffline } from "../lib/offline/connectivity.js";
@@ -36,7 +35,6 @@ export function SoftwareUpdatePage(): React.JSX.Element {
   const [footprint, setFootprint] = useState<CacheFootprint | null>(null);
   const [logCount, setLogCount] = useState(0);
   const [workerState, setWorkerState] = useState<string>("读取中…");
-  const [manualCopy, setManualCopy] = useState(false);
 
   const load = useCallback(async () => {
     const [measured, log] = await Promise.all([cacheFootprint(queryClient), readOfflineLog()]);
@@ -93,22 +91,13 @@ export function SoftwareUpdatePage(): React.JSX.Element {
         It was in the header's action slot, which is where a *navigation* control belongs. Copying
         is not navigation — it is something you do *to* the information on the page, so it belongs
         with that information, before it rather than after.
-      */}
-      <div className="flex justify-center">
-        <CopyButton
-          text={summary}
-          label="复制版本信息"
-          onOutcome={(outcome) => {
-            setManualCopy(outcome !== "copied");
-          }}
-        />
-      </div>
 
-      {manualCopy ? (
-        <Alert tone="info">
-          这个浏览器不允许自动复制，请长按下面的内容选择「复制」。
-        </Alert>
-      ) : null}
+        ⚠️ **And it brings its own text box.** Two rounds were spent trying to detect when the
+        clipboard would fail; the tablet then answered differently on two screens running identical
+        code. **A fallback that has to predict the failure can be wrong; one that is always there
+        cannot** — and text on screen can be screenshotted, which works on every device.
+      */}
+      <CopyButton text={summary} label="复制版本信息" rows={10} />
 
       <section className="flex flex-col gap-2 rounded-card border border-line bg-surface px-4 py-3">
         <p className="text-2xl font-semibold tracking-tight text-ink">{APP_VERSION}</p>
@@ -156,18 +145,6 @@ export function SoftwareUpdatePage(): React.JSX.Element {
         copied is unreachable on that device. The text is here, selected on touch, and can be
         screenshotted; the button is a convenience rather than the only way through.
       */}
-      <section className="flex flex-col gap-2">
-        <h2 className="text-xs text-muted">版本信息（可长按选择复制）</h2>
-        <textarea
-          readOnly
-          value={summary}
-          rows={9}
-          onFocus={(event) => {
-            event.currentTarget.select();
-          }}
-          className="w-full rounded-field border border-line bg-surface px-3 py-2 font-mono text-[10px] text-ink"
-        />
-      </section>
     </InnerPage>
   );
 }

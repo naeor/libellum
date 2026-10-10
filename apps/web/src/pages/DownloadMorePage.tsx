@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 
-import { Alert } from "../components/Alert.js";
 import { Button } from "../components/Button.js";
 import { ChoiceDialog, type Choice } from "../components/ChoiceDialog.js";
 import { InnerPage } from "../components/Layouts.js";
@@ -38,7 +37,6 @@ export function DownloadMorePage(): React.JSX.Element {
   const [storage, setStorage] = useState<StorageBreakdown | null>(null);
   const [queries, setQueries] = useState<readonly string[]>([]);
   const [trace, setTrace] = useState<readonly string[]>([]);
-  const [manualCopy, setManualCopy] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -155,35 +153,21 @@ export function DownloadMorePage(): React.JSX.Element {
           never read, the label never changed, and no fallback was ever offered. **A feature
           implemented twice is a feature that works in one of the two places**, and which one is
           decided by luck.
+          
+          ⚠️ **And the fallback is inside the button now, always rendered.** Two rounds were spent
+          detecting when the clipboard would fail; the tablet then answered differently on two
+          screens running identical code. **A fallback that has to predict a failure can be wrong;
+          one that is always present cannot** — and text on screen can be screenshotted.
         */}
         <CopyButton
           text={report}
           label="复制诊断信息"
-          onOutcome={(outcome) => {
-            setManualCopy(outcome !== "copied");
-          }}
+          rows={12}
+          hint="如果遇到问题，把上面的内容发给开发者就能定位。"
         />
 
-        {manualCopy ? (
-          <Alert tone="info">
-            这个浏览器不允许自动复制。下面已选中，请长按选择「复制」。
-          </Alert>
-        ) : null}
-
-        {manualCopy ? (
-          <textarea
-            readOnly
-            value={report}
-            rows={8}
-            onFocus={(event) => {
-              event.currentTarget.select();
-            }}
-            className="w-full rounded-field border border-line bg-surface px-3 py-2 font-mono text-[10px] text-ink"
-          />
-        ) : null}
-
         <p className="text-xs leading-relaxed text-muted">
-          如果遇到问题，点上面的按钮复制这些内容，发给开发者就能定位。
+          服务器上的账目不受影响；这里只是本机的副本。
         </p>
       </section>
 

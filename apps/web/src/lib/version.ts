@@ -13,6 +13,10 @@
  * | **08** | 正在开发哪个阶段（S8）。**与 `ROADMAP.md` 的阶段号一致** |
  * | **01** | 该阶段里的第几版。**改到用户看得见的行为就 +1** |
  *
+ * ⚠️ **Every update bumps the last part, and the owner made that a rule**: "以后你每次更新
+ * 一次，就把版本号加1." A version that does not move cannot be used to tell two builds apart, which
+ * is the only thing it is for — and this project lost three rounds to exactly that.
+ *
  * ⚠️ **The middle part matching the roadmap's stage number is the useful half.** It means the
  * answer to "which stage is this build from" is written on the screen, and the answer to "what
  * is in it" is one section of one document away — where a version like `1.4.2` would require a
@@ -26,7 +30,7 @@
  */
 
 /** The version, as displayed. Bump the last part when behaviour changes. */
-export const APP_VERSION = "1.08.01";
+export const APP_VERSION = "1.08.02";
 
 /**
  * When this bundle was built.
