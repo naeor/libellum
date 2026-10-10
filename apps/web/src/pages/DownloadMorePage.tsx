@@ -10,6 +10,7 @@ import { cacheFootprint, describeKey, type CacheFootprint } from "../lib/offline
 import { clearOfflineLog, readOfflineLog, type LogEntry } from "../lib/offline/diagnostics.js";
 import { formatBytes, storageBreakdown, type StorageBreakdown } from "../lib/offline/persistence.js";
 import { resetEverything } from "../lib/offline/reset.js";
+import { databaseReport, type DatabaseReport } from "../lib/offline/dbstatus.js";
 import { readTrace, traceLine, readValue } from "../lib/offline/storage.js";
 
 /**
@@ -37,6 +38,7 @@ export function DownloadMorePage(): React.JSX.Element {
   const [storage, setStorage] = useState<StorageBreakdown | null>(null);
   const [queries, setQueries] = useState<readonly string[]>([]);
   const [trace, setTrace] = useState<readonly string[]>([]);
+  const [db, setDb] = useState<DatabaseReport | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -44,11 +46,14 @@ export function DownloadMorePage(): React.JSX.Element {
     setLoading(true);
 
     try {
-      const [entries, measured, breakdown] = await Promise.all([
+      const [entries, measured, breakdown, database] = await Promise.all([
         readOfflineLog(),
         cacheFootprint(queryClient),
         storageBreakdown(),
+        databaseReport(),
       ]);
+
+      setDb(database);
 
       setLog(entries);
       setFootprint(measured);
@@ -129,6 +134,25 @@ export function DownloadMorePage(): React.JSX.Element {
     "",
   ].join("\n");
 
+  /**
+   * The version somebody can paste into a chat window.
+   *
+   * ⚠️ **Deliberately short, and it keeps only what identifies the situation**: which build,
+   * which page, what is stored, whether the database opened. The trace and the log are what makes
+   * the full report long, and they are only needed once the short one has narrowed it down.
+   */
+  const shortReport = [
+    `Libellum · 离线诊断（简版）`,
+    `构建：${__BUILD_STAMP__}`,
+    `页面：${window.location.href}`,
+    `网络：${navigator.onLine ? "在线" : "离线"}`,
+    `缓存条目：${String(footprint?.queryCount ?? 0)} 条（${String(footprint?.liveQueryCount ?? 0)} 条有效）`,
+    `缓存大小：${String(footprint?.cacheBytes ?? 0)} 字节`,
+    `数据库：${db === null ? "(未读取)" : db.opened ? `可打开，${String(db.keyCount)} 个键` : `打不开 — ${db.error ?? "未知"}`}`,
+    `占用：总计 ${formatBytes(storage?.totalBytes ?? 0)} / 账本 ${formatBytes(storage?.queryCacheBytes ?? 0)}`,
+    `运行记录：${String(log.length)} 条`,
+  ].join("\n");
+
   return (
     <InnerPage
       title="下载管理 · 更多"
@@ -160,10 +184,25 @@ export function DownloadMorePage(): React.JSX.Element {
           one that is always present cannot** — and text on screen can be screenshotted.
         */}
         <CopyButton
+          text={shortReport}
+          label="复制简版诊断"
+          rows={5}
+          hint="短的，方便直接发在聊天里。"
+        />
+
+        {/*
+          ⚠️ **Two lengths, because the owner found the limit the hard way**: "他复制这个剪贴版，
+          但是因为太长了，所以没法在微信发出来；而我看到粘贴之后什么都没有，就以为他是没粘贴上."
+
+          **A report that cannot be sent is a report that does not exist** — and the failure looked
+          exactly like a broken clipboard, which is why it was diagnosed as one twice. The short
+          version fits in a message; the full one is for when somebody asks for it.
+        */}
+        <CopyButton
           text={report}
-          label="复制诊断信息"
+          label="复制完整诊断"
           rows={12}
-          hint="如果遇到问题，把上面的内容发给开发者就能定位。"
+          hint="完整的，包含存储追踪与全部运行记录。"
         />
 
         <p className="text-xs leading-relaxed text-muted">

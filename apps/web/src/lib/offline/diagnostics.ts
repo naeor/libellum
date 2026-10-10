@@ -47,20 +47,104 @@ export interface LogEntry {
 
 /** Add one line to the log. Never throws: a diagnostic must not break the thing. */
 export async function logOffline(what: string, detail?: string): Promise<void> {
-  try {
-    const existing = await readValue<readonly LogEntry[]>(LOG_KEY);
-    const entries = Array.isArray(existing) ? existing : [];
+  /**
+   * ⚠️ **Buffered in memory and flushed in one write.**
+   *
+   * The first version read the whole log, appended, and wrote it back — **on every single call**.
+   * With `read` written as an `async` function returning a promise, the append and the
+   * persistence did not have to wait for each other, and the storage trace showed what that
+   * produced: **`read offline-log` and `write offline-log` alternating over a hundred times in
+   * under two seconds**, each read seeing 200 entries and each write storing 200 entries.
+   *
+   * **A log line is the most frequently executed thing in this file**, and it was doing two
+   * database round trips per line — including during a download that writes sixty months of
+   * diagnostics. The cost was paid on every offline read, which is the path that matters most.
+   *
+   * So entries go into an array and the array is written once, on a short timer. The order is
+   * preserved exactly, which is the only property a diagnostic actually needs.
+   */
+  pending.push({ at: Date.now(), what, ...(detail === undefined ? {} : { detail }) });
 
-    const next = [...entries, { at: Date.now(), what, detail }].slice(-MAX_ENTRIES);
+  if (pending.length > MAX_ENTRIES) pending = pending.slice(-MAX_ENTRIES);
 
-    await writeValue(LOG_KEY, next);
-  } catch {
-    // A log that fails is a log that is empty. Nothing else changes.
-  }
+  scheduleFlush();
+
+  // Kept `async` so every existing caller still awaits something; nothing waits on the write.
+  await Promise.resolve();
 }
 
-/** The log, newest first. */
+/** Entries written but not yet stored. */
+let pending: LogEntry[] = [];
+
+/** In-flight write, so two flushes cannot interleave. */
+let flushPromise: Promise<void> | null = null;
+
+/** A pending timer, so a burst becomes one write. */
+let flushTimer: number | null = null;
+
+/**
+ * Write the buffer out shortly.
+ *
+ * ⚠️ **A short delay rather than an immediate write**, because the calls arrive in bursts — sixty
+ * months of fill each log several lines within a few milliseconds. Waiting turns sixty round
+ * trips into one, and the delay is short enough that a report opened immediately afterwards
+ * still sees everything.
+ *
+ * `queueMicrotask` is deliberately not used: it would fire before the burst has finished.
+ */
+function scheduleFlush(): void {
+  if (typeof window === "undefined") return;
+  if (flushTimer !== null) return;
+
+  flushTimer = window.setTimeout(() => {
+    flushTimer = null;
+    void flush();
+  }, 250);
+}
+
+/** Append the buffer to what is stored, and store it. */
+async function flush(): Promise<void> {
+  if (flushPromise !== null) return flushPromise;
+
+  flushPromise = (async () => {
+    const batch = pending;
+    if (batch.length === 0) return;
+
+    try {
+      const existing = await readValue<readonly LogEntry[]>(LOG_KEY);
+      const entries = Array.isArray(existing) ? existing : [];
+
+      /**
+       * ⚠️ **Only the part of the batch that is new.**
+       *
+       * A timer and a manual flush can both fire, and the entries already written must not be
+       * written twice — the log would then show every line in duplicate, which is worse than
+       * losing one.
+       */
+      const alreadyStored = new Set(entries.map((entry) => `${String(entry.at)}|${entry.what}`));
+      const fresh = batch.filter((entry) => !alreadyStored.has(`${String(entry.at)}|${entry.what}`));
+
+      if (fresh.length === 0) return;
+
+      const next = [...entries, ...fresh].slice(-MAX_ENTRIES);
+
+      pending = [];
+
+      await writeValue(LOG_KEY, next);
+    } catch {
+      // A log that fails is a log that is empty. Nothing else changes.
+    }
+  })().finally(() => {
+    flushPromise = null;
+  });
+
+  return flushPromise;
+}
+
+/** The log, newest first. Flushes first, so a report includes what just happened. */
 export async function readOfflineLog(): Promise<readonly LogEntry[]> {
+  await flush();
+
   const stored = await readValue<readonly LogEntry[]>(LOG_KEY);
 
   return Array.isArray(stored) ? [...stored].reverse() : [];
@@ -68,6 +152,8 @@ export async function readOfflineLog(): Promise<readonly LogEntry[]> {
 
 /** Forget it, for a clean reproduction. */
 export async function clearOfflineLog(): Promise<void> {
+  pending = [];
+
   await writeValue(LOG_KEY, []);
 }
 
