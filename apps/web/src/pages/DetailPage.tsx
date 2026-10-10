@@ -116,24 +116,36 @@ export function DetailPage(): React.JSX.Element {
             and it is contained so the reflow stops here instead of reaching
             the list on every frame.
           */}
-          <header className="detail-hero relative bg-brand px-6 pt-6 text-white">
-            <div className="flex items-start justify-between">
+          <header
+            className="detail-hero relative bg-brand px-6 pt-6 pb-7 text-white"
+            data-pinned={atList}
+          >
+            <div className="flex h-9 items-center justify-between">
               <h1 className="detail-title text-2xl font-semibold tracking-tight">Libellum</h1>
 
               <div className="detail-tools flex gap-2">
-                <ToolButton label="导出" hint="在 S6 阶段实现" />
-                <ToolButton label="更多" hint="即将开放" />
+                <ToolButton icon={<ShareIcon />} label="导出" hint="导出功能在 S6 阶段实现" />
+                <ToolButton icon={<MoreIcon />} label="更多" hint="更多操作即将开放" />
               </div>
             </div>
 
             {/*
-              The month travels from the left edge to the centre. Two transforms
-              do it with no measurement: the wrapper moves half the container,
-              and the month moves back half of itself. The arrows sit outside
-              the travelling wrapper so they stay against the page edges.
+              The month. It starts on its own line under the wordmark and rises
+              onto the wordmark's line as the list state arrives — the wordmark
+              fades over the same stretch, so the month is moving into space
+              being vacated rather than crossing anything. Left-aligned in both
+              states: centred, it took horizontal room the currency cards need.
             */}
-            <div className="relative mt-2 h-9">
-              <div className="detail-month-track">
+            <div className="detail-month-row relative mt-2 h-8">
+              <div className="flex items-center gap-1">
+                <ArrowButton
+                  direction="left"
+                  tabbable={atList}
+                  onClick={() => {
+                    setMonth(shiftMonth(month, -1));
+                  }}
+                />
+
                 <button
                   type="button"
                   onClick={() => {
@@ -142,26 +154,11 @@ export function DetailPage(): React.JSX.Element {
                   className="detail-month inline-flex items-center text-base text-white/95"
                 >
                   {year} 年 {monthNumber} 月
-                  {/* The caret is the display state's hint that this opens
-                      something; the arrows say the same thing in the list
-                      state, and the two trade places as it travels. */}
                   <span className="detail-caret ml-1 text-[10px] text-white/75" aria-hidden="true">
                     ▼
                   </span>
                 </button>
-              </div>
 
-              <div
-                className="detail-arrows absolute inset-x-0 top-0 flex items-center justify-between"
-                data-active={atList}
-              >
-                <ArrowButton
-                  direction="left"
-                  tabbable={atList}
-                  onClick={() => {
-                    setMonth(shiftMonth(month, -1));
-                  }}
-                />
                 <ArrowButton
                   direction="right"
                   tabbable={atList}
@@ -189,7 +186,7 @@ export function DetailPage(): React.JSX.Element {
                       onClick={() => {
                         setShowAllCurrencies(true);
                       }}
-                      className="flex shrink-0 snap-start flex-col justify-center rounded-card bg-white/12 px-4 text-left text-xs text-white/90"
+                      className="detail-currency-card detail-secondary-card shrink-0 snap-start px-4 text-left text-xs text-white/90"
                       style={{ width: "32%" }}
                     >
                       更多币种
@@ -392,21 +389,55 @@ function LedgerNav({ onNavigate }: { readonly onNavigate: (to: string) => void }
 /**
  * A tool in the top corner.
  *
+ * An icon, not a word. The first version printed 导出 and 更多 in small text on
+ * translucent circles and the owner's note was that they read as speech
+ * bubbles rather than tools — a word inside a pill looks like something to
+ * read, where a mark inside a circle looks like something to press.
+ *
  * Both are disabled and say why. The owner's rule holds here as everywhere
  * else: something that looks ready and does nothing is worse than something
- * that admits it is not, and the export button becomes real in S6.
+ * that admits it is not. Export becomes real in S6.
  */
-function ToolButton({ label, hint }: { readonly label: string; readonly hint: string }): React.JSX.Element {
+function ToolButton({
+  icon,
+  label,
+  hint,
+}: {
+  readonly icon: React.ReactNode;
+  readonly label: string;
+  readonly hint: string;
+}): React.JSX.Element {
   return (
     <button
       type="button"
       disabled
       title={`${label}——${hint}`}
       aria-label={`${label}，${hint}`}
-      className="flex size-9 items-center justify-center rounded-full bg-white/15 text-[11px] text-white/60"
+      className="flex size-9 items-center justify-center rounded-full bg-white/15 text-white/70"
     >
-      {label}
+      {icon}
     </button>
+  );
+}
+
+/** A box with an arrow leaving it: the usual mark for getting data out. */
+function ShareIcon(): React.JSX.Element {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="size-[18px]" aria-hidden="true">
+      <path d="M12 15V4M12 4 8.5 7.5M12 4l3.5 3.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M5 13v6a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+/** Three dots: anything that does not deserve its own button yet. */
+function MoreIcon(): React.JSX.Element {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className="size-[18px]" aria-hidden="true">
+      <circle cx="5.5" cy="12" r="1.7" />
+      <circle cx="12" cy="12" r="1.7" />
+      <circle cx="18.5" cy="12" r="1.7" />
+    </svg>
   );
 }
 
@@ -426,7 +457,7 @@ function ArrowButton({
       tabIndex={tabbable ? 0 : -1}
       aria-hidden={!tabbable}
       aria-label={direction === "left" ? "上一个月" : "下一个月"}
-      className="rounded-full p-1.5 text-white/85 transition hover:bg-white/15"
+      className="detail-arrow rounded-full p-1.5 text-white/85 transition"
     >
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="size-5">
         <path
@@ -457,7 +488,7 @@ function MainCard({
   readonly className?: string;
 }): React.JSX.Element {
   return (
-    <section className={`${className} flex flex-col justify-center rounded-card bg-white/12 px-5`}>
+    <section className={`${className} detail-currency-card px-5`}>
       <span className="text-xs text-white/75">{currencyName(currency)}</span>
 
       {summary === null ? (
@@ -489,7 +520,7 @@ function MainCard({
 function SecondaryCard({ summary }: { readonly summary: CurrencySummary }): React.JSX.Element {
   return (
     <div
-      className="flex shrink-0 snap-start flex-col justify-center rounded-card bg-white/12 px-4"
+      className="detail-currency-card detail-secondary-card shrink-0 snap-start px-4"
       style={{ width: "34%" }}
     >
       <span className="text-[11px] text-white/70">{currencyName(summary.currency)}</span>

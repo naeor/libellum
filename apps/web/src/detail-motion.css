@@ -24,13 +24,15 @@
    * The two ends of each animated size, named rather than inlined so they can
    * be tuned on a real phone without hunting through calc() expressions.
    */
-  --hero-tall: 336px;
-  --hero-short: 138px;
+  --hero-tall: 360px;
+  --hero-short: 132px;
   --card-tall: 128px;
-  --card-short: 44px;
+  --card-short: 52px;
   --secondary-tall: 74px;
-  --secondary-short: 38px;
+  --secondary-short: 52px;
   --heading-h: 44px;
+  /* Height of the wordmark/tools line, which the month slides up into. */
+  --row-one: 44px;
 
   /* Each element's own slice of the timeline. clamp keeps them in 0..1. */
   --p-title: clamp(0, calc(var(--p) / 0.35), 1);
@@ -50,6 +52,21 @@
   overflow: visible;
 }
 
+/*
+ * It stays put once it has collapsed.
+ *
+ * In the display state the screen does not scroll at all, so sticking changes
+ * nothing there. In the list state it is the whole point: the summary stays
+ * overhead while the entries move under it, which is what a compact header is
+ * for. Without this the green area simply scrolls away and the reader loses the
+ * month and the totals the moment they start reading.
+ */
+.detail-hero[data-pinned="true"] {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
 /* B. The wordmark leaves first, so the month has somewhere to travel to. */
 .detail-title {
   opacity: calc(1 - var(--p-title));
@@ -59,22 +76,21 @@
 /*
  * C. The month.
  *
- * It starts against the left edge and has to end up centred, and the distance
- * depends on how wide the text is and how wide the screen is — neither of which
- * is known here. So it is done in two moves that need no measurement at all:
- * the full-width wrapper travels half the *container*, and the month inside
- * travels back half of *itself*.
+ * In the display state it sits on its own line under the wordmark; in the list
+ * state it moves up onto the wordmark's line, with the tool buttons to its
+ * right. The wordmark fades out over the same stretch, so the month is sliding
+ * into space that is being vacated rather than crossing anything.
  *
- *   wrapper: +W/2          month: -w/2
- *   ------------------------------------
- *   result:  (W - w)/2   = exactly centred, from a left-aligned start
+ * One transform, no measurement: the row is exactly `--row-one` tall, which is
+ * what the wordmark and the tools occupy.
  */
-.detail-month-track {
-  transform: translate3d(calc(var(--p-month) * 50%), 0, 0);
+.detail-month-row {
+  transform: translate3d(0, calc(var(--p-month) * var(--row-one) * -1), 0);
 }
 
 .detail-month {
-  transform: translate3d(calc(var(--p-month) * -50%), 0, 0);
+  /* Kept as a hook for the caret's own fade; the travel is on the row. */
+  transform: none;
 }
 
 /* The caret belongs to the display state; the arrows belong to the list state. */
@@ -83,12 +99,18 @@
   transform: rotate(calc(var(--p-arrows) * -90deg));
 }
 
-.detail-arrows {
+/*
+ * The arrows fade in beside the month, and take no touches until they have.
+ * They exist in both states — only their opacity changes — so the month never
+ * shifts sideways when they arrive, which is what would happen if they were
+ * added to the row at the end of the transition.
+ */
+.detail-arrow {
   opacity: var(--p-arrows);
   pointer-events: none;
 }
 
-.detail-arrows[data-active="true"] {
+.detail-arrow[tabindex="0"] {
   pointer-events: auto;
 }
 
@@ -103,7 +125,27 @@
   opacity: calc(1 - clamp(0, calc((var(--p-cards) - 0.35) / 0.35), 1));
 }
 
-/* E. The secondary cards lose height and padding together. */
+/*
+ * E. The currency cards.
+ *
+ * One style for all of them — the same tint, the same corner radius, the same
+ * inner padding — so that when they shrink they read as a row of matching
+ * cards rather than as one large card with some loose elements beside it. That
+ * uniformity was the owner's main complaint about the list state, and it comes
+ * from the cards sharing a definition rather than each being styled where it
+ * is used.
+ *
+ * Their heights converge on the same value, which is what turns two rows of
+ * different sizes into one tidy block.
+ */
+.detail-currency-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  border-radius: var(--radius-card, 1rem);
+  background: rgb(255 255 255 / 0.14);
+}
+
 .detail-secondary-card {
   height: calc(var(--secondary-tall) - var(--p-secondary) * (var(--secondary-tall) - var(--secondary-short)));
 }
