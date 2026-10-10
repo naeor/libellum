@@ -1,5 +1,7 @@
 import {
   createTransactionSchema,
+  duplicateCheckResponseSchema,
+  duplicateCheckSchema,
   summaryResponseSchema,
   transactionListResponseSchema,
   updateTransactionSchema,
@@ -151,6 +153,41 @@ function readString(value: unknown): string | undefined {
   return typeof value === "string" && value !== "" ? value : undefined;
 }
 
+/**
+ * The wall-clock reading of an instant, on a named clock, as `HH:mm`.
+ *
+ * The stored pair for an entry is an absolute instant plus the time zone it was
+ * recorded in, and "was this at 18:03?" is a question about the second one. The
+ * answer is computed here rather than in SQL because `Intl` already knows every
+ * zone rule, including daylight saving, and reimplementing that in a query is
+ * how a duplicate check starts disagreeing with the form by an hour twice a year.
+ *
+ * Returns `""` when the instant is not a valid date, which can only happen if
+ * something wrote a bad row directly — and "no time" is the honest reading of a
+ * timestamp nobody can interpret.
+ */
+function wallClockIn(instant: Date, timeZone: string): string {
+  if (Number.isNaN(instant.getTime())) return "";
+
+  try {
+    return new Intl.DateTimeFormat("en-GB", {
+      timeZone,
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).format(instant);
+  } catch {
+    // An unknown zone name. UTC is not the user's clock, but a comparison that
+    // throws would turn a warning into a failed save.
+    return new Intl.DateTimeFormat("en-GB", {
+      timeZone: "UTC",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).format(instant);
+  }
+}
+
 export function registerTransactionRoutes(
   app: FastifyInstance,
   options: TransactionRouteOptions,
@@ -226,6 +263,69 @@ export function registerTransactionRoutes(
 
       throw conflict("transaction_conflict", "该记账标识已被使用。");
     }
+  });
+
+  // -------------------------------------------------------------------------
+  // POST /api/v1/transactions/duplicates
+  // -------------------------------------------------------------------------
+  /**
+   * Is there already an entry like this one?
+   *
+   * Asked *before* writing, so the user gets to decide rather than being told
+   * afterwards that something was recorded twice. The owner's definition —
+   * date, time, amount, currency and kind all identical — is in the shared
+   * schema, with the note about why the note is not compared.
+   *
+   * A POST rather than a GET because it carries five fields including an amount,
+   * which does not belong in a URL: it would land in browser history, in server
+   * access logs, and in any proxy in between.
+   *
+   * It answers with the matching entries rather than a count, because the
+   * interface has to *show* them: "要删掉旧的" is one of the choices, and nobody
+   * can sensibly choose which of two entries to delete without seeing both.
+   */
+  app.post("/api/v1/transactions/duplicates", { preHandler: requireAuth }, async (request) => {
+    const body = duplicateCheckSchema.parse(request.body);
+    const userId = request.currentUser!.id;
+    const bookId = await currentBookId(prisma, userId);
+
+    /**
+     * The day's candidates, then the time compared on the entry's own clock.
+     *
+     * Two steps because the interesting comparison is a wall-clock one and the
+     * clock is per row: `occurredAt` is an absolute instant and `occurredTz`
+     * says which clock to read it on, so "was this at 18:03?" needs both. The
+     * day narrows it first — that column is indexed — and a day's entries are
+     * few, which is what makes a filter here honest rather than a shortcut.
+     */
+    const sameDay = await prisma.transaction.findMany({
+      where: {
+        bookId,
+        deletedAt: null,
+        kind: body.kind,
+        amountCents: BigInt(body.amountCents),
+        currency: body.currency,
+        occurredLocalDate: toDateOnly(body.occurredLocalDate),
+      },
+      include: TRANSACTION_INCLUDE,
+      orderBy: { createdAt: "desc" },
+      take: 20,
+    });
+
+    /**
+     * An empty time means "no time recorded" — what the form sends when the
+     * field is left alone — so it matches other entries that also have none,
+     * rather than matching everything or nothing.
+     */
+    const duplicates = sameDay.filter((row) => {
+      const wallClock = wallClockIn(row.occurredAt, row.occurredTz);
+
+      return body.occurredTime === "" ? wallClock === "" : wallClock === body.occurredTime;
+    });
+
+    return duplicateCheckResponseSchema.parse({
+      duplicates: duplicates.slice(0, 5).map((row) => toDto(row)),
+    });
   });
 
   // -------------------------------------------------------------------------

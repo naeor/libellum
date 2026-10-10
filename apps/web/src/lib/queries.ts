@@ -3,6 +3,8 @@ import {
   type CreatePaymentMethodInput,
   type CreateTagInput,
   type CreateTransactionInput,
+  type DuplicateCheckInput,
+  type DuplicateCheckResponse,
   type ExportFormat,
   type ImportReport,
   type LedgerMetaResponse,
@@ -261,6 +263,34 @@ export function useDeleteTransaction(): UseMutationResult<unknown, Error, string
   return useMutation({
     mutationFn: (id: string) => apiFetch<unknown>(`/transactions/${id}`, { method: "DELETE" }),
     onSuccess: () => void invalidate(),
+  });
+}
+
+/**
+ * Is an entry like this one already recorded?
+ *
+ * A mutation rather than a query, deliberately: it is a question asked at one
+ * moment about fields the user is still editing, not a piece of server state to
+ * cache and re-fetch. Caching it would also make a stale "no duplicates" answer
+ * possible right after somebody recorded the very entry being checked for.
+ *
+ * A POST because it carries an amount, which does not belong in a URL — it would
+ * end up in browser history, in access logs, and in any proxy in between.
+ */
+export function useCheckDuplicates(): UseMutationResult<
+  Transaction[],
+  Error,
+  DuplicateCheckInput
+> {
+  return useMutation({
+    mutationFn: async (input: DuplicateCheckInput) => {
+      const response = await apiFetch<DuplicateCheckResponse>("/transactions/duplicates", {
+        method: "POST",
+        body: input,
+      });
+
+      return response.duplicates;
+    },
   });
 }
 

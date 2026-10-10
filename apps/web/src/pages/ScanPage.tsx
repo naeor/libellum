@@ -21,7 +21,14 @@ import { SkeletonRows } from "../components/States.js";
 import { errorMessage } from "../lib/api.js";
 import { currentMonth, localTimeZone, toLocalDate, toLocalIso } from "../lib/datetime.js";
 import { amountPlaceholder, currencyName, parseAmountInput } from "../lib/format.js";
-import { useCreateTransaction, useLedger, useRecognize, useTransactions } from "../lib/queries.js";
+import {
+  useCheckDuplicates,
+  useCreateTransaction,
+  useDeleteTransaction,
+  useLedger,
+  useRecognize,
+  useTransactions,
+} from "../lib/queries.js";
 import { takeScanHandover } from "../lib/scanHandoff.js";
 import { uuidV7 } from "../lib/uuid.js";
 
@@ -61,6 +68,8 @@ export function ScanPage(): React.JSX.Element {
   const ledger = useLedger();
   const recognize = useRecognize();
   const createEntry = useCreateTransaction();
+  const checkDuplicates = useCheckDuplicates();
+  const removeEntry = useDeleteTransaction();
 
   const [files, setFiles] = useState<File[]>([]);
   const [mode, setMode] = useState<Mode>("single");
@@ -75,6 +84,20 @@ export function ScanPage(): React.JSX.Element {
    * the dialog when there is one.
    */
   const [nothingReadable, setNothingReadable] = useState(false);
+
+  /**
+   * A duplicate the user has to decide about.
+   *
+   * Holds the draft as well as what was found, because every choice in the
+   * dialog needs it: "仍然保存" writes it, "删掉旧的" writes it after removing the
+   * other, and cancelling keeps it so the user is back where they were rather
+   * than losing what they typed.
+   */
+  const [pendingDuplicate, setPendingDuplicate] = useState<{
+    readonly draft: ReviewDraft;
+    readonly amountCents: number;
+    readonly existing: readonly Transaction[];
+  } | null>(null);
 
   /** Results that could be read, and where we are among them. */
   const [items, setItems] = useState<OcrItemResult[]>([]);
@@ -264,6 +287,39 @@ export function ScanPage(): React.JSX.Element {
       return;
     }
 
+    /**
+     * Ask whether this entry is already there, **before** writing it.
+     *
+     * Before rather than after: the alternative is saving, noticing, and undoing,
+     * which puts a wrong entry in the ledger for a moment and depends on the undo
+     * working. A check that cannot write anything cannot go wrong.
+     *
+     * A failure to *ask* is not a failure to save. If the check cannot be reached
+     * the write goes ahead — the feature is a courtesy, and losing somebody's
+     * entry because a warning could not be fetched would be a far worse trade.
+     */
+    try {
+      const found = await checkDuplicates.mutateAsync({
+        kind: draft.kind,
+        amountCents,
+        currency: draft.currency,
+        occurredLocalDate: draft.date,
+        occurredTime: draft.time,
+      });
+
+      if (found.length > 0) {
+        setPendingDuplicate({ draft, amountCents, existing: found });
+        return;
+      }
+    } catch {
+      // Deliberately silent: see above.
+    }
+
+    await write(draft, amountCents);
+  }
+
+  /** Actually write the entry. Reached directly, or after a duplicate warning. */
+  async function write(draft: ReviewDraft, amountCents: number): Promise<void> {
     const occurredAt = new Date(`${draft.date}T${draft.time === "" ? "12:00" : draft.time}:00`);
 
     try {
@@ -411,6 +467,60 @@ export function ScanPage(): React.JSX.Element {
            */
         }}
       />
+
+      {/*
+        This looks like an entry that is already recorded.
+        
+        Three ways out, and the third one is the owner's: he asked for a button
+        that deletes the **old** entry, on the grounds that the user is the one
+        deciding and a decision should be carried out rather than questioned.
+        That is also why this is a dialog and not a refusal — two identical
+        entries are a legitimate thing to have, so the server reports suspicion
+        and the person settles it.
+      */}
+      <ChoiceDialog
+        open={pendingDuplicate !== null}
+        title="这笔账好像已经记过了"
+        description="日期、时间、金额、币种和收支类型都相同。要再记一笔吗？"
+        choices={DUPLICATE_CHOICES}
+        onChoose={(choice) => {
+          const pending = pendingDuplicate;
+          setPendingDuplicate(null);
+          if (pending === null) return;
+
+          if (choice === "save") {
+            void write(pending.draft, pending.amountCents);
+            return;
+          }
+
+          if (choice === "replace") {
+            /**
+             * Delete the old one, then write this one.
+             *
+             * Sequential, and a failure to delete stops the write: ending up
+             * with two entries when the user asked for one is worse than ending
+             * up with the old one and an error message they can act on.
+             */
+            void (async () => {
+              try {
+                for (const existing of pending.existing) {
+                  await removeEntry.mutateAsync(existing.id);
+                }
+              } catch (caught) {
+                setError(errorMessage(caught));
+                return;
+              }
+
+              await write(pending.draft, pending.amountCents);
+            })();
+            return;
+          }
+
+          // "cancel": keep the draft and stay on the review step, so the user is
+          // exactly where they were rather than losing what they typed.
+          void 0;
+        }}
+      />
     </InnerPage>
   );
 }
@@ -431,6 +541,26 @@ const NOTHING_READABLE_CHOICES: readonly Choice<"retry" | "manual" | "back">[] =
   { id: "retry", label: "再试一次", hint: "用同一张图重新识别", primary: true },
   { id: "manual", label: "改为手动记账", hint: "自己填写这笔账" },
   { id: "back", label: "返回拍照页", hint: "可以换一张截图", dismissive: true },
+];
+
+/**
+ * The three ways out of "this looks like a duplicate".
+ *
+ * **"删掉旧的" is the owner's**, and it is worth recording why he wanted it:
+ * "既然是用户自己做的决定，就应该尊重." The alternative design — only offering
+ * "cancel" — quietly treats the user's intent as suspect. They said they want
+ * this entry; the useful question is which of the two they meant to keep, not
+ * whether they are sure.
+ *
+ * **No "go and look at the other one" option**, though it was considered: the
+ * entry page needs an id and the natural way there is through the ledger, one
+ * tab away. A button that navigates to a blank page is worse than a button that
+ * does not exist.
+ */
+const DUPLICATE_CHOICES: readonly Choice<"save" | "replace" | "cancel">[] = [
+  { id: "save", label: "仍然保存", hint: "两笔都留（也许是两次一样的消费）", primary: true },
+  { id: "replace", label: "删掉旧的，保存这笔", hint: "只留现在这笔" },
+  { id: "cancel", label: "取消，我再看看", dismissive: true },
 ];
 
 function PickStep({

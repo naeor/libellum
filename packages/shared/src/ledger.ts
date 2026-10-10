@@ -327,3 +327,42 @@ export const summaryResponseSchema = z.object({
   currencies: z.array(currencySummarySchema),
 });
 export type SummaryResponse = z.infer<typeof summaryResponseSchema>;
+
+/**
+ * Looking for an entry that is already there, before writing another one.
+ *
+ * The owner asked for this after photographing the same bill twice, and the
+ * definition is his: **date, time, amount, currency and kind all identical**.
+ * Nothing else counts — not the note, not the category. A note is the field most
+ * likely to be worded differently on a second attempt, so including it would
+ * make the check miss exactly the case it exists for.
+ *
+ * ⚠️ **A query, not a constraint.** Two identical entries are a legitimate thing
+ * to have — buying the same coffee twice in the same minute is uncommon but
+ * real — so the server reports suspicion rather than refusing the write. The
+ * decision is the user's, which is also what the owner said: "既然是用户自己做的
+ * 决定，就应该尊重."
+ *
+ * `occurredTime` is `HH:mm`, matching what the form collects. Seconds are not
+ * compared: the field does not ask for them, so a comparison at second
+ * precision would be false precision dressed up as thoroughness.
+ *
+ * Defined here rather than beside the create schema because a parse at module
+ * load would run before `transactionSchema` below exists — `const` does not
+ * hoist.
+ */
+export const duplicateCheckSchema = z.object({
+  kind: transactionKindSchema,
+  amountCents: amountCentsSchema,
+  currency: currencySchema,
+  occurredLocalDate: z.string().regex(LOCAL_DATE_PATTERN),
+  /** `HH:mm`; an empty string means no time was recorded. */
+  occurredTime: z.string().regex(/^(([01][0-9]|2[0-3]):[0-5][0-9])?$/),
+});
+export type DuplicateCheckInput = z.infer<typeof duplicateCheckSchema>;
+
+export const duplicateCheckResponseSchema = z.object({
+  /** Matching entries, most recent first. Empty when there is nothing to warn about. */
+  duplicates: z.array(transactionSchema),
+});
+export type DuplicateCheckResponse = z.infer<typeof duplicateCheckResponseSchema>;

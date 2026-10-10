@@ -77,6 +77,8 @@ interface EntryOverrides {
   readonly currency?: string | undefined;
   readonly categoryId?: string | null | undefined;
   readonly occurredLocalDate?: string | undefined;
+  /** The clock the entry was recorded on; the duplicate check reads it. */
+  readonly occurredTz?: string | undefined;
   readonly note?: string | undefined;
   readonly tagIds?: string[] | undefined;
   readonly idempotencyKey?: string | undefined;
@@ -94,7 +96,7 @@ function entryPayload(overrides: EntryOverrides = {}): Record<string, unknown> {
     paymentMethodId: null,
     occurredAt: "2026-10-09T13:45:30.000+08:00",
     occurredLocalDate: overrides.occurredLocalDate ?? "2026-10-09",
-    occurredTz: "Asia/Shanghai",
+    occurredTz: overrides.occurredTz ?? "Asia/Shanghai",
     note: overrides.note ?? null,
     tagIds: overrides.tagIds ?? [],
   };
@@ -486,6 +488,140 @@ describe("ledger bootstrap", () => {
 
     expect(mamaLedger.book.id).not.toBe(babaLedger.book.id);
     expect(mamaLedger.categories[0]?.id).not.toBe(babaLedger.categories[0]?.id);
+  });
+});
+
+describe("POST /api/v1/transactions/duplicates", () => {
+  /** Record an entry and answer with it. */
+  async function record(cookie: string, overrides: EntryOverrides = {}) {
+    return app.inject({
+      method: "POST",
+      url: "/api/v1/transactions",
+      headers: { cookie },
+      payload: entryPayload(overrides),
+    });
+  }
+
+  /** Ask whether an entry like this one exists. */
+  async function check(
+    cookie: string,
+    body: {
+      kind?: string;
+      amountCents?: number;
+      currency?: string;
+      occurredLocalDate?: string;
+      occurredTime?: string;
+    },
+  ) {
+    return app.inject({
+      method: "POST",
+      url: "/api/v1/transactions/duplicates",
+      headers: { cookie },
+      payload: {
+        kind: "expense",
+        amountCents: 1_250,
+        currency: "CNY",
+        occurredLocalDate: "2026-10-09",
+        // `entryPayload` writes 13:45 +08:00 on 2026-10-09, which is 13:45 on
+        // that clock — the wall-clock reading is what the check compares.
+        occurredTime: "13:45",
+        ...body,
+      },
+    });
+  }
+
+  it("finds an entry with the same five fields", async () => {
+    const cookie = await signUp("mama");
+    await record(cookie);
+
+    const response = await check(cookie, {});
+
+    expect(response.statusCode, response.body).toBe(200);
+    expect((response.json() as { duplicates: unknown[] }).duplicates).toHaveLength(1);
+  });
+
+  it("finds nothing when the amount differs", async () => {
+    const cookie = await signUp("mama");
+    await record(cookie);
+
+    const response = await check(cookie, { amountCents: 1_251 });
+
+    expect((response.json() as { duplicates: unknown[] }).duplicates).toHaveLength(0);
+  });
+
+  it("finds nothing when the time differs", async () => {
+    // The point of comparing the time: the same amount on the same day is
+    // ordinary, and warning about it would train people to dismiss the warning.
+    const cookie = await signUp("mama");
+    await record(cookie);
+
+    const response = await check(cookie, { occurredTime: "13:46" });
+
+    expect((response.json() as { duplicates: unknown[] }).duplicates).toHaveLength(0);
+  });
+
+  it("reads the time on the entry's own clock, not the server's", async () => {
+    // The stored pair is an absolute instant plus a zone. An entry recorded at
+    // 13:45 in Shanghai is 05:45 UTC, and a check that compared UTC would miss
+    // every duplicate made anywhere east of Greenwich.
+    const cookie = await signUp("mama");
+    await record(cookie, { occurredTz: "Asia/Shanghai" });
+
+    expect((await check(cookie, { occurredTime: "13:45" })).json()).toMatchObject({
+      duplicates: expect.any(Array),
+    });
+    expect((await check(cookie, {})).json()).toMatchObject({ duplicates: expect.any(Array) });
+
+    const asUtc = await check(cookie, { occurredTime: "05:45" });
+    expect((asUtc.json() as { duplicates: unknown[] }).duplicates).toHaveLength(0);
+  });
+
+  it("ignores an entry that was deleted", async () => {
+    // A tombstone is not an entry the user can see, so warning about one would
+    // point at something that is not on their screen.
+    const cookie = await signUp("mama");
+    const created = await record(cookie);
+    const id = (created.json() as { id: string }).id;
+
+    await app.inject({
+      method: "DELETE",
+      url: `/api/v1/transactions/${id}`,
+      headers: { cookie },
+      payload: { version: 1 },
+    });
+
+    const response = await check(cookie, {});
+
+    expect((response.json() as { duplicates: unknown[] }).duplicates).toHaveLength(0);
+  });
+
+  it("does not see another account's entries", async () => {
+    const mama = await signUp("mama");
+    const baba = await signUp("baba");
+    await record(mama);
+
+    const response = await check(baba, {});
+
+    expect((response.json() as { duplicates: unknown[] }).duplicates).toHaveLength(0);
+  });
+
+  it("refuses a malformed time rather than guessing", async () => {
+    const cookie = await signUp("mama");
+
+    const response = await check(cookie, { occurredTime: "25:99" });
+
+    expect(response.statusCode).toBe(400);
+  });
+
+  it("treats an empty time as 'no time recorded'", async () => {
+    // The form sends "" when the field is untouched, so it has to mean
+    // "recorded without a time" — not "matches everything".
+    const cookie = await signUp("mama");
+    await record(cookie);
+
+    const response = await check(cookie, { occurredTime: "" });
+
+    expect((response.json() as { duplicates: unknown[] }).duplicates).toHaveLength(0);
   });
 });
 
