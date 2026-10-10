@@ -131,7 +131,7 @@ export function DetailPage(): React.JSX.Element {
             the list on every frame.
           */}
           <header
-            className="detail-hero relative bg-brand px-6 pt-6 pb-7 text-white"
+            className="detail-hero relative bg-brand px-6 text-white"
             data-pinned={atList}
           >
             <div className="flex h-9 items-center justify-between">
@@ -588,20 +588,30 @@ function SmallCard({
   readonly className?: string;
 }): React.JSX.Element {
   return (
-    <div className={`detail-currency-card detail-small-card w-34 shrink-0 px-4 ${className}`}>
-      <span className="text-[11px] whitespace-nowrap text-white/70">{currencyName(currency)}</span>
-      {summary === null ? (
-        <span className="text-[11px] whitespace-nowrap text-white/60">暂无数据</span>
-      ) : (
-        <>
-          <span className="text-base font-medium tabular-nums whitespace-nowrap">
-            {formatMoney(summary.expenseCents, summary.currency)}
-          </span>
-          <span className="text-[11px] whitespace-nowrap text-white/70 tabular-nums">
-            结余 {formatMoney(summary.balanceCents, summary.currency)}
-          </span>
-        </>
-      )}
+    /*
+     * The padding lives inside, not on the card.
+     *
+     * On the card it is part of its width, so the twin — which is nothing until
+     * the hero card has left — still measured thirty-two pixels and left a hole
+     * in front of the first real card. The owner saw that hole in the display
+     * state before anything had moved.
+     */
+    <div className={`detail-currency-card detail-small-card w-34 shrink-0 ${className}`}>
+      <div className="flex h-full flex-col justify-center px-4">
+        <span className="text-[11px] whitespace-nowrap text-white/70">{currencyName(currency)}</span>
+        {summary === null ? (
+          <span className="text-[11px] whitespace-nowrap text-white/60">暂无数据</span>
+        ) : (
+          <>
+            <span className="text-base font-medium tabular-nums whitespace-nowrap">
+              {formatMoney(summary.expenseCents, summary.currency)}
+            </span>
+            <span className="text-[11px] whitespace-nowrap text-white/70 tabular-nums">
+              结余 {formatMoney(summary.balanceCents, summary.currency)}
+            </span>
+          </>
+        )}
+      </div>
     </div>
   );
 }

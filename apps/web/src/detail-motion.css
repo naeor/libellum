@@ -33,7 +33,9 @@
    * clips whatever does not fit, and the owner has already seen these cards cut
    * in half once.
    */
-  --hero-short: 192px;
+  --hero-pad-top: calc(24px - var(--p) * 18px);
+  --hero-pad-bottom: calc(28px - var(--p) * 22px);
+  --hero-short: 155px;
   --card-tall: 128px;
   --card-short: 52px;
   --secondary-tall: 74px;
@@ -102,6 +104,8 @@
 /* A. The green area. One contained reflow, at the very top of the page. */
 .detail-hero {
   contain: layout paint style;
+  padding-top: var(--hero-pad-top);
+  padding-bottom: var(--hero-pad-bottom);
   height: calc(var(--hero-tall) - var(--p) * (var(--hero-tall) - var(--hero-short)));
   overflow: visible;
 }
@@ -140,6 +144,13 @@
  */
 .detail-month-row {
   transform: translate3d(0, calc(var(--p-month) * var(--row-one) * -1), 0);
+  /*
+   * The gap above the month closes as the transition runs. It is the last part
+   * of the green area that was still fixed, and without it the list state's
+   * content came to 162 against a 155 area — which a containment box clips
+   * rather than shows.
+   */
+  margin-top: calc(8px - var(--p) * 8px);
 }
 
 .detail-month {
@@ -209,12 +220,29 @@
  * The gap above it closes as the primary card collapses, so the strip arrives
  * at the top of the green area without anything having to push it.
  */
+
+/*
+ * The green area's own padding, trimmed as the list state arrives.
+ *
+ * The owner asked for the boundary between green and white to move up about
+ * fifty pixels. The content has a floor — the strip's cards keep one height, as
+ * he asked, so they cannot give anything back — and the only slack left is the
+ * spacing around them. This is that slack.
+ */
 .detail-strip {
   margin-top: calc(var(--card-gap) * (1 - var(--p-rise)));
 }
 
+/*
+ * One height, in both states.
+ *
+ * It used to interpolate, and the owner saw the result: every card was squashed
+ * on the way down and its text pushed out of it. His words were that they should
+ * do nothing but change position, which is the whole point of them being in a
+ * row that is already the right size.
+ */
 .detail-small-card {
-  height: calc(var(--secondary-tall) - var(--p-small) * (var(--secondary-tall) - var(--secondary-short)));
+  height: var(--secondary-tall);
 }
 
 /*
@@ -225,12 +253,20 @@
  * than the width keeps it inside the flex row rather than overflowing it, and
  * the content is clipped while there is no room for it.
  */
+/*
+ * Its share of the line, in the same unit as its neighbours' width.
+ *
+ * A percentage and a fixed width are not the same number, and the owner could
+ * see the difference: the twin came out a little narrower than the cards beside
+ * it. Both are 8.5rem now.
+ */
 .detail-twin {
-  flex-basis: calc(var(--p-twin) * var(--card-narrow));
+  flex-basis: calc(var(--p-twin) * 8.5rem);
   flex-grow: 0;
   flex-shrink: 0;
   opacity: var(--p-twin);
   overflow: hidden;
+  padding-inline: 0;
 }
 
 /* F. The tool buttons only move; a rotating button would say nothing. */
