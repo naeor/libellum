@@ -21,7 +21,8 @@
     "db:deploy": "prisma migrate deploy",
     "db:studio": "prisma studio",
     "db:reset": "prisma migrate reset",
-    "invite:create": "pnpm --filter @libellum/api invite:create"
+    "invite:create": "pnpm --filter @libellum/api invite:create",
+    "docs:build": "node tools/build-docs.mjs"
   },
   "devDependencies": {
     "@types/node": "^26.6.4",
