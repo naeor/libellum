@@ -34,7 +34,7 @@ import { useMemo } from "react";
 import { useAuth } from "../auth/AuthProvider.js";
 import { ApiRequestError, apiFetch, apiFetchFile } from "./api.js";
 import { findLocalTransaction, readLocalTransactions } from "./offline/localLedger.js";
-import { computeStats } from "./offline/localStats.js";
+import { computeStats, monthRange, summaryFor } from "./offline/localStats.js";
 import { uuidV7 } from "./uuid.js";
 
 /**
@@ -53,31 +53,35 @@ export const queryKeys = {
   stats: (query: StatsQuery) => ["stats", query] as const,
 };
 
-/**
- * What the detail screen asks for when nothing is filtered.
- *
- * ⚠️ **Exported, and used by the offline fill, because the query key is the filter
- * object itself.** Hand-writing the same shape in two places is how the fill came
- * to cache a month under `{month, kind, categoryId, currency}` while the screen
- * read it under `{month, kind, categoryId}` — two entries, one request wasted, and
- * the screen showing nothing offline while the data sat in the cache next to it.
- * One definition, and the two cannot disagree.
- *
- * The fields are spelled out as `undefined` rather than omitted so that
- * `JSON.stringify` of the key is stable regardless of how a caller built it.
- */
-export const UNFILTERED_TRANSACTIONS: TransactionFilters = {
-  month: undefined,
-  kind: undefined,
-  categoryId: undefined,
-  currency: undefined,
-};
-
 export interface TransactionFilters {
   readonly month?: string | undefined;
   readonly kind?: "income" | "expense" | undefined;
   readonly categoryId?: string | undefined;
   readonly currency?: string | undefined;
+}
+
+/**
+ * The one way to build transaction filters.
+ *
+ * ⚠️ **Why this exists, precisely.** TanStack Query hashes a key with
+ * `JSON.stringify`, and **`JSON.stringify` drops `undefined` values.** So
+ * `{month, kind, categoryId}` and `{month, kind, categoryId, currency: undefined}`
+ * are different strings, therefore different hashes, therefore **different cache
+ * entries** — even though they ask the server for exactly the same thing.
+ *
+ * The offline fill wrote four fields and the detail screen wrote three, so the month
+ * the user had waited to download was stored under a key the screen never looked up.
+ * **A cache miss that looks like a missing download is very hard to see**, which is
+ * why this is a function with one definition rather than a shape every caller is
+ * trusted to repeat correctly.
+ */
+export function transactionFilters(given: TransactionFilters = {}): TransactionFilters {
+  return {
+    month: given.month,
+    kind: given.kind,
+    categoryId: given.categoryId,
+    currency: given.currency,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -143,11 +147,30 @@ export function useLedger() {
 export function useSummary(month: string) {
   return useQuery({
     queryKey: queryKeys.summary(month),
-    queryFn: () => apiFetch<SummaryResponse>("/summary", { query: { month } }),
+    queryFn: async () => {
+      if (isOffline()) {
+        /**
+         * The month's totals, added up on the device.
+         *
+         * The detail screen shows these above every list, so without this the
+         * figures would be missing exactly when the list below them is available —
+         * which reads as a broken screen rather than as an offline one.
+         */
+        return summaryFor(await readLocalTransactions(), month, monthRange(month));
+      }
+
+      return apiFetch<SummaryResponse>("/summary", { query: { month } });
+    },
   });
 }
 
-export function useTransactions(filters: TransactionFilters) {
+export function useTransactions(given: TransactionFilters) {
+  /**
+   * ⚠️ **Normalised here, at the boundary**, so every caller gets the same key
+   * whether they passed three fields or four. See `transactionFilters`.
+   */
+  const filters = transactionFilters(given);
+
   return useInfiniteQuery({
     queryKey: queryKeys.transactions(filters),
     queryFn: ({ pageParam }) =>

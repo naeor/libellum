@@ -9,6 +9,7 @@ import { MonthPicker } from "../components/MonthPicker.js";
 import { EmptyState, ErrorState, SkeletonRows } from "../components/States.js";
 import { SyncBanner } from "../components/SyncBanner.js";
 import { errorMessage } from "../lib/api.js";
+import { useOnlineStatus } from "../lib/connectivity.js";
 import { currentMonth, formatDayLabel, formatTimeInZone } from "../lib/datetime.js";
 import { readSession, useDetailTransition, writeSession } from "../lib/detailTransition.js";
 import { currencyName, formatMoney } from "../lib/format.js";
@@ -80,6 +81,8 @@ export function DetailPage(): React.JSX.Element {
       element.scrollTop = saved.scrollTop;
     }
   }, [saved.progress, saved.scrollTop, scrollRef]);
+
+  const offline = !useOnlineStatus();
 
   const summary = useSummary(month);
   const ledger = useLedger();
@@ -310,7 +313,26 @@ export function DetailPage(): React.JSX.Element {
 
             {list.isPending ? <SkeletonRows /> : null}
 
-            {list.isError ? (
+            {/*
+              ⚠️ **"加载失败" is suppressed when there is nothing the user can do.**
+              
+              The owner's report: "在断网的情况下，它会显示加载失败，请求超时，让我检查网络
+              后重试。但是在重试下面又会有之前下载好的明细." A hard failure panel above a
+              perfectly good list is worse than no panel at all — it tells the user
+              something is broken while showing them the thing that is not.
+              
+              Two conditions, and both are needed:
+              
+                * **offline** — a request that fails while online is real news, and
+                  the retry button is the useful thing to offer;
+                * **there are entries to show** — when there are none, an error is the
+                  only honest thing on the screen.
+              
+              The red offline banner above already says what is happening, and says it
+              once, which is the point: one message that is read beats two that
+              contradict each other.
+            */}
+            {list.isError && !(offline && entries.length > 0) ? (
               <ErrorState
                 message={errorMessage(list.error)}
                 onRetry={() => {

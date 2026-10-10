@@ -28,6 +28,8 @@ const MODULES = [
   "/src/pages/AddEntryPage.tsx",
   "/src/pages/VoiceReviewPage.tsx",
   "/src/pages/DownloadManagerPage.tsx",
+  "/src/pages/MonthDownloadPage.tsx",
+  "/src/components/Icons.tsx",
   "/src/lib/api.ts",
   "/src/lib/queries.ts",
   "/src/lib/share.ts",

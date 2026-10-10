@@ -106,25 +106,39 @@ export function managerMonths(now: Date, count: number): readonly string[] {
 /**
  * Build the table the manager draws.
  *
- * Pure, so the arithmetic that decides what "stored" and "预计" mean is testable —
- * and worth testing, because a wrong estimate here is what makes somebody delete a
- * month they wanted or keep one they did not.
+ * ⚠️ **`stored` is passed in, and that is the point.** The first version inferred
+ * "downloaded" from whether a month had any entries, and it was wrong in a way that
+ * matters: **a month can be downloaded and empty** — nobody spent anything in it —
+ * and calling that "未下载" invites the user to fetch a month that will never have
+ * anything in it. Whether a month was ever fetched is a fact about the query cache;
+ * how many entries it holds is a fact about the ledger. Only the caller knows the
+ * first, so only the caller can say.
+ *
+ * Pure, so the arithmetic that decides what "预计" means is testable — and worth
+ * testing, because a wrong estimate is what makes somebody delete a month they
+ * wanted or keep one they did not.
  */
 export function monthRows(
   transactions: readonly Transaction[],
   never: readonly string[],
+  stored: ReadonlySet<string>,
   now: Date,
   count: number = MANAGER_MONTHS,
 ): readonly MonthRow[] {
-  const stored = new Set<string>();
   const counts = new Map<string, number>();
 
   for (const transaction of transactions) {
     const month = transaction.occurredLocalDate.slice(0, 7);
-    stored.add(month);
     counts.set(month, (counts.get(month) ?? 0) + 1);
   }
 
+  /**
+   * The average weight of a downloaded month, for estimating the others.
+   *
+   * Taken over the months actually stored rather than over every month with
+   * entries: an estimate built from months nobody downloaded would describe a
+   * different set of data than the one it is being added to.
+   */
   const measured = [...stored].map((month) => ({ bytes: bytesForMonth(transactions, month) }));
   const average = estimateBytes(measured);
   const neverSet = new Set(never);
@@ -132,20 +146,10 @@ export function monthRows(
   return managerMonths(now, count).map((month): MonthRow => {
     const isStored = stored.has(month);
 
-    /**
-     * An empty month is not a missing one.
-     *
-     * A month with no entries costs nothing to "download" — there is nothing to
-     * fetch — so calling it missing would invite the user to download a month that
-     * will never have anything in it. `stored` is decided by whether the month was
-     * ever fetched, which is a fact the cache knows and the count does not.
-     */
-    const state: MonthRow["state"] = neverSet.has(month) ? "never" : isStored ? "stored" : "missing";
-
     return {
       month,
       label: monthLabel(month),
-      state,
+      state: neverSet.has(month) ? "never" : isStored ? "stored" : "missing",
       entryCount: counts.get(month) ?? 0,
       bytes: isStored ? bytesForMonth(transactions, month) : average,
       bytesEstimated: !isStored,

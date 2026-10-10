@@ -1,6 +1,7 @@
 import type {
   CategoryTotal,
   Currency,
+  CurrencySummary,
   PeriodTotals,
   StatsBucket,
   StatsResponse,
@@ -40,6 +41,92 @@ type Entry = Pick<
 export interface StatsRange {
   readonly from: string;
   readonly to: string;
+}
+
+/**
+ * The month's totals, per currency, computed on the device.
+ *
+ * ⚠️ **A mirror of `GET /summary` in `apps/api/src/routes/transactions.ts`**, for the
+ * same reason `computeStats` mirrors `/stats`: the detail screen shows this at the
+ * top of every month, and an offline figure that disagreed with the online one would
+ * make the user distrust the ledger itself.
+ *
+ * Three rules copied deliberately:
+ *
+ *  * **Grouped by currency, never converted.** v1 does not convert, and adding ¥ to
+ *    $ would be meaningless rather than wrong — which is worse, because it looks like
+ *    a number.
+ *  * **Sorted by `volumeCents`**, which is `|expense| + |income|`: 1000 spent and 500
+ *    earned ranks as 1500 of activity. The order decides which currency the screen
+ *    leads with.
+ *  * **`balanceCents` is income minus expense**, not the other way round.
+ */
+export function summaryFor(
+  entries: readonly Entry[],
+  month: string,
+  range: StatsRange,
+): { readonly month: string; readonly currencies: readonly CurrencySummary[] } {
+  const byCurrency = new Map<
+    string,
+    { expenseCents: number; incomeCents: number; expenseCount: number; incomeCount: number }
+  >();
+
+  for (const entry of entries) {
+    if (entry.occurredLocalDate < range.from || entry.occurredLocalDate > range.to) continue;
+
+    const running = byCurrency.get(entry.currency) ?? {
+      expenseCents: 0,
+      incomeCents: 0,
+      expenseCount: 0,
+      incomeCount: 0,
+    };
+
+    if (entry.kind === "expense") {
+      running.expenseCents += entry.amountCents;
+      running.expenseCount += 1;
+    } else {
+      running.incomeCents += entry.amountCents;
+      running.incomeCount += 1;
+    }
+
+    byCurrency.set(entry.currency, running);
+  }
+
+  const currencies = [...byCurrency.entries()]
+    .map(([currency, entry]) => ({
+      currency,
+      ...entry,
+      balanceCents: entry.incomeCents - entry.expenseCents,
+      volumeCents: entry.expenseCents + entry.incomeCents,
+    }))
+    .sort((a, b) => b.volumeCents - a.volumeCents);
+
+  return { month, currencies };
+}
+
+/**
+ * The first and last day of a `YYYY-MM` month.
+ *
+ * ⚠️ **The last day is computed, not assumed to be the 30th.** A hand-written
+ * `-30` would silently drop the 31st from seven months a year and the 29th of a
+ * leap February — a bug that shows up once a month and looks like a lost entry.
+ *
+ * `Date` day 0 of the next month is the last day of this one, which is the
+ * arithmetic that handles February without a table.
+ */
+export function monthRange(month: string): StatsRange {
+  const [year, rawMonth] = month.split("-").map(Number);
+
+  if (year === undefined || rawMonth === undefined || Number.isNaN(year) || Number.isNaN(rawMonth)) {
+    return { from: month, to: month };
+  }
+
+  const last = new Date(Date.UTC(year, rawMonth, 0)).getUTCDate();
+
+  return {
+    from: `${month}-01`,
+    to: `${month}-${String(last).padStart(2, "0")}`,
+  };
 }
 
 /**

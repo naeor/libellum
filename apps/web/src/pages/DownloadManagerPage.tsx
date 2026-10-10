@@ -1,43 +1,42 @@
 import { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router";
 
 import { Alert } from "../components/Alert.js";
 import { Button } from "../components/Button.js";
+import { GearIcon } from "../components/Icons.js";
 import { InnerPage } from "../components/Layouts.js";
 import { useOfflineFillStatus } from "../lib/offline/fillContext.js";
-import {
-  forgetMonth,
-  monthRows,
-  readNeverMonths,
-  setNeverMonth,
-  storedMonths,
-  type MonthRow,
-} from "../lib/offline/downloadManager.js";
+import { monthRows, readNeverMonths, storedMonths, type MonthRow } from "../lib/offline/downloadManager.js";
 import { readLocalTransactions } from "../lib/offline/localLedger.js";
-import { formatBytes, canStoreOffline, storageReport } from "../lib/offline/persistence.js";
+import {
+  canStoreOffline,
+  formatBytes,
+  requestPersistentStorage,
+  storageReport,
+} from "../lib/offline/persistence.js";
 
 /**
  * The download manager: what is on this device, month by month.
  *
- * The owner asked for exactly this, and his reasoning is the one to keep:
- * "用户可以在里面看到已经下载内容的明细，颗粒度到月就可以……并且可以控制不同月份账本的
- * 下载设置（比如删除已下载的某月账本，设置为永不下载等等）."
+ * The owner asked for this, and then asked for a second pass at it: "UI 界面完全保留
+ * 永不下载和删除已下载也不太好看，建议每个月份右面显示一个齿轮图标……点击齿轮图标后会跳转
+ * 到月份下载管理界面". He was right, and for a reason worth stating: two
+ * destructive-looking controls beside each of sixty rows was ugly, but the deeper
+ * problem is that **the two interact** — deleting a month that is still set to
+ * download means it comes back — and that relationship is invisible when the
+ * controls are separate buttons on a list.
  *
- * **Why a month is the right unit.** The list screen is per month, the download
- * walks months, and "九月已下载" means something to a person in a way that
- * "12.4 of 20.1 MB" does not. It also needs no new data: a month's weight is
- * measured from the entries already stored for it.
- *
- * **Three states, and the third is not a gap.** `已下载` / `未下载` / `永不下载` —
- * somebody may not want five years of old months on a phone, and "do not keep this"
- * is a decision the fill respects rather than a month it keeps re-fetching.
+ * So this screen now only **states facts** and offers one way in. The decisions live
+ * on the month's own screen, next to a description of what the month currently is.
  */
 export function DownloadManagerPage(): React.JSX.Element {
+  const navigate = useNavigate();
   const { fill } = useOfflineFillStatus();
 
   const [rows, setRows] = useState<readonly MonthRow[]>([]);
   const [usage, setUsage] = useState<number | null>(null);
+  const [persisted, setPersisted] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
-  const [busyMonth, setBusyMonth] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -52,21 +51,13 @@ export function DownloadManagerPage(): React.JSX.Element {
       ]);
 
       /**
-       * ⚠️ **`storedMonths()` decides "已下载", not the entry counts.**
+       * ⚠️ **`storedMonths()` decides "已下载", not the entry count.**
        *
        * A month can be downloaded and empty — nothing was spent that month — and
        * calling it "未下载" would invite the user to fetch something that will never
-       * have anything in it. Whether a month has been fetched is a fact about the
-       * cache; how many entries it holds is a fact about the ledger.
+       * have anything in it. See `monthRows`.
        */
-      const withStored = monthRows(transactions, never, new Date()).map((row) => {
-        if (stored.has(row.month)) return { ...row, state: "stored" as const, bytesEstimated: false };
-        if (row.state === "never") return row;
-
-        return row;
-      });
-
-      setRows(withStored);
+      setRows(monthRows(transactions, never, stored, new Date()));
       setUsage(report.usageBytes);
     } catch {
       setError("读取本机数据时出错了。");
@@ -79,7 +70,19 @@ export function DownloadManagerPage(): React.JSX.Element {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    void requestPersistentStorage().then(setPersisted);
+  }, []);
+
+  // Reload when a fill finishes, so the list shows what it brought back.
+  const fillDone = fill?.done ?? 0;
+  const fillRunning = fill?.running ?? false;
+  useEffect(() => {
+    if (!fillRunning && fillDone > 0) void load();
+  }, [fillRunning, fillDone, load]);
+
   const storedCount = rows.filter((row) => row.state === "stored").length;
+  const missingCount = rows.filter((row) => row.state === "missing").length;
 
   return (
     <InnerPage
@@ -93,107 +96,83 @@ export function DownloadManagerPage(): React.JSX.Element {
         <Alert tone="info">这个浏览器不支持本机存储，离线时无法查看记录。</Alert>
       )}
 
-      <section className="flex flex-col gap-2 rounded-card border border-line bg-surface px-4 py-3 text-sm">
+      {/*
+        ⚠️ **Moved here from every screen**, as the owner asked: "把这个弹窗挪到下载管理
+        界面以及下载管理的每个子界面." See `MonthDownloadPage` for the reasoning — a
+        warning that follows the user everywhere stops being read.
+      */}
+      {persisted === false ? (
+        <Alert tone="info">
+          ⚠️ 浏览器没有承诺长期保留这些数据，长期不使用可能被清除。保持在 Wi-Fi
+          下打开应用可以让它继续保留。
+        </Alert>
+      ) : null}
+
+      <section className="flex flex-col gap-3 rounded-card border border-line bg-surface px-4 py-3 text-sm">
         <p className="text-ink">
-          已下载 <span className="font-medium">{storedCount}</span> 个月，共 {rows.length} 个月
+          已下载 <span className="font-medium">{storedCount}</span> 个月
+          {missingCount === 0 ? "，全部月份都已下载" : `，还有 ${String(missingCount)} 个月没有下载`}
           {usage === null ? "" : `；本机共占用 ${formatBytes(usage)}`}
         </p>
 
-        {fill?.running === true ? (
+        {fillRunning ? (
           <p className="text-xs text-muted">
-            正在下载（{fill.done}/{fill.total} 个月）…可以离开这一页，下载会在后台继续。
+            正在下载（{fill?.done ?? 0}/{fill?.total ?? 0} 个月）…可以离开这一页，下载会在后台继续。
           </p>
         ) : (
           <Button
             onClick={() => {
+              /**
+               * ⚠️ **This button used to do nothing, and the reason mattered.**
+               *
+               * The automatic fill skips itself on a metered connection — correct for
+               * a download nobody asked for — and the same check applied to this
+               * press, so the button silently did nothing while looking available.
+               * An explicit call to `start()` now bypasses that check, because
+               * somebody who pressed a button **has** asked.
+               */
               void fill?.start();
             }}
-            disabled={fill === null || fill.running}
+            disabled={fill === null}
           >
-            把缺的月份下载下来
+            下载全部
           </Button>
         )}
 
         <p className="text-xs text-muted">
-          下载只会在 Wi-Fi 下自动进行；用流量时会跳过，避免悄悄消耗你的流量。
+          只会在 Wi-Fi 下自动下载；用流量时会跳过，避免悄悄消耗你的流量。
         </p>
       </section>
 
       {loading ? (
         <p className="text-sm text-muted">正在读取…</p>
       ) : (
-        <ul className="flex flex-col">
+        <ul className="flex flex-col overflow-hidden rounded-card border border-line bg-surface">
           {rows.map((row) => (
-            <li
-              key={row.month}
-              className="flex items-start justify-between gap-3 border-b border-line py-3 last:border-b-0"
-            >
-              <span className="flex min-w-0 flex-col gap-1">
-                <span className="text-sm text-ink">
-                  {row.label}
-                  <span
-                    className={`ml-2 text-[11px] ${row.state === "stored" ? "text-brand-dark" : "text-muted"}`}
-                  >
-                    {row.state === "stored" ? "已下载" : row.state === "never" ? "永不下载" : "未下载"}
+            <li key={row.month} className="border-b border-line last:border-b-0">
+              <button
+                type="button"
+                onClick={() => void navigate(`/downloads/${row.month}`)}
+                aria-label={`${row.label}的下载设置`}
+                className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+              >
+                <span className="flex min-w-0 flex-col gap-0.5">
+                  <span className="text-sm text-ink">{row.label}</span>
+                  <span className="text-[11px] text-muted">
+                    {row.state === "stored"
+                      ? `已下载 · ${String(row.entryCount)} 笔 · ${formatBytes(row.bytes)}`
+                      : row.state === "never"
+                        ? "永不下载"
+                        : `未下载 · 预计 ${formatBytes(row.bytes)}`}
                   </span>
                 </span>
 
-                <span className="text-[11px] text-muted">
-                  {row.state === "stored"
-                    ? `${String(row.entryCount)} 笔，占用 ${formatBytes(row.bytes)}`
-                    : `预计 ${formatBytes(row.bytes)}`}
-                </span>
-              </span>
-
-              <span className="flex shrink-0 flex-col items-end gap-1">
-                {row.state === "stored" ? (
-                  <button
-                    type="button"
-                    disabled={busyMonth === row.month}
-                    onClick={() => {
-                      setBusyMonth(row.month);
-                      void forgetMonth(row.month)
-                        .then(() => load())
-                        .finally(() => {
-                          setBusyMonth(null);
-                        });
-                    }}
-                    className="text-[11px] text-danger underline"
-                  >
-                    删除已下载
-                  </button>
-                ) : null}
-
-                {row.state === "never" ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void setNeverMonth(row.month, false).then(() => load());
-                    }}
-                    className="text-[11px] text-brand-dark underline"
-                  >
-                    改为下载
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void setNeverMonth(row.month, true).then(() => load());
-                    }}
-                    className="text-[11px] text-muted underline"
-                  >
-                    永不下载
-                  </button>
-                )}
-              </span>
+                <GearIcon className="size-4 shrink-0 text-muted" />
+              </button>
             </li>
           ))}
         </ul>
       )}
-
-      <p className="text-xs leading-relaxed text-muted">
-        删除后如果还想看，把「永不下载」改回「下载」再点上面的按钮就可以重新取回。
-      </p>
     </InnerPage>
   );
 }

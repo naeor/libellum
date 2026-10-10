@@ -99,20 +99,19 @@ export function OfflineStatus(): React.JSX.Element | null {
   }, [running, fill?.done, fill?.stopped, fill?.skippedMetered]);
 
   /**
-   * Whether the browser has refused to keep the data.
-   *
-   * ⚠️ **This one does not expire.** "Your records may be cleared" is not news that
-   * goes stale, and it is precisely the thing the user should learn at home rather
-   * than on a plane.
+   * ⚠️ **The "the browser will not keep this" line used to live here, and no
+   * longer does.** The owner asked for it to move: "把这个弹窗挪到下载管理界面以及下载
+   * 管理的每个子界面." He is right, and for the same reason the download notice itself
+   * was cut back — a warning that follows the user everywhere stops being read. It is
+   * a fact about storage, so it belongs where storage is the subject.
    */
-  const wontKeep = persisted === false && (fill?.done ?? 0) > 0;
 
   const visible = useMemo(() => {
     if (fill === null) return false;
-    if (running || lingering || wontKeep) return true;
+    if (running || lingering) return true;
 
     return fill.skippedMetered;
-  }, [fill, running, lingering, wontKeep]);
+  }, [fill, running, lingering]);
 
   if (!ready || fill === null || !visible) return null;
 
@@ -144,13 +143,6 @@ export function OfflineStatus(): React.JSX.Element | null {
 
       {fill.skippedMetered ? (
         <p>当前是流量网络，暂时没有下载历史记录。连上 Wi-Fi 后会自动继续。</p>
-      ) : null}
-
-      {wontKeep ? (
-        <p>
-          ⚠️ 浏览器没有承诺长期保留这些数据，长期不使用可能被清除。保持在 Wi-Fi
-          下打开应用可以让它继续保留。
-        </p>
       ) : null}
     </div>
   );

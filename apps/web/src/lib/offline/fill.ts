@@ -3,7 +3,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { apiFetch } from "../api.js";
-import { UNFILTERED_TRANSACTIONS, queryKeys } from "../queries.js";
+import { queryKeys, transactionFilters } from "../queries.js";
+import { readNeverMonths } from "./downloadManager.js";
 
 /**
  * Filling in the months the user has never opened.
@@ -115,8 +116,14 @@ export interface OfflineFill {
   readonly stopped: string | null;
   /** Whether it skipped itself because the connection is metered. */
   readonly skippedMetered: boolean;
-  /** Fetch the missing months. Safe to call again; finished months are skipped. */
-  start: (monthsBack?: number) => Promise<void>;
+  /**
+   * Fetch months into the local copy.
+   *
+   * With no argument: everything missing, back `DEFAULT_MONTHS_BACK` months. With
+   * an explicit list: exactly those months, which is what the download manager's
+   * per-month screen needs to re-fetch one the user deleted.
+   */
+  readonly start: (months?: readonly string[]) => Promise<void>;
 }
 
 /**
@@ -142,25 +149,65 @@ export function useOfflineFill(options: { readonly enabled: boolean }): OfflineF
   const runningRef = useRef(false);
 
   const start = useCallback(
-    async (monthsBack: number = DEFAULT_MONTHS_BACK) => {
+    async (requested?: readonly string[]) => {
       if (runningRef.current) return;
 
-      if (isMeteredConnection()) {
+      /**
+       * ⚠️ **An explicit request ignores the metered check**; the automatic one does
+       * not.
+       *
+       * The background fill running itself on a phone connection is a download the
+       * user did not ask for, so it waits for Wi-Fi. But somebody who has opened the
+       * download manager and pressed "下载全部" *has* asked — and silently doing
+       * nothing is the worst possible answer. That is very close to what happened
+       * here: the button looked broken, and the reason was a check the user could
+       * not see.
+       */
+      const explicit = requested !== undefined;
+
+      if (!explicit && isMeteredConnection()) {
         setSkippedMetered(true);
         return;
       }
 
-      const months = monthsToFetch(new Date(), monthsBack);
+      setSkippedMetered(false);
+
+      const months = explicit ? requested : monthsToFetch(new Date(), DEFAULT_MONTHS_BACK);
       setTotal(months.length);
       setDone(0);
       setStopped(null);
       runningRef.current = true;
       setRunning(true);
 
+      /**
+       * ⚠️ **The "never download" months, read before the loop and honoured.**
+       *
+       * They were not honoured at all, and the owner found it in the worst way: he
+       * deleted October from the download manager and it came straight back, so the
+       * deletion looked broken — and the "do not keep this" control did nothing.
+       *
+       * **A setting the fill ignores is not a setting**, and this one exists for a
+       * real reason: somebody may not want five years of old months on a phone.
+       */
+      const never = await readNeverMonths();
+
       let finished = 0;
 
       try {
         for (const month of months) {
+          if (never.includes(month)) {
+            /**
+             * Counted as done so the progress bar finishes.
+             *
+             * It is not fetched and never will be; leaving it out of the count would
+             * make the bar stop short at "58/60" for ever, which reads as a stuck
+             * download rather than as a decision the user made.
+             */
+            finished += 1;
+            setDone(finished);
+            continue;
+          }
+
         /**
          * The screen's own filter shape, from the one place that defines it.
          *
@@ -170,7 +217,7 @@ export function useOfflineFill(options: { readonly enabled: boolean }): OfflineF
          * not find, and the user would see nothing offline with the data sitting in
          * the cache beside it. See `UNFILTERED_TRANSACTIONS`.
          */
-        const filters = { ...UNFILTERED_TRANSACTIONS, month };
+        const filters = transactionFilters({ month });
         const key = queryKeys.transactions(filters);
 
         /**
