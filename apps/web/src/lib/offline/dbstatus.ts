@@ -33,6 +33,27 @@ export interface DatabaseReport {
   readonly cacheBytes: number;
   /** Whether the app's own bookkeeping can see a database at all. */
   readonly hasDatabase: boolean;
+  /**
+   * What is actually stored under the cache key.
+   *
+   * ⚠️ **Added because "0 字节" cannot be acted on.** The owner's tablet reported two keys in the
+   * database and an empty cache — and that is consistent with several different situations that
+   * need different fixes:
+   *
+   *  * **the key is absent** — something removed it;
+   *  * **the key holds an empty string** — something wrote nothing over the top;
+   *  * **the key holds a non-string** — a structured clone of something unexpected;
+   *  * **the key holds text that is not JSON** — a truncated or corrupted write.
+   *
+   * A length alone cannot tell those apart, so the type and the first characters are reported too.
+   */
+  readonly cacheKind: string;
+  /** The beginning of the stored value, enough to recognise it. */
+  readonly cachePreview: string;
+  /** Whether it parses as the dehydrated cache shape the app expects. */
+  readonly cacheParses: boolean;
+  /** How many queries the stored cache holds, when it parses. */
+  readonly cacheQueryCount: number;
 }
 
 /** Ask the device. */
@@ -46,6 +67,10 @@ export async function databaseReport(): Promise<DatabaseReport> {
       keys: [],
       cacheBytes: 0,
       hasDatabase: false,
+      cacheKind: "(无数据库)",
+      cachePreview: "",
+      cacheParses: false,
+      cacheQueryCount: 0,
     };
   }
 
@@ -55,7 +80,40 @@ export async function databaseReport(): Promise<DatabaseReport> {
      * here is the same failure the ledger would hit — which is the point of asking.
      */
     const keys = await listKeys();
-    const cached = await readValue<string>("query-cache");
+    const cached = await readValue<unknown>("query-cache");
+
+    /**
+     * ⚠️ **Read as `unknown`, not as `string`.**
+     *
+     * The rest of the app casts the stored value to `string` and treats anything else as "no cache".
+     * That is right for the code's behaviour and wrong for a diagnosis: it turns "the key holds an
+     * object" into "the key is empty", and those need different fixes.
+     */
+    const kind =
+      cached === null || cached === undefined
+        ? "(键不存在)"
+        : typeof cached === "string"
+          ? "字符串"
+          : typeof cached;
+    const preview = typeof cached === "string" ? cached.slice(0, 80) : JSON.stringify(cached)?.slice(0, 80) ?? "";
+
+    let parses = false;
+    let queryCount = 0;
+
+    if (typeof cached === "string" && cached !== "") {
+      try {
+        const parsed = JSON.parse(cached) as {
+          readonly clientState?: { readonly queries?: readonly unknown[] };
+        };
+
+        const queries = parsed.clientState?.queries;
+
+        parses = Array.isArray(queries);
+        queryCount = Array.isArray(queries) ? queries.length : 0;
+      } catch {
+        parses = false;
+      }
+    }
 
     return {
       supported: true,
@@ -65,6 +123,10 @@ export async function databaseReport(): Promise<DatabaseReport> {
       keys,
       cacheBytes: typeof cached === "string" ? cached.length : 0,
       hasDatabase: true,
+      cacheKind: kind,
+      cachePreview: preview,
+      cacheParses: parses,
+      cacheQueryCount: queryCount,
     };
   } catch (error) {
     return {
@@ -75,6 +137,10 @@ export async function databaseReport(): Promise<DatabaseReport> {
       keys: [],
       cacheBytes: 0,
       hasDatabase: true,
+      cacheKind: "(打不开)",
+      cachePreview: "",
+      cacheParses: false,
+      cacheQueryCount: 0,
     };
   }
 }

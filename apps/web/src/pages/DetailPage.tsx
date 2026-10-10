@@ -92,6 +92,7 @@ export function DetailPage(): React.JSX.Element {
 
   const summary = useSummary(month);
   const ledger = useLedger();
+
   /**
    * ⚠️ **Named once, so the query and the loading gate cannot drift apart.**
    *
@@ -101,6 +102,37 @@ export function DetailPage(): React.JSX.Element {
    */
   const filters = { month, kind, categoryId: categoryId ?? undefined };
   const list = useTransactions(filters);
+
+  /**
+   * ⚠️ **A loading state that has lasted too long says so.**
+   *
+   * The owner watched the tablet flicker placeholder rows for over thirty seconds: "他加载了至少有30秒，
+   * 期间我很确定我一直在盯着他." **An indefinite skeleton is a screen that never tells the user
+   * anything** — it is indistinguishable from a slow network, a dead database and a bug, and the
+   * person waiting cannot act on any of them.
+   *
+   * Three seconds is long enough that a working load never shows it, and short enough that nobody
+   * sits through it twice. What appears is honest and actionable: the device holds nothing for this
+   * month, and the server could not be reached.
+   */
+  const [waitedTooLong, setWaitedTooLong] = useState(false);
+  const listPending = list.isPending;
+
+  useEffect(() => {
+    if (!listPending) {
+      setWaitedTooLong(false);
+
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setWaitedTooLong(true);
+    }, 3_000);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [listPending]);
 
   const clearCategoryFilter = (): void => {
     const next = new URLSearchParams(searchParams);
@@ -351,6 +383,17 @@ export function DetailPage(): React.JSX.Element {
                 entries shows them and one that holds nothing still gets the honest skeleton.
               */}
               {list.isPending && !hasLocalTransactions(filters) ? <SkeletonRows /> : null}
+
+              {/*
+                ⚠️ **After three seconds, say what is happening instead of only flickering.**
+                See `waitedTooLong` above. It does not replace the skeleton — it explains it.
+              */}
+              {list.isPending && waitedTooLong ? (
+                <p className="py-3 text-center text-xs leading-relaxed text-muted">
+                  这一段时间的记录没有存在本机，而且现在连不上服务器，所以暂时看不到。
+                  联网后会自动补上；也可以在「账户 → 下载管理」里提前下载。
+                </p>
+              ) : null}
 
             {/*
               ⚠️ **"加载失败" is suppressed when there is nothing the user can do.**

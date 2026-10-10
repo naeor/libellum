@@ -148,7 +148,8 @@ export function DownloadMorePage(): React.JSX.Element {
     `网络：${navigator.onLine ? "在线" : "离线"}`,
     `缓存条目：${String(footprint?.queryCount ?? 0)} 条（${String(footprint?.liveQueryCount ?? 0)} 条有效）`,
     `缓存大小：${String(footprint?.cacheBytes ?? 0)} 字节`,
-    `数据库：${db === null ? "(未读取)" : db.opened ? `可打开，${String(db.keyCount)} 个键` : `打不开 — ${db.error ?? "未知"}`}`,
+    `数据库：${db === null ? "(未读取)" : db.opened ? `可打开，${String(db.keyCount)} 个键：${db.keys.join(",")}` : `打不开 — ${db.error ?? "未知"}`}`,
+    `缓存内容：${db === null ? "(未读取)" : `${db.cacheKind}，${String(db.cacheBytes)} 字节，${db.cacheParses ? `可解析 ${String(db.cacheQueryCount)} 条` : "不可解析"}`}`,
     `占用：总计 ${formatBytes(storage?.totalBytes ?? 0)} / 账本 ${formatBytes(storage?.queryCacheBytes ?? 0)}`,
     `运行记录：${String(log.length)} 条`,
   ].join("\n");

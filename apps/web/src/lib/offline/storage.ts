@@ -307,12 +307,57 @@ function summarize(value: unknown): string {
 }
 
 /**
+ * Writes, one at a time per key.
+ *
+ * ⚠️ **Written because the stored ledger went missing, and a lost write is the only mechanism that
+ * fits.**
+ *
+ * The owner reported the tablet's stored data disappearing — "断网重连之后，下载管理里面的数据突然变成了
+ * 0" — while his phone kept it. **Nothing in this codebase deletes that key except signing out**, so
+ * what is left is a **write that was overtaken by another write**.
+ *
+ * Every write here is issued from an event handler, a query callback or a throttled persister, and
+ * none of them waited for the one before. Two `put` calls for one key land in two transactions, and
+ * IndexedDB guarantees the order of the transactions it has *already started* — not the order they
+ * were requested in. Under a burst (a download writing sixty months, the log compacting, the
+ * persister flushing) an earlier request can be beaten by a later one. **The loser is whichever
+ * value was written first, and nothing reports it.**
+ *
+ * A promise chain per key makes the order explicit: the next write starts when the last one has
+ * finished. **Correctness over parallelism, for operations that are already fast and small.**
+ */
+const writeChains = new Map<string, Promise<unknown>>();
+
+/** Run `work` after every write already queued for this key. */
+function inOrder<T>(key: string, work: () => Promise<T>): Promise<T> {
+  const previous = writeChains.get(key) ?? Promise.resolve();
+
+  /**
+   * ⚠️ **`then` with the same function for both outcomes.** A rejected write must not poison the
+   * chain and block every later write to that key for the rest of the session — the failure is
+   * reported to its own caller, and the next attempt deserves a clean run.
+   */
+  const next = previous.then(work, work);
+
+  writeChains.set(
+    key,
+    next.catch(() => undefined),
+  );
+
+  return next;
+}
+
+/**
  * Write one value.
  *
- * Returns whether it worked rather than throwing. Callers that care — the outbox
- * will — can check; callers that do not, ignore it.
+ * Returns whether it worked rather than throwing. Callers that care — the outbox will — can check;
+ * callers that do not, ignore it.
  */
 export async function writeValue(key: string, value: unknown): Promise<boolean> {
+  return inOrder(key, () => writeValueNow(key, value));
+}
+
+async function writeValueNow(key: string, value: unknown): Promise<boolean> {
   if (!hasIndexedDb()) {
     trace("write", key, "没有 IndexedDB，未写入");
 
@@ -339,19 +384,37 @@ export async function writeValue(key: string, value: unknown): Promise<boolean> 
   }
 }
 
-/** Remove one value. */
+/**
+ * Remove one value.
+ *
+ * ⚠️ **Through the same queue as the writes**, because a remove is a write: a delete racing a put
+ * for the same key has the same problem in the other direction, and the case that matters most —
+ * clearing the cache on sign-out while the persister is mid-flush — is exactly a remove and a put
+ * arriving together.
+ */
 export async function removeValue(key: string): Promise<boolean> {
-  // ⚠️ A removed key must not linger in the snapshot, or a screen would draw data that is gone.
-  snapshots.delete(key);
+  return inOrder(key, async () => {
+    // ⚠️ A removed key must not linger in the snapshot, or a screen would draw data that is gone.
+    snapshots.delete(key);
 
-  if (!hasIndexedDb()) return false;
+    if (!hasIndexedDb()) return false;
 
-  try {
-    await withStore(false, (store) => store.delete(key));
-    return true;
-  } catch {
-    return false;
-  }
+    try {
+      await withStore(false, (store) => store.delete(key));
+
+      trace("remove", key, "已删除");
+
+      return true;
+    } catch (error) {
+      trace(
+        "remove",
+        key,
+        `失败：${error instanceof Error ? `${error.name}: ${error.message}` : String(error)}`,
+      );
+
+      return false;
+    }
+  });
 }
 
 /** Every key currently stored. Used by the tests and by "clear the cache". */
