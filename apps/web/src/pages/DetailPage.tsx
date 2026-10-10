@@ -7,6 +7,7 @@ import { BottomNav } from "../components/BottomNav.js";
 import { useEntryMenu } from "../components/Layouts.js";
 import { MonthPicker } from "../components/MonthPicker.js";
 import { EmptyState, ErrorState, SkeletonRows } from "../components/States.js";
+import { OfflineStatus } from "../components/OfflineStatus.js";
 import { SyncBanner } from "../components/SyncBanner.js";
 import { errorMessage } from "../lib/api.js";
 import { useOnlineStatus } from "../lib/connectivity.js";
@@ -131,7 +132,20 @@ export function DetailPage(): React.JSX.Element {
 
   return (
     <div ref={rootRef} className="detail-root flex h-dvh flex-col overflow-hidden">
+      {/*
+        ⚠️ **The ledger builds its own frame, so it needs its own banners.**
+
+        `OfflineStatus` lives in the shared frames — `TabPage` and `InnerPage` — and this
+        screen deliberately uses neither, because it owns its scroll position and its hero
+        animation. **That is why the download notice appeared everywhere except here**,
+        which is what the owner reported: "它只会在分析和账户页面出现，在明细页面则不会弹出."
+
+        Anything added to a shared frame has to be added here too. This is the only screen
+        with a frame of its own; if a second one appears, these banners should move into a
+        component both can use rather than being copied a third time.
+      */}
       <SyncBanner />
+      <OfflineStatus />
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto overscroll-contain">
         <div className="mx-auto flex w-full max-w-md flex-col pb-24">

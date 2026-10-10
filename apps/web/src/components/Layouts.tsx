@@ -211,7 +211,23 @@ export function InnerPage({
 
   return (
     <>
+      {/*
+        ⚠️ **Both banners, on every framed screen.**
+
+        The owner reported that the download notice appeared on the analysis and account
+        screens but not on the ledger: "它只会在分析和账户页面出现，在明细页面则不会弹
+        出——应该所有页面都有的."
+
+        He was right, and the cause was structural rather than logical. `OfflineStatus`
+        lived only in `TabPage`, and **the ledger builds its own frame** — it owns its
+        scroll position and its own animation, so it does not use `TabPage` at all. The
+        screens he saw it on were the ones that do.
+
+        A notice about the *device's* storage has nothing to do with which frame a screen
+        chose, so it belongs beside every frame rather than inside one of them.
+      */}
       <SyncBanner />
+      <OfflineStatus />
       <main className="mx-auto flex min-h-full w-full max-w-md flex-col gap-6 px-6 py-8">
         <div className="flex items-start justify-between gap-4">
           {/* Deliberately generous: this is the control a thumb reaches for on

@@ -9,6 +9,7 @@ import { InnerPage } from "../components/Layouts.js";
 import { useOfflineFillStatus } from "../lib/offline/fillContext.js";
 import {
   cacheFootprint,
+  forgetAllMonths,
   forgetStaleEntries,
   monthRows,
   readNeverMonths,
@@ -16,7 +17,7 @@ import {
   type CacheFootprint,
   type MonthRow,
 } from "../lib/offline/downloadManager.js";
-import { clearOfflineLog, logTime, readOfflineLog, type LogEntry } from "../lib/offline/diagnostics.js";
+import { clearOfflineLog, logOffline, logTime, readOfflineLog, type LogEntry } from "../lib/offline/diagnostics.js";
 import { readLocalTransactions } from "../lib/offline/localLedger.js";
 import {
   canStoreOffline,
@@ -158,7 +159,7 @@ export function DownloadManagerPage(): React.JSX.Element {
                 <button
                   type="button"
                   onClick={() => {
-                    void forgetStaleEntries(queryClient).then(() => load());
+                    void forgetStaleEntries().then(() => load());
                   }}
                   className="underline"
                 >
@@ -169,6 +170,29 @@ export function DownloadManagerPage(): React.JSX.Element {
               "，没有多余的记录。"
             )}
           </p>
+        )}
+
+        {/*
+          ⚠️ **The heaviest stored entries, measured rather than guessed.**
+          
+          The owner reported 44.5 MB on a ledger whose sixty months amount to roughly 2 MB
+          of JSON. Explaining a five-fold difference needed looking inside the blob, and
+          there was no way to do that — so every theory about it would have been another
+          round of reasoning instead of measuring, which is the mistake this whole phase
+          was about.
+          
+          If these lines are months, the figure is real data. If they are something else,
+          that is the answer.
+        */}
+        {footprint === null || footprint.heaviest.length === 0 ? null : (
+          <ul className="flex flex-col gap-0.5 text-[11px] text-muted">
+            {footprint.heaviest.map((entry) => (
+              <li key={entry.label} className="flex justify-between gap-3">
+                <span className="min-w-0 truncate font-mono">{entry.label}</span>
+                <span className="shrink-0">{formatBytes(entry.bytes)}</span>
+              </li>
+            ))}
+          </ul>
         )}
 
         {fillRunning ? (
@@ -197,6 +221,34 @@ export function DownloadManagerPage(): React.JSX.Element {
 
         <p className="text-xs text-muted">
           只会在 Wi-Fi 下自动下载；用流量时会跳过，避免悄悄消耗你的流量。
+        </p>
+
+        {/*
+          The owner asked for this beside "下载全部": "可以在下载管理的主页'下载全部'按钮下面
+          加一个删除全部按钮，这个按钮用红底."
+
+          ⚠️ **It goes through the query client rather than editing storage.** Clearing the
+          stored blob alone leaves the months in memory, and the persister writes memory
+          back a moment later — the bug that took two rounds to find, where a deletion
+          looked successful and undid itself.
+
+          Behind a confirmation, because it is the one action here that cannot be undone
+          without downloading everything again.
+        */}
+        <Button
+          variant="danger"
+          disabled={fillRunning || storedCount === 0}
+          onClick={() => {
+            const cleared = forgetAllMonths(queryClient);
+            void logOffline("删除全部", `清除了 ${String(cleared)} 个月`);
+            void load();
+          }}
+        >
+          删除全部已下载数据
+        </Button>
+
+        <p className="text-xs text-muted">
+          「删除全部」会清空这台设备上的所有月份；需要时再点「下载全部」重新取回。
         </p>
       </section>
 
