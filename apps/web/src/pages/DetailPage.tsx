@@ -381,9 +381,17 @@ export function DetailPage(): React.JSX.Element {
 
               <div className="detail-tools flex gap-2">
                 <ToolButton
-                  icon={<RefreshIcon />}
+                  /**
+                   * ⚠️ **The icon spins while the sync runs, because "slow" and "nothing is happening" are the
+                   * same thing on screen.** The owner's note was "联网的自动刷新比较慢" — and a slow operation
+                   * with no sign of activity is indistinguishable from a broken one, which is one of this
+                   * project's own lessons: **"没有反馈"和"没有生效"在用户看来没有区别.** The spin continues for at
+                   * least as long as the work does, so the button is never silent.
+                   */
+                  icon={<RefreshIcon spinning={refreshing} />}
                   label="刷新"
                   hint="重新读取并同步账目"
+                  busy={refreshing}
                   onClick={() => {
                     void refresh();
                   }}
@@ -861,20 +869,24 @@ function ToolButton({
   label,
   hint,
   onClick,
+  busy,
 }: {
   readonly icon: React.ReactNode;
   readonly label: string;
   readonly hint: string;
   readonly onClick?: () => void;
+  /** ⚠️ Shows that the action is running, and blocks a second press. */
+  readonly busy?: boolean;
 }): React.JSX.Element {
-  const disabled = onClick === undefined;
+  const disabled = onClick === undefined || busy === true;
 
   return (
     <button
       type="button"
       disabled={disabled}
       onClick={onClick}
-      title={`${label}——${hint}`}
+      aria-busy={busy === true}
+      title={busy === true ? `${label}——正在进行` : `${label}——${hint}`}
       aria-label={`${label}，${hint}`}
       className={`flex size-9 items-center justify-center rounded-full transition ${
         disabled
@@ -895,14 +907,19 @@ function ToolButton({
  * animation and weight to match the other two, and a button that looks subtly different from its neighbours
  * reads as a different kind of control.
  */
-function RefreshIcon(): React.JSX.Element {
+function RefreshIcon({ spinning = false }: { readonly spinning?: boolean }): React.JSX.Element {
   return (
     <svg
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
       strokeWidth="1.7"
-      className="size-[18px]"
+      /**
+       * ⚠️ **`animate-spin` on the icon, and the rotation is the whole feedback.** A refresh that takes a
+       * second and shows nothing looks like a button that does not work — **and the user then presses it
+       * again**, which is why the handler also ignores a second press while one is running.
+       */
+      className={`size-[18px] ${spinning ? "animate-spin" : ""}`}
       aria-hidden="true"
     >
       <path d="M20 12a8 8 0 1 1-2.6-5.9" strokeLinecap="round" />

@@ -1,4 +1,5 @@
 import { logOffline } from "./diagnostics.js";
+import { clearGiveUpMarks } from "./outbox.js";
 import { drainOutbox, pendingIds, refreshPending } from "./write.js";
 
 /**
@@ -16,9 +17,24 @@ import { drainOutbox, pendingIds, refreshPending } from "./write.js";
  * implementation of delivery, and **the two would eventually disagree about what is unsynced** — which is the
  * failure this whole round has been about.
  *
- * @returns how many changes reached the server.
+ * ⚠️ **A person pressing this button is asking us to try again, so the "give up" marks are cleared first.**
+ *
+ * The owner reported exactly the case that needs it: "我点刷新的时候绿色的新增部分会被固定下来，但是红色的部分
+ * 没有被删除." Green cleared and red did not, because a deletion that had been recorded as a **permanent**
+ * failure or that had passed the attempt limit is **skipped by the automatic path on purpose** — and that
+ * skip is right for a background retry and wrong for a person standing there asking.
+ *
+ * **"Permanent" was a judgement about one response at one moment**, and the server may well have changed since:
+ * the category was recreated, the session was refreshed, the book was restored. **An explicit request is the
+ * one moment where retrying a rejected change is free of doubt.**
  */
 export async function syncNow(): Promise<number> {
+  const cleared = await clearGiveUpMarks();
+
+  if (cleared > 0) {
+    await logOffline("DIAGNOSTIC:sync-retry", `手动重试，清掉 ${String(cleared)} 条的放弃标记`);
+  }
+
   const delivered = await drainOutbox();
 
   await refreshPending();

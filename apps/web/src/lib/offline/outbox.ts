@@ -163,6 +163,43 @@ export async function queueChange(row: Omit<OutboxRow, "queuedAt" | "attempts">)
   );
 }
 
+/**
+ * Clear the marks that make the automatic path give up on a row.
+ *
+ * ⚠️ **Called when a person explicitly asks for a sync, and only then.**
+ *
+ * The queue has two reasons to stop retrying a row: the server refused it outright (`permanent`), or it has
+ * failed `MAX_ATTEMPTS` times. **Both are right for a background retry** — a phone must not hammer a server it
+ * cannot satisfy — **and both are wrong for a person standing there pressing a button**, which is what the
+ * owner described: "绿色的新增部分会被固定下来，但是红色的部分没有被删除."
+ *
+ * **"Permanent" is a judgement about one response at one moment.** The category may have been recreated, the
+ * session refreshed, the book restored — **and none of that changes the stored error, so the row would stay
+ * rejected for ever without anybody asking it again.**
+ *
+ * @returns how many rows were un-stuck.
+ */
+export async function clearGiveUpMarks(): Promise<number> {
+  const rows = await readOutbox();
+  let cleared = 0;
+
+  const next = rows.map((row) => {
+    if (row.permanent !== true && row.attempts < 1) return row;
+
+    cleared += 1;
+
+    const { permanent: _permanent, lastError: _lastError, ...rest } = row;
+
+    return { ...rest, attempts: 0 };
+  });
+
+  if (cleared === 0) return 0;
+
+  await writeOutbox(next);
+
+  return cleared;
+}
+
 /** Remove a row that reached the server. */
 export async function resolveChange(id: string): Promise<void> {
   const rows = await readOutbox();

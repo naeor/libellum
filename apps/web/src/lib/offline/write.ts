@@ -413,6 +413,21 @@ async function syncOne(id: string): Promise<boolean> {
     const status = error instanceof ApiRequestError ? error.status : 0;
 
     /**
+     * ⚠️ **Every failure is recorded with its status, because "it did not work" is not a diagnosis.**
+     *
+     * The owner's complaint was two rows that stayed red through an offline/online cycle and a manual refresh:
+     * "红色的部分没有被删除." **A 404, a 409, a 401 and a dropped connection all produce that same red row**, and
+     * each needs a different fix. Without the status in the log there is no way to tell them apart from the
+     * device — and the device is the only place the failure can be observed.
+     */
+    await logOffline(
+      "DIAGNOSTIC:write-failed",
+      `${row.op} ${id.slice(0, 8)} — ${status === 0 ? "无响应" : String(status)} ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+
+    /**
      * ⚠️ **A conflict is not a failure — it is information the user has to be given.**
      *
      * The server says this entry changed since the device last saw it. Round 2 keeps both sides and
@@ -421,8 +436,6 @@ async function syncOne(id: string): Promise<boolean> {
      */
     if (status === 409) {
       await recordFailure(id, "这笔记账在服务器上已被修改");
-
-      await logOffline("DIAGNOSTIC:write-conflict", `${row.op} ${id.slice(0, 8)}`);
 
       return false;
     }
@@ -437,10 +450,6 @@ async function syncOne(id: string): Promise<boolean> {
         permanent: true,
       });
 
-      await logOffline(
-        "DIAGNOSTIC:write-rejected",
-        `${row.op} ${id.slice(0, 8)} — ${String(status)}，需要人工处理`,
-      );
 
       return false;
     }
@@ -461,7 +470,25 @@ async function syncOne(id: string): Promise<boolean> {
  * @returns how many changes reached the server.
  */
 export async function drainOutbox(): Promise<number> {
-  if (isAccountOffline()) return 0;
+  /**
+   * ⚠️ **The browser's opinion is logged before it is acted on, and this is the line that settles the
+   * question the owner asked**: "我能看到 test05 和一个服务都被标红了…理论上我已经触发了，为什么他们没有被
+   * 删掉呢？"
+   *
+   * **Two causes look identical on screen**: nothing ran, or it ran and the server refused. The old code
+   * returned `0` silently in the first case, so the diagnostics showed *no* sync lines at all — which reads
+   * the same as "the sync is fine and there was nothing to do".
+   */
+  const offline = isAccountOffline();
+
+  await logOffline(
+    "DIAGNOSTIC:drain",
+    offline
+      ? "浏览器认为当前离线，不投递"
+      : `在线判定通过，队列 ${String((await readOutbox()).length)} 条`,
+  );
+
+  if (offline) return 0;
 
   const rows = await readOutbox();
   const ordered = [...rows].sort((left, right) => left.queuedAt - right.queuedAt);
@@ -478,13 +505,31 @@ export async function drainOutbox(): Promise<number> {
      * network to come back.** The owner's queue is exactly the situation where that shows: entries recorded on
      * a plane and delivered days later.
      */
-    if (row.permanent === true) continue;
+    if (row.permanent === true) {
+      /**
+       * ⚠️ **Why it is being skipped is recorded.** A row that is quietly skipped for ever is indistinguishable
+       * from a row that was never queued, and **the whole complaint is a colour that will not clear.**
+       */
+      await logOffline(
+        "DIAGNOSTIC:drain-skip",
+        `${row.op} ${row.id.slice(0, 8)} — 服务器已拒绝：${row.lastError ?? "未知"}`,
+      );
+
+      continue;
+    }
 
     /**
      * A transient failure is retried, but not for ever: five failed attempts is not going to succeed on the
      * sixth without something changing.
      */
-    if (row.attempts >= MAX_ATTEMPTS) continue;
+    if (row.attempts >= MAX_ATTEMPTS) {
+      await logOffline(
+        "DIAGNOSTIC:drain-skip",
+        `${row.op} ${row.id.slice(0, 8)} — 已失败 ${String(row.attempts)} 次：${row.lastError ?? "未知"}`,
+      );
+
+      continue;
+    }
 
     if (await syncOne(row.id)) delivered += 1;
   }
