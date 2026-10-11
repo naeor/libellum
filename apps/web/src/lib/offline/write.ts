@@ -404,14 +404,51 @@ export async function deleteEntry(id: string): Promise<void> {
  * rather than the half-state that caused the refusal — **and the mark is rewritten as a plain pending change**,
  * which is what makes the colour go green again for the right reason instead of staying in limbo.
  */
-export async function resolveConflict(id: string, settled: Transaction): Promise<void> {
-  await upsertEntry(settled);
+export async function resolveConflict(
+  id: string,
+  settled: Transaction,
+  /** What the server held when the choice was offered — **the base the write must be built on.** */
+  serverCopy: Transaction,
+): Promise<void> {
+  /**
+   * ⚠️ **The version the write carries is the server's, and this is the whole of the second bug.**
+   *
+   * The owner's report: "即使我选择了一个保存，退出之后，它仍然是黄色的 20 元…甚至服务器数据估计也没改."
+   *
+   * The server accepts a write when the version it is sent is the version it currently holds. **The chosen entry
+   * descends from this device's copy, whose version is from before the other device moved the row** — so sending
+   * that version left the comparison at "the value you read has moved", the server **raised the very same conflict
+   * again**, and nothing changed. **A loop that looks exactly like a button that does nothing.**
+   *
+   * ⚠️ **And so is the base each chain link records.** The chain means "this field went from A to B", and after a
+   * conflict **A is the server's value** — the one the user was just shown as the other side of the choice. The
+   * device's earlier value is not a base any more; it is the value that was rejected.
+   */
+  const next: Transaction = { ...settled, version: serverCopy.version };
+  const chain: Record<string, readonly unknown[]> = {};
+
+  for (const field of EDITABLE_FIELDS) {
+    const before = fieldValue(serverCopy, field);
+    const after = fieldValue(next, field);
+
+    if (JSON.stringify(before) === JSON.stringify(after)) continue;
+
+    chain[field] = [before, after];
+  }
+
+  await upsertEntry(next);
 
   /**
    * ⚠️ **`synced: true`, because the server already has this entry** — the conflict is about *which version* of
    * it, not about whether it exists.
    */
-  await setMark(id, { pending: true, synced: true });
+  await setMark(id, {
+    pending: true,
+    synced: true,
+    /** ⚠️ **Tells the server to close the question**, so it is not handed back on the next pull. */
+    settlesConflict: true,
+    ...(Object.keys(chain).length === 0 ? {} : { chain }),
+  });
   await afterWrite();
 
   await syncAll();

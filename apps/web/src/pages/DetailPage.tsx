@@ -399,7 +399,7 @@ export function DetailPage(): React.JSX.Element {
           onResolve={(settled) => {
             void (async () => {
               setSettling(null);
-              await resolveConflict(settling.mine.id, settled);
+              await resolveConflict(settling.mine.id, settled, settling.theirs);
             })();
           }}
           onLater={() => {

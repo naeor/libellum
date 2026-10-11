@@ -504,6 +504,8 @@ export async function pullConflicts(): Promise<number> {
   const answer = await apiFetch<{
     readonly conflicts: readonly {
       readonly transactionId: string;
+      /** ⚠️ The server's own copy, without which there is no second side to choose against. */
+      readonly current: Transaction | null;
       readonly fields: readonly { readonly field: string; readonly serverValue: unknown }[];
     }[];
   }>("/conflicts", { timeoutMs: 10_000 }).catch(() => null);
@@ -534,9 +536,24 @@ export async function pullConflicts(): Promise<number> {
     /** ⚠️ A conflict for an entry this device does not hold cannot be shown, and is left for the server to keep. */
     if (entry === undefined) continue;
 
+    /**
+     * ⚠️ **`theirs` is the server's copy, and the first version filled it with the local entry.**
+     *
+     * The two sides were then identical, so comparing them found nothing to disagree about — **and a yellow row
+     * opened onto a screen that listed no fields and asked nothing**, which is exactly what the owner saw:
+     * "他居然显示没有需要自动合并的字段，同时需要我选的地方是 0 处；我只能选择用这个结果保存."
+     *
+     * ⚠️ **A conflict the server lists but cannot hand over a copy for is skipped rather than shown empty**:
+     * **an empty question is worse than no question at all**, because the user is invited to settle something
+     * they cannot see.
+     */
+    if (item.current === null) continue;
+
     await setConflict(item.transactionId, {
+      /** ⚠️ This device's entry — what the user has here. */
       mine: entry,
-      theirs: entry,
+      /** ⚠️ The server's entry — the side they are choosing against. */
+      theirs: item.current,
       base: null,
       fields: item.fields,
       at: Date.now(),

@@ -703,9 +703,25 @@ export function registerTransactionRoutes(
 
     const rowsById = new Map(rows.map((row) => [row.id, row]));
 
+    /**
+     * ⚠️ **The server's own copy goes out with the list, and without it the question has no sides.**
+     *
+     * The client was filling both "mine" and "theirs" with the entry it already held, so comparing them found
+     * nothing to disagree about — **and the owner reached a yellow row whose screen offered no fields at all**:
+     * "他居然显示没有需要自动合并的字段，同时需要我选的地方是 0 处；我只能选择用这个结果保存."
+     */
+    const entries = await prisma.transaction.findMany({
+      where: { id: { in: ids }, bookId },
+      include: TRANSACTION_INCLUDE,
+    });
+
+    const entryById = new Map(entries.map((entry) => [entry.id, entry]));
+
     return {
       conflicts: ids.map((transactionId) => ({
         transactionId,
+        /** ⚠️ What the server holds **now** — the side the user is choosing against. */
+        current: entryById.has(transactionId) ? toDto(entryById.get(transactionId)!) : null,
         fields: rows
           .filter((row) => row.transactionId === transactionId)
           .map((row) => ({

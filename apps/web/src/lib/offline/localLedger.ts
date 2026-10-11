@@ -418,6 +418,15 @@ export interface EntryMark {
   readonly chain?: Readonly<Record<string, readonly unknown[]>>;
 
   /**
+   * Set when **this send is the user settling a conflict**.
+   *
+   * ⚠️ **Without it the server never closes the question**, and the conflict it raised is handed back on the next
+   * pull for ever — **a row that stays yellow no matter how many times the user answers it**, which is exactly what
+   * the owner reported: "即使我选择了一个保存，退出之后，它仍然是黄色的 20 元."
+   */
+  readonly settlesConflict?: boolean;
+
+  /**
    * Both versions of an entry that could not be sent because somebody else changed it.
    *
    * ⚠️ **The two copies are stored here rather than fetched again when the screen opens.** The server's copy
