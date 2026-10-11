@@ -30,7 +30,7 @@ import {
   type QueryClient,
   type UseMutationResult,
 } from "@tanstack/react-query";
-import { useMemo } from "react";
+import { useMemo, useSyncExternalStore } from "react";
 
 import { useAuth } from "../auth/AuthProvider.js";
 import { ApiRequestError, apiFetch, apiFetchFile } from "./api.js";
@@ -40,7 +40,9 @@ import {
   filterLocally,
   findLocalTransaction,
   installLiveSource,
+  ledgerSnapshotValue,
   readLocalTransactions,
+  subscribeLedger,
   transactionsFromCacheCached,
 } from "./offline/localLedger.js";
 import { readSnapshot } from "./offline/storage.js";
@@ -340,7 +342,17 @@ export function useTransactions(given: TransactionFilters) {
  */
 
 export function useTransaction(id: string) {
-  return useQuery({
+  /**
+   * ⚠️ **The device's snapshot, so this screen cannot be held hostage by the query.**
+   *
+   * The owner's trace had one line for this path: `DIAGNOSTIC:fallback · transaction 01a125a1`. The
+   * same reasoning as the ledger applies — see `useLocalEntries` — so the entry is looked up in the
+   * published snapshot and returned when the query has nothing.
+   *
+   * ⚠️ **Only when the query has nothing.** A server answer is the truth; this is the copy.
+   */
+  const local = useSyncExternalStore(subscribeLedger, ledgerSnapshotValue, ledgerSnapshotValue);
+  const query = useQuery({
     queryKey: queryKeys.transaction(id),
     queryFn: () =>
       /**
@@ -369,6 +381,23 @@ export function useTransaction(id: string) {
       }),
     enabled: id !== "",
   });
+
+  return useMemo(() => {
+    if (query.data !== undefined) return query;
+
+    const found = local.find((entry) => entry.id === id);
+
+    /**
+     * ⚠️ **Returned as a successful query rather than a thrown error.**
+     *
+     * The page reads `entry.isPending`, `entry.isError` and `entry.data`; giving it a resolved value
+     * keeps every one of those meaningful. Throwing instead — which is what the old local branch did —
+     * would put the screen back on the path that does not settle on this device.
+     */
+    if (found === undefined) return query;
+
+    return { ...query, data: found, isPending: false, isError: false, error: null, status: "success" as const };
+  }, [query, local, id]);
 }
 
 /**

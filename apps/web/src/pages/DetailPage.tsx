@@ -1,5 +1,5 @@
 import { CURRENCIES, type CurrencySummary, type Transaction, type TransactionKind } from "@libellum/shared";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 
 import { useAuth } from "../auth/AuthProvider.js";
@@ -14,7 +14,13 @@ import { useAccountOffline } from "../lib/offline/connectivity.js";
 import { currentMonth, formatDayLabel, formatTimeInZone } from "../lib/datetime.js";
 import { readSession, useDetailTransition, writeSession } from "../lib/detailTransition.js";
 import { currencyName, formatMoney } from "../lib/format.js";
-import { filterLocally, readLocalTransactions, lastLocalRead } from "../lib/offline/localLedger.js";
+import {
+  filterLocally,
+  lastLocalRead,
+  ledgerSnapshotValue,
+  readLocalTransactions,
+  subscribeLedger,
+} from "../lib/offline/localLedger.js";
 import {
   hasLocalTransactions,
   useLedger,
@@ -924,21 +930,38 @@ function shiftMonth(month: string, delta: number): string {
 /**
  * This month's entries, read straight from the device.
  *
- * ⚠️ **Deliberately outside the query layer.** The owner's tablet proved that a query can hold
- * `isPending: true` while a read of the same data succeeds four times over — so anything that waits
- * for the query to resolve can wait for ever. This hook waits for nothing but the device.
+ * ⚠️ **`useSyncExternalStore`, not `useState`, and that change is the fix.**
  *
- * It does not poll: one read on mount and one whenever the view changes. **A read of the same
- * hundred-kilobyte blob on a timer is exactly the cost that made the tablet struggle in the first
- * place**, and the data only changes when the user does something.
+ * The owner's tablet read the ledger correctly — 138 entries, reported by the diagnostics and by the
+ * banner — and the screen stayed on its placeholder rows through several attempts, **including one
+ * that passed the read's result straight into `useState`.** The state updater ran and the component
+ * did not re-render, which is a reported WebKit/React interaction rather than anything about the data
+ * ([React #22459](https://github.com/react/react/issues/22459)). The device is an iPad Pro, so the
+ * rendering is not the weak link.
+ *
+ * **So the answer is not to make the work smaller — it is to stop routing the answer through a
+ * mechanism that can drop it.** `useSyncExternalStore` reads the value **synchronously during render**
+ * and re-renders when the store changes, so the entries are present the next time anything renders,
+ * however that render was triggered.
+ *
+ * It does not poll: one read is kicked off on mount and whenever the view changes. **Re-reading a
+ * hundred-kilobyte blob on a timer is the cost that made the tablet struggle in the first place**, and
+ * the data only changes when the user does something.
  */
 function useLocalEntries(filters: TransactionFilters): readonly Transaction[] {
-  const [entries, setEntries] = useState<readonly Transaction[]>([]);
+  /**
+   * ⚠️ **The stored value is the whole ledger**, so this subscribes to that and filters on read.
+   *
+   * Filtering inside the snapshot getter would return a new array every call, and
+   * `useSyncExternalStore` compares snapshots by identity — a new array each time is an infinite
+   * render loop.
+   */
+  const all = useSyncExternalStore(subscribeLedger, ledgerSnapshotValue, ledgerSnapshotValue);
 
   /**
-   * The filters as a value, so the effect compares strings rather than object identity — otherwise a
-   * new object literal on every render would re-read the whole cache on every render, which is the
-   * bug being fixed.
+   * The filters as strings, so this effect compares values rather than object identity — otherwise a
+   * fresh object literal every render would re-read the whole cache every render, which is the bug
+   * being fixed.
    */
   const month = filters.month ?? "";
   const kind = filters.kind ?? "";
@@ -946,27 +969,24 @@ function useLocalEntries(filters: TransactionFilters): readonly Transaction[] {
   const currency = filters.currency ?? "";
 
   useEffect(() => {
-    let cancelled = false;
-
-    void readLocalTransactions().then((all) => {
-      if (cancelled) return;
-
-      setEntries(
-        filterLocally(all, {
-          ...(month === "" ? {} : { month }),
-          ...(kind === "" ? {} : { kind: kind as Transaction["kind"] }),
-          ...(categoryId === "" ? {} : { categoryId }),
-          ...(currency === "" ? {} : { currency }),
-        }),
-      );
-    });
-
-    return () => {
-      cancelled = true;
-    };
+    /**
+     * ⚠️ **Fired and not awaited.** The result arrives through the store, so there is nothing to do
+     * with it here — and awaiting it inside the effect would put the update back on the path that was
+     * failing.
+     */
+    void readLocalTransactions();
   }, [month, kind, categoryId, currency]);
 
-  return entries;
+  return useMemo(
+    () =>
+      filterLocally(all, {
+        ...(month === "" ? {} : { month }),
+        ...(kind === "" ? {} : { kind: kind as Transaction["kind"] }),
+        ...(categoryId === "" ? {} : { categoryId }),
+        ...(currency === "" ? {} : { currency }),
+      }),
+    [all, month, kind, categoryId, currency],
+  );
 }
 
 /**

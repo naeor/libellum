@@ -223,17 +223,81 @@ export async function readLocalTransactions(): Promise<readonly Transaction[]> {
     );
 
     return mergeLocal(fromDisk, live);
-  })().finally(() => {
-    /**
-     * ⚠️ **Cleared in `finally`, so a failed read does not poison every later one.**
-     *
-     * The join is an optimisation; if the shared attempt failed, the next caller must be allowed to
-     * try again rather than receive the same rejection for the rest of the session.
-     */
-    inFlight = null;
-  });
+  })()
+    .then((entries) => {
+      /**
+       * ⚠️ **Published synchronously, before the promise resolves.**
+       *
+       * This is the whole point of the store: the value is in place for the *next render*, whichever
+       * render that turns out to be, rather than waiting on a state update that might not arrive. The
+       * caller still gets the entries as before — nothing about the read changed.
+       */
+      publishLedger(entries);
+
+      return entries;
+    })
+    .finally(() => {
+      /**
+       * ⚠️ **Cleared in `finally`, so a failed read does not poison every later one.**
+       *
+       * The join is an optimisation; if the shared attempt failed, the next caller must be allowed to
+       * try again rather than receive the same rejection for the rest of the session.
+       */
+      inFlight = null;
+    });
 
   return inFlight;
+}
+
+/**
+ * The ledger as the screens read it, held outside React.
+ *
+ * ⚠️ **This exists because a React state update was called and did not render.**
+ *
+ * The owner's tablet read the ledger successfully — `local-read — 磁盘 … → 138 条；内存 138 条` — the
+ * banner reported the same count, **and the ledger screen stayed on its placeholder rows through
+ * several attempts**, including one that bypassed the query layer entirely and passed the result
+ * straight into `useState`.
+ *
+ * That combination has a name: **the state updater ran and the component did not re-render**, which is
+ * a reported WebKit/React interaction rather than anything about this application's data
+ * ([React #22459](https://github.com/react/react/issues/22459),
+ * [WebKit #251203](https://wiki.webkit.org/show_bug.cgi?id=251203)). The device is an iPad Pro — the
+ * rendering is not the weak link, so the answer is not to make the work smaller. It is to **stop
+ * routing the answer through a mechanism that can drop it.**
+ *
+ * So the entries live here, in a plain module-level value, and screens read them with
+ * `useSyncExternalStore` — **the API React provides for exactly this: a data source that lives outside
+ * it.** A subscription tells React when the value changes and React reads it **synchronously during
+ * render**, so there is no queued update to lose and no state to settle. **The value is already there
+ * the next time anything renders at all**, including a render caused by something else entirely.
+ *
+ * ⚠️ **A snapshot, not a cache.** It is written by `readLocalTransactions` — the one place that already
+ * knows what the device holds — and it is never consulted to decide anything about freshness. Screens
+ * use it to *draw*; the query layer still decides what is true.
+ */
+let ledgerSnapshot: readonly Transaction[] = [];
+const ledgerListeners = new Set<() => void>();
+
+/** The ledger as last read from the device. Synchronous, for render. */
+export function ledgerSnapshotValue(): readonly Transaction[] {
+  return ledgerSnapshot;
+}
+
+/** Subscribe to changes, for `useSyncExternalStore`. */
+export function subscribeLedger(listener: () => void): () => void {
+  ledgerListeners.add(listener);
+
+  return () => {
+    ledgerListeners.delete(listener);
+  };
+}
+
+/** Publish a new snapshot, and tell React. */
+function publishLedger(entries: readonly Transaction[]): void {
+  ledgerSnapshot = entries;
+
+  for (const listener of ledgerListeners) listener();
 }
 
 /**
