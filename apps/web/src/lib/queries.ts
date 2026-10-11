@@ -47,7 +47,7 @@ import {
   transactionsFromCacheCached,
 } from "./offline/localLedger.js";
 import { readSnapshot } from "./offline/storage.js";
-import { installQueryNotifier } from "./offline/write.js";
+import { installQueryNotifier, refreshPending } from "./offline/write.js";
 import { withLocalFallback } from "./offline/fallback.js";
 import { computeStats, monthRange, summaryFor } from "./offline/localStats.js";
 import { uuidV7 } from "./uuid.js";
@@ -358,7 +358,14 @@ export function useTransactions(given: TransactionFilters) {
   const viewCurrency = filters.currency ?? "";
 
   useEffect(() => {
-    void readLocalTransactions();
+    /**
+     * ⚠️ **The queue is republished alongside the read**, so the pending colour survives a reload without
+     * anything having to be written first. **The colour comes from the queue, and the queue is on disk.**
+     */
+    void (async () => {
+      await readLocalTransactions();
+      await refreshPending();
+    })();
   }, [viewMonth, viewKind, viewCategory, viewCurrency]);
 
   return useInfiniteQuery({
@@ -519,7 +526,10 @@ export function useStats(query: StatsQuery) {
    * inside a `queryFn` is a store that stays empty whenever the query does not run.
    */
   useEffect(() => {
-    void readLocalTransactions();
+    void (async () => {
+      await readLocalTransactions();
+      await refreshPending();
+    })();
   }, []);
 
   const result = useQuery({

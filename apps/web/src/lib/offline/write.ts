@@ -6,6 +6,7 @@ import { logOffline } from "./diagnostics.js";
 import {
   clearInFlight,
   publishLedger,
+  publishPending,
   readLocalTransactions,
   readMarks,
   readStoredMonths,
@@ -178,6 +179,33 @@ export function installQueryNotifier(notify: (changed: readonly Transaction[]) =
 }
 
 /**
+ * Where the *store* layer asks for the pending set to be published.
+ *
+ * ⚠️ **Injected for the same reason as the query notifier**: `localLedger.ts` owns the published set, and this
+ * module owns the queue that decides it. **Pointing one at the other is what keeps the colour from becoming a
+ * second copy of the truth** \u2014 which is the whole failure this change is repairing.
+ */
+let publishPendingFromQueue: ((ids: ReadonlySet<string>) => void) | null = null;
+
+/** Called once, by the store module. */
+export function installPendingPublisher(publish: (ids: ReadonlySet<string>) => void): void {
+  publishPendingFromQueue = publish;
+}
+
+/**
+ * Republish the pending set from the queue.
+ *
+ * \u26a0\ufe0f **Called after every local read as well as every write**, so a cold start shows the markers without
+ * having to write anything first \u2014 the queue is on disk, and the colour comes from it.
+ */
+export async function refreshPending(): Promise<void> {
+  const ids = await pendingIds();
+
+  if (publishPendingFromQueue !== null) publishPendingFromQueue(ids);
+  else publishPending(ids);
+}
+
+/**
  * After a local write, refresh both layers.
  *
  * ⚠️ **Both, in this order, and the order matters**: the store is published first so the screen has
@@ -189,6 +217,12 @@ async function afterWrite(): Promise<void> {
   const entries = await readLocalTransactions();
 
   publishLedger(entries);
+
+  /**
+   * \u26a0\ufe0f **The pending colour follows the queue, not a copy of it.** See pendingIds. A write that adds
+   * to the queue must repaint; a delivery that empties it must repaint; and nothing has to remember.
+   */
+  await refreshPending();
 
   if (notifyQueryLayer === null) return;
 
@@ -461,16 +495,31 @@ export async function hasPendingWrites(): Promise<boolean> {
   return (await readOutbox()).length > 0;
 }
 
-/** Every entry id that is stored but not yet on the server, for the row colouring. */
+/**
+ * Which entries have not reached the server — read from the queue, which is the only thing that knows.
+ *
+ * ⚠️ **The owner's proposal, with one change of storage, and his reasoning is why**: "给每笔记账新增一个变量。
+ * 例如'是否被同步'…如果这个变量为 0，意味着它还没被同步到服务器端，也就显示背景为淡红色."
+ *
+ * He is right that the state belongs with the entry. **What he is really fixing is that the colour was
+ * decided by two things that could disagree** — the entry list and a separate map of marks — and every bug in
+ * this area has been an attempt to keep them in step. **Two facts about one thing will eventually differ; one
+ * fact cannot.**
+ *
+ * So the flag is not stored twice. **The queue *is* the "not yet sent" state**, and it cannot be stale about
+ * itself: an entry is unsynced exactly while the queue holds a row for it, and stops being unsynced the
+ * moment the row goes — **whatever route delivered it, and with nothing having to remember to clear a mark.**
+ *
+ * ⚠️ **A delete is not "unsynced" for colouring.** The entry is gone from the screen, so colouring it would
+ * colour nothing; its queue row exists to tell the server, not to warn the user.
+ */
 export async function pendingIds(): Promise<ReadonlySet<string>> {
-  const marks = await readMarks();
+  const rows = await readOutbox();
 
-  return new Set(
-    Object.entries(marks)
-      .filter(([, mark]) => mark.pending === true && mark.deleted !== true)
-      .map(([id]) => id),
-  );
+  return new Set(rows.filter((row) => row.op !== "delete").map((row) => row.id));
 }
+
+
 
 /**
  * Put downloaded entries into storage without marking them pending.
