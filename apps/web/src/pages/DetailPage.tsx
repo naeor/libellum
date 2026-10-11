@@ -119,13 +119,21 @@ export function DetailPage(): React.JSX.Element {
   const [waitedTooLong, setWaitedTooLong] = useState(false);
   const listPending = list.isPending;
 
+  /**
+   * ⚠️ **The timer is armed on mount, not on a query state change.**
+   *
+   * The first version depended on `list.isPending` and cleared itself whenever that was false. The
+   * owner reported **no message appearing at all** after more than a minute of flickering
+   * placeholders: "还是一直闪，什么字都没有……已经过去了差不多一分钟."
+   *
+   * A timer that never fires is one that was never started, or one that was cleared by a state
+   * change before it could run. **So this one depends on nothing at all** — it is armed once and
+   * left alone. Whatever the query is doing, after three seconds the screen explains itself; if the
+   * data arrives first the message is simply not rendered, because there is nothing to explain.
+   *
+   * **A watchdog that can be cancelled by the thing it is watching is not a watchdog.**
+   */
   useEffect(() => {
-    if (!listPending) {
-      setWaitedTooLong(false);
-
-      return;
-    }
-
     const timer = window.setTimeout(() => {
       setWaitedTooLong(true);
     }, 3_000);
@@ -133,7 +141,7 @@ export function DetailPage(): React.JSX.Element {
     return () => {
       window.clearTimeout(timer);
     };
-  }, [listPending]);
+  }, []);
 
   const clearCategoryFilter = (): void => {
     const next = new URLSearchParams(searchParams);
@@ -383,19 +391,29 @@ export function DetailPage(): React.JSX.Element {
                 there anything to show?" — from a synchronous snapshot, so a device that holds
                 entries shows them and one that holds nothing still gets the honest skeleton.
               */}
-              {list.isPending && !hasLocalTransactions(filters) ? <SkeletonRows /> : null}
-
               {/*
-                ⚠️ **After three seconds, say what is happening instead of only flickering.**
-                See `waitedTooLong` above. It does not replace the skeleton — it explains it.
+                ⚠️ **The skeleton is drawn only while the device genuinely has nothing to show.**
+
+                `hasLocalTransactions` answers the question the skeleton is really asking — "is there
+                anything to show?" — from a synchronous snapshot, so a device holding entries shows
+                them and one holding nothing still gets the honest placeholder.
+
+                ⚠️ **And after three seconds the explanation replaces it rather than sitting under it.**
+                The owner watched the two coexist: "还是一直闪，什么字都没有." Flashing rows above a
+                sentence is a screen contradicting itself — one part saying "coming soon" while the
+                other says "this is not coming". When the wait is over, the wait indicator goes.
               */}
+              {list.isPending && !hasLocalTransactions(filters) && !waitedTooLong ? (
+                <SkeletonRows />
+              ) : null}
+
               {/*
                 ⚠️ **What was tried, not just that something failed.**
 
                 The owner asked for this: "如果此时没有读到数据或者出现了任何问题，就显示尝试读取数据但
                 失败（也可以分得详细些）". A message naming the numbers lets the reader tell a month that
-                was never downloaded from a database that is not answering — which are different
-                problems with different fixes, and which look identical otherwise.
+                was never downloaded from a database that is not answering — different problems with
+                different fixes, and identical on screen otherwise.
               */}
               {list.isPending && waitedTooLong ? <StuckOnLoad /> : null}
 
