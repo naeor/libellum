@@ -6,6 +6,7 @@ import { apiFetch } from "../api.js";
 import { queryKeys, transactionFilters } from "../queries.js";
 import { logOffline } from "./diagnostics.js";
 import { readNeverMonths } from "./downloadManager.js";
+import { storeMonth } from "./localLedger.js";
 
 /**
  * Filling in the months the user has never opened.
@@ -367,6 +368,25 @@ export function useOfflineFill(options: { readonly enabled: boolean }): OfflineF
 
             cursor = fetched.nextCursor;
           }
+
+          /**
+           * ⚠️ **And written to our own store, which nothing else can decide to drop.**
+           *
+           * This is the point of the whole exercise, and the owner said it plainly: "数据保存到本地，
+           * 然后它就可以直接拿这些本地的数据去计算去显示，毕竟我用电脑直接调一个本地的文件可没出现过
+           * 这么多问题."
+           *
+           * `setQueryData` above puts the month where the *screens* can read it; the query cache is a
+           * view of memory, and the persistence layer rewrites it wholesale — which is how sixty
+           * downloaded months became six. **This writes the same entries to a plain month-keyed map that
+           * is only ever added to.** No expiry, no eviction, no dehydrate/hydrate, no throttled
+           * whole-file rewrite.
+           *
+           * ⚠️ **Written once per month, after its last page** — so a month is stored complete or not
+           * stored at all, and an interrupted download never leaves a half-month that would look
+           * finished next time.
+           */
+          await storeMonth(month, pages.flatMap((page) => page.items));
 
           await logOffline("取回", `${month}：${pages.length} 页 / ${pages.reduce((n, page) => n + page.items.length, 0)} 条`);
         }

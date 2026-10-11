@@ -1,7 +1,7 @@
 import type { Transaction, TransactionListResponse } from "@libellum/shared";
 
 import { logOffline } from "./diagnostics.js";
-import { readValue } from "./storage.js";
+import { readValue, writeValue } from "./storage.js";
 
 /**
  * Reading the ledger back out of the device.
@@ -181,6 +181,15 @@ export async function readLocalTransactions(): Promise<readonly Transaction[]> {
      */
     const live = liveSource?.() ?? [];
 
+    /**
+     * ⚠️ **Our own store first, because it is the one nothing else can empty.**
+     *
+     * See `storeMonth`. The query cache is a *view of memory* and the persistence layer rewrites it
+     * wholesale — which is how sixty downloaded months became six. **This map is only ever added to**, so
+     * a month the user downloaded is available even when the query cache has forgotten it.
+     */
+    const mine = await readStoredEntries();
+
     const raw = await readValue<string>(CACHE_KEY);
 
     /**
@@ -188,6 +197,8 @@ export async function readLocalTransactions(): Promise<readonly Transaction[]> {
      * blob is over a hundred kilobytes. See `transactionsFromCacheCached`.
      */
     const fromDisk = transactionsFromCacheCached(raw);
+
+    const mergedEntries = mergeLocal(mergeLocal(fromDisk, live), mine);
 
     /**
      * ⚠️ **Recorded before the read is logged, so the report and the log cannot disagree.**
@@ -197,12 +208,19 @@ export async function readLocalTransactions(): Promise<readonly Transaction[]> {
      * phrase a person can read.
      */
     localRead = {
-    at: Date.now(),
-    diskBytes: raw === null ? 0 : raw.length,
-    diskEntries: fromDisk.length,
-    liveEntries: live.length,
-    total: mergeLocal(fromDisk, live).length,
-    note: raw === null ? "本机没有缓存" : fromDisk.length === 0 ? "缓存里没有账目" : null,
+      at: Date.now(),
+      diskBytes: raw === null ? 0 : raw.length,
+      diskEntries: fromDisk.length,
+      liveEntries: live.length,
+      total: mergedEntries.length,
+      note:
+        mine.length > 0
+          ? `本机存储 ${String(mine.length)} 条`
+          : raw === null
+            ? "本机没有缓存"
+            : fromDisk.length === 0
+              ? "缓存里没有账目"
+              : null,
     };
 
     /**
@@ -222,7 +240,7 @@ export async function readLocalTransactions(): Promise<readonly Transaction[]> {
         `内存 ${String(live.length)} 条；合计 ${String(localRead.total)} 条`,
     );
 
-    return mergeLocal(fromDisk, live);
+    return mergedEntries;
   })()
     .then((entries) => {
       /**
@@ -250,6 +268,84 @@ export async function readLocalTransactions(): Promise<readonly Transaction[]> {
 }
 
 /**
+ * The ledger, stored by us, in a shape we control.
+ *
+ * ⚠️ **This exists because the query cache is not a safe place for the user's data.**
+ *
+ * The owner's evidence, gathered over many rounds, is that the persistence layer loses months:
+ *
+ * ```
+ * 01:11:56.582  cache-merge — kept 60 month entries
+ * 01:11:58.580  cache-merge — kept 1 month entry        ← one second later
+ * 01:13:28.149  write query-cache — 14247 bytes         ← from 124447
+ * ```
+ *
+ * And the cache listing that started it: `ledger`, a single `transaction`, `summary` and several
+ * `stats` entries, and **six `transactions` where sixty were downloaded**.
+ *
+ * **Why the query cache cannot be trusted with this.** It is a *view* of what the app currently has in
+ * memory, and the persistence layer writes that view wholesale. Anything that leaves memory — an
+ * eviction, a reload before a month was ever observed, a throttled write that is overtaken — is written
+ * out of storage with it. **The owner asked for his whole history to be on the device; a structure
+ * whose job is to forget things is the wrong place to keep it.**
+ *
+ * ⚠️ **His own explanation of why this should be simple is the design brief**: "数据保存到本地，然后它就
+ * 可以直接拿这些本地的数据去计算去显示，毕竟我用电脑直接调一个本地的文件可没出现过这么多问题."
+ * He is right, and this is that: **a plain map from month to entries, written when entries are fetched,
+ * read when they are needed, with nothing in between that can decide to drop them.**
+ *
+ * ```
+ * ledger-months  →  { "2026-10": [ …entries… ], "2026-09": [ … ], … }
+ * ```
+ *
+ * No expiry, no eviction, no dehydrate/hydrate, no throttled whole-file rewrite. **A month is written
+ * once when it is downloaded and stays until something deliberately removes it** — which is exactly what
+ * "downloaded for offline use" means.
+ */
+export const LEDGER_MONTHS_KEY = "ledger-months";
+
+/** Every month's entries, keyed by `YYYY-MM`. */
+export type StoredMonths = Record<string, readonly Transaction[]>;
+
+/** Read the stored months. Never throws: an unreadable store is an empty one. */
+export async function readStoredMonths(): Promise<StoredMonths> {
+  const stored = await readValue<StoredMonths>(LEDGER_MONTHS_KEY);
+
+  return stored === null || typeof stored !== "object" ? {} : stored;
+}
+
+/**
+ * Write one month's entries.
+ *
+ * ⚠️ **Read-modify-write, and it goes through `writeValue`, which is serialised per key** — so two
+ * months finishing at once cannot lose each other. That is the bug this file has already been bitten by
+ * once in the cache layer, and it is not going to be repeated here.
+ */
+export async function storeMonth(month: string, entries: readonly Transaction[]): Promise<void> {
+  const all = await readStoredMonths();
+
+  await writeValue(LEDGER_MONTHS_KEY, { ...all, [month]: entries });
+}
+
+/** Every entry the device holds, from every stored month. */
+export async function readStoredEntries(): Promise<readonly Transaction[]> {
+  const all = await readStoredMonths();
+  const found = new Map<string, Transaction>();
+
+  for (const entries of Object.values(all)) {
+    for (const entry of entries) found.set(entry.id, entry);
+  }
+
+  return [...found.values()];
+}
+
+/** Whether the device holds anything for a month. */
+export async function hasStoredMonth(month: string): Promise<boolean> {
+  const all = await readStoredMonths();
+
+  return (all[month]?.length ?? 0) > 0;
+}
+/**
  * The ledger as the screens read it, held outside React.
  *
  * ⚠️ **This exists because a React state update was called and did not render.**
@@ -261,20 +357,14 @@ export async function readLocalTransactions(): Promise<readonly Transaction[]> {
  *
  * That combination has a name: **the state updater ran and the component did not re-render**, which is
  * a reported WebKit/React interaction rather than anything about this application's data
- * ([React #22459](https://github.com/react/react/issues/22459),
+ * ([React #22459](https://github.com/facebook/react/issues/22459),
  * [WebKit #251203](https://wiki.webkit.org/show_bug.cgi?id=251203)). The device is an iPad Pro — the
  * rendering is not the weak link, so the answer is not to make the work smaller. It is to **stop
  * routing the answer through a mechanism that can drop it.**
  *
  * So the entries live here, in a plain module-level value, and screens read them with
  * `useSyncExternalStore` — **the API React provides for exactly this: a data source that lives outside
- * it.** A subscription tells React when the value changes and React reads it **synchronously during
- * render**, so there is no queued update to lose and no state to settle. **The value is already there
- * the next time anything renders at all**, including a render caused by something else entirely.
- *
- * ⚠️ **A snapshot, not a cache.** It is written by `readLocalTransactions` — the one place that already
- * knows what the device holds — and it is never consulted to decide anything about freshness. Screens
- * use it to *draw*; the query layer still decides what is true.
+ * it.**
  */
 let ledgerSnapshot: readonly Transaction[] = [];
 const ledgerListeners = new Set<() => void>();

@@ -16,6 +16,7 @@ import { clearOfflineLog, readOfflineLog, type LogEntry } from "../lib/offline/d
 import { formatBytes, storageBreakdown, type StorageBreakdown } from "../lib/offline/persistence.js";
 import { resetEverything } from "../lib/offline/reset.js";
 import { databaseReport, type DatabaseReport } from "../lib/offline/dbstatus.js";
+import { readStoredMonths } from "../lib/offline/localLedger.js";
 import { readTrace, traceLine, readValue } from "../lib/offline/storage.js";
 
 /**
@@ -44,6 +45,8 @@ export function DownloadMorePage(): React.JSX.Element {
   const [queries, setQueries] = useState<readonly string[]>([]);
   const [trace, setTrace] = useState<readonly string[]>([]);
   const [db, setDb] = useState<DatabaseReport | null>(null);
+  const [storedMonths, setStoredMonths] = useState(0);
+  const [storedEntries, setStoredEntries] = useState(0);
   const [confirmReset, setConfirmReset] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -72,6 +75,17 @@ export function DownloadMorePage(): React.JSX.Element {
       ]);
 
       setDb(database);
+      /**
+       * ⚠️ **The count that says whether the download actually stayed on the device.**
+       *
+       * The owner asked for his history to be stored locally so the app "可以直接拿这些本地的数据去计算
+       * 去显示". This is the number that proves it did: months kept, and entries in them. **A number that
+       * can be read at a glance beats one inferred from whether a screen happens to work.**
+       */
+      const months = await readStoredMonths();
+
+      setStoredMonths(Object.keys(months).length);
+      setStoredEntries(Object.values(months).reduce((total, entries) => total + entries.length, 0));
 
       setLog(entries);
       setFootprint(measured);
@@ -167,6 +181,7 @@ export function DownloadMorePage(): React.JSX.Element {
     `缓存条目：${String(footprint?.queryCount ?? 0)} 条（${String(footprint?.liveQueryCount ?? 0)} 条有效）`,
     `缓存大小：${String(footprint?.cacheBytes ?? 0)} 字节`,
     `数据库：${db === null ? "(未读取)" : db.opened ? `可打开，${String(db.keyCount)} 个键：${db.keys.join(",")}` : `打不开 — ${db.error ?? "未知"}`}`,
+    `本机存储：${String(storedMonths)} 个月 / ${String(storedEntries)} 条`,
     `缓存内容：${db === null ? "(未读取)" : `${db.cacheKind}，${String(db.cacheBytes)} 字节，${db.cacheParses ? `可解析 ${String(db.cacheQueryCount)} 条` : "不可解析"}`}`,
     `占用：总计 ${formatBytes(storage?.totalBytes ?? 0)} / 账本 ${formatBytes(storage?.queryCacheBytes ?? 0)}`,
     `运行记录：${String(log.length)} 条`,
