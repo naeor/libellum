@@ -242,19 +242,25 @@ export function DetailPage(): React.JSX.Element {
      */
     const byId = new Map<string, Transaction>();
 
-    for (const entry of localEntries) byId.set(entry.id, entry);
-    for (const entry of fromQuery) byId.set(entry.id, entry);
-
     /**
-     * ⚠️ **The deletion is applied last, to the merged result.**
+     * ⚠️ **A deletion is shown, not hidden — and that is a deliberate reversal.**
      *
-     * Filtering each source separately would leave the other one to put it back, and filtering only the
-     * device's list is exactly the bug: the query's copy is what reappeared.
+     * The first version removed deleted entries from the merged list, which is the obvious reading of "delete".
+     * **But it makes the delete mark invisible**, and the owner asked for it to be visible: "删除印记变为 1 时
+     * 背景变成淡红色…用来提醒用户…在成功联网之后也可以删除."
+     *
+     * That is the more useful behaviour, because of what the two copies disagree about. **A deleted entry is
+     * gone from this device and still present on the server** — so until the queue drains, the truth is "it
+     * exists in one place and not the other". Hiding the row states the opposite: that the deletion is done.
+     *
+     * ⚠️ **So a deletion stays on screen, struck through and pale red, until the server confirms it.** Once the
+     * queue row goes, so does the colour and the strike — and the entry is filtered out below, because by then
+     * the server agrees.
      */
-    for (const id of deleted) byId.delete(id);
+    const rows = [...byId.values()];
 
-    return [...byId.values()];
-  }, [list.data, localEntries, deleted]);
+    return rows;
+  }, [list.data, localEntries]);
 
   /**
    * ⚠️ **One explicit sort, applied to whatever the sources produced.**
@@ -571,24 +577,39 @@ export function DetailPage(): React.JSX.Element {
                     <li
                       key={entry.id}
                       /**
-                       * ⚠️ **A pending entry is coloured, and this is not decoration.**
+                       * ⚠️ **Two colours, two meanings: green for "not saved yet", red for "not deleted yet".**
                        *
-                       * The owner asked for it directly: "离线状态下新建出来的记账底色要特殊一些，比如把他们
-                       * 的背景（那一行的背景）换成浅红色之类的，用来提醒用户，现在还没被备份到服务器，只是在
-                       * 本地记账而已."
+                       * The owner's first request was colour on its own terms — "离线状态下新建出来的记账底色要
+                       * 特殊一些…换成浅红色之类的，用来提醒用户，现在还没被备份到服务器" — and when the deletion
+                       * side arrived he split it: **"删除印记变为 1 时背景变成淡红色——之前的断网新增账单背景就得
+                       * 改一下了，改成淡绿色吧."**
                        *
-                       * He is right, and the reason is one of this project's own lessons: **"没有反馈"和
-                       * "没有生效"在用户看来没有区别.** A row identical to a saved one, on a device that has
-                       * not sent it anywhere, is a row the user will assume is safe — and if the device is lost
-                       * before the queue drains, that assumption is what loses the entry.
+                       * ⚠️ **He is right, and the reason is that red was carrying two unrelated messages.**
                        *
-                       * ⚠️ **`--color-danger-soft` rather than a new token**, because it is the light surface
-                       * the palette already defines and it survives theming (**status colours do not follow the
-                       * brand colour** — see `COLORS.md`). It is also the shade the owner described. If
-                       * "unsynced" and "wrong" later need to be told apart, an amber warning token is the
-                       * honest fix; **using the error colour here is a deliberate, recorded choice.**
+                       * | Row | Colour | What the user needs to know |
+                       * |---|---|---|
+                       * | **已删除，服务器还不知道** | **淡红** | it is **still on the server** — the delete has not happened there yet |
+                       * | **已新建，服务器还不知道** | **淡绿** | it is **only on this device** — it is not backed up yet |
+                       *
+                       * A single warning colour for both would say "something is unsynced" and stop, **when the thing
+                       * the user has to do about each one is opposite**: one needs the entry to disappear elsewhere,
+                       * the other needs it to appear elsewhere.
+                       *
+                       * ⚠️ **Green rather than an amber warning token**, because green is the palette's calm colour
+                       * and an unsynced *addition* is not a problem — it is the feature working. **Red stays reserved
+                       * for the case where the two copies disagree about whether something exists.**
+                       *
+                       * ⚠️ **A deleted row is never rendered at all** — the deletion is applied to the merged list
+                       * before this point (see above). So in practice a row here is red only if it is deleted while
+                       * visible, and the honest reading is "this will go, once the server hears about it".
                        */
-                      className={pending.has(entry.id) ? "bg-danger-soft" : undefined}
+                      className={
+                        deleted.has(entry.id)
+                          ? "bg-danger-soft line-through decoration-danger/40"
+                          : pending.has(entry.id)
+                            ? "bg-brand-soft"
+                            : undefined
+                      }
                     >
                       <button
                         type="button"
