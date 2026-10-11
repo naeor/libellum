@@ -1,6 +1,6 @@
 import { QueryClient } from "@tanstack/react-query";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
-import { Suspense, lazy } from "react";
+import { Suspense, lazy, useEffect } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router";
 
 import { AuthProvider, useAuth } from "./auth/AuthProvider.js";
@@ -9,6 +9,7 @@ import { AppShell } from "./components/Layouts.js";
 import { OfflineFillProvider } from "./components/OfflineFillProvider.js";
 import { UndoProvider } from "./components/UndoProvider.js";
 import { CACHE_MAX_AGE_MS, cachePersister, shouldPersistQuery } from "./lib/offline/cache.js";
+import { startSyncTriggers } from "./lib/offline/syncController.js";
 import { AboutPage } from "./pages/AboutPage.js";
 import { AddEntryPage } from "./pages/AddEntryPage.js";
 import { BooksPage } from "./pages/BooksPage.js";
@@ -101,6 +102,21 @@ function RequireAuth({ children }: { readonly children: React.ReactNode }): Reac
 
 function AppRoutes(): React.JSX.Element {
   const { status } = useAuth();
+
+  /**
+   * ⚠️ **The queue needs something to drain it, and until now nothing did.**
+   *
+   * `drainOutbox` was written and **never called from anywhere**, and nothing listened for the network coming
+   * back — so an entry recorded offline was delivered only if the user happened to record something else
+   * while online. **That is why unsynced rows accumulated and the pale red never cleared**, and why writing a
+   * new entry made older ones look wrong: they genuinely were still waiting, and nobody was ever going to
+   * send them.
+   *
+   * The owner asked for the missing piece directly: **"设计一个每次连上网的时候立刻核对一遍所有的账单，然后
+   * 发现变量为零时，就把它上传到服务器上，然后把它的变量改成一."** Delivery is what makes it synced, and
+   * delivery is what removes it from the queue — **one action, not two that can disagree.**
+   */
+  useEffect(() => startSyncTriggers(), []);
 
   // Wait for the first /auth/me before deciding where to send the visitor,
   // otherwise a signed-in user would flash the login screen on every reload.

@@ -54,6 +54,7 @@ const MODULES = [
   "/src/lib/offline/deadline.ts",
   "/src/lib/offline/outbox.ts",
   "/src/lib/offline/write.ts",
+  "/src/lib/offline/syncController.ts",
   "/src/lib/clipboard.ts",
   "/src/lib/version.ts",
   "/src/components/CopyButton.tsx",

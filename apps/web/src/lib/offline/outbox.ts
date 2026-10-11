@@ -48,6 +48,18 @@ export interface OutboxRow {
   /** The last failure, in words. Kept so the user can be told why something is stuck. */
   readonly lastError?: string;
   /**
+   * The server refused this outright, so it will never be accepted.
+   *
+   * ⚠️ **Distinct from a failure that will pass**, and the distinction is what stops the queue from dying.
+   * A dropped connection, a 5xx or a timeout must be retried — **an entry recorded on a plane is delivered
+   * days later, and that is the whole point of the queue.** A 4xx that is not a conflict (the category was
+   * deleted, the payload is malformed) will fail identically for ever.
+   *
+   * **Without this flag both were handled by the same rule — attempts — which is either an infinite retry or
+   * a dropped change that only needed the network back.**
+   */
+  readonly permanent?: boolean;
+  /**
    * The server's current version, when it refused the change.
    *
    * ⚠️ **Kept so the conflict screen has something to show.** Round 3 compares "mine" with "theirs",
@@ -159,7 +171,11 @@ export async function resolveChange(id: string): Promise<void> {
 }
 
 /** Record a failure without losing the change. */
-export async function recordFailure(id: string, error: string, conflictVersion?: number): Promise<void> {
+export async function recordFailure(
+  id: string,
+  error: string,
+  options: { readonly permanent?: boolean; readonly conflictVersion?: number } = {},
+): Promise<void> {
   const rows = await readOutbox();
 
   await writeOutbox(
@@ -169,7 +185,8 @@ export async function recordFailure(id: string, error: string, conflictVersion?:
             ...row,
             attempts: row.attempts + 1,
             lastError: error,
-            ...(conflictVersion === undefined ? {} : { conflictVersion }),
+            ...(options.permanent === true ? { permanent: true } : {}),
+            ...(options.conflictVersion === undefined ? {} : { conflictVersion: options.conflictVersion }),
           }
         : row,
     ),

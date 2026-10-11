@@ -420,7 +420,7 @@ async function syncOne(id: string): Promise<boolean> {
      * this moment** — asking again later would show a third version that neither side ever saw.
      */
     if (status === 409) {
-      await recordFailure(id, "这笔记账在服务器上已被修改", undefined);
+      await recordFailure(id, "这笔记账在服务器上已被修改");
 
       await logOffline("DIAGNOSTIC:write-conflict", `${row.op} ${id.slice(0, 8)}`);
 
@@ -429,7 +429,13 @@ async function syncOne(id: string): Promise<boolean> {
 
     /** A 4xx other than 409 will never succeed, so it must not sit at the head of the queue. */
     if (status >= 400 && status < 500) {
-      await recordFailure(id, error instanceof Error ? error.message : String(error));
+      /**
+       * ⚠️ **Recorded as permanent, which is what stops it from being retried for ever** — and from being
+       * dropped after five attempts as though the network were the problem.
+       */
+      await recordFailure(id, error instanceof Error ? error.message : String(error), {
+        permanent: true,
+      });
 
       await logOffline(
         "DIAGNOSTIC:write-rejected",
@@ -463,12 +469,22 @@ export async function drainOutbox(): Promise<number> {
   let delivered = 0;
 
   for (const row of ordered) {
-    /** A change that a 4xx has already rejected is not retried for ever. */
-    if (row.lastError !== undefined && row.attempts > 0 && row.conflictVersion === undefined) {
-      const stillWorthTrying = row.attempts < MAX_ATTEMPTS;
+    /**
+     * ⚠️ **A change the server has refused outright is never retried, and never blocks the ones behind it.**
+     *
+     * `permanent` is set by `syncOne` when it sees a 4xx that is not a conflict. **Without this flag the queue
+     * had no way to tell "try again later" from "this will never work"**, and the two were handled by the same
+     * rule — attempts — which meant either retrying for ever or **dropping a change that only needed the
+     * network to come back.** The owner's queue is exactly the situation where that shows: entries recorded on
+     * a plane and delivered days later.
+     */
+    if (row.permanent === true) continue;
 
-      if (!stillWorthTrying) continue;
-    }
+    /**
+     * A transient failure is retried, but not for ever: five failed attempts is not going to succeed on the
+     * sixth without something changing.
+     */
+    if (row.attempts >= MAX_ATTEMPTS) continue;
 
     if (await syncOne(row.id)) delivered += 1;
   }
@@ -481,12 +497,14 @@ export async function drainOutbox(): Promise<number> {
 }
 
 /**
- * How many times a change is retried before it is left for the user.
+ * How many times a *transient* failure is retried before the change is left for the user.
  *
- * ⚠️ **A bounded number, because an unbounded one is a battery drain** — and because a change that has
- * failed five times is not going to succeed on the sixth without something changing. After this it stays
- * in the queue with its error, visible in the diagnostics screen, and **the user is told rather than the
- * program quietly retrying for ever.**
+ * ⚠️ **A bounded number, because an unbounded one is a battery drain** — and because a change that has failed
+ * five times is not going to succeed on the sixth without something changing. It stays in the queue with its
+ * error, visible in the diagnostics screen, and **the user is told rather than the program quietly retrying
+ * for ever.**
+ *
+ * ⚠️ **It does not apply to a permanent failure**, which is not retried at all — see `drainOutbox`.
  */
 const MAX_ATTEMPTS = 5;
 
