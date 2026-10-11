@@ -47,7 +47,7 @@ import {
   transactionsFromCacheCached,
 } from "./offline/localLedger.js";
 import { readSnapshot } from "./offline/storage.js";
-import { installQueryNotifier, refreshPending } from "./offline/write.js";
+import { installQueryNotifier, refreshPending, setServerIds } from "./offline/write.js";
 import { withLocalFallback } from "./offline/fallback.js";
 import { computeStats, monthRange, summaryFor } from "./offline/localStats.js";
 import { uuidV7 } from "./uuid.js";
@@ -400,6 +400,27 @@ export function useTransactions(given: TransactionFilters) {
             timeoutMs,
           }),
         local: async () => asLocalPage(filterLocally(await readLocalTransactions(), filters)),
+      }).then(async (answer) => {
+        /**
+         * ⚠️ **The server has spoken: record what it holds, then let the reconciliation run.**
+         *
+         * This is the step every earlier fix was missing. **The device cannot answer "does this entry still
+         * exist" from local state** — the owner's iPad had no marks and no queue, so nothing there remembered
+         * what he had deleted, while the entries were still on the server and still on his phone. **The
+         * server's list is the record, and this hands it over.**
+         *
+         * ⚠️ **`nextCursor === null` is what makes it safe**: only a month fetched to its end can be compared
+         * against local storage. **Comparing a partial page would queue deletions for everything on the next
+         * page** — the most destructive mistake available here.
+         *
+         * ⚠️ **`refreshPending` is what performs the repair**, because that is the chain already known to run.
+         */
+        if (answer.nextCursor === null) {
+          setServerIds(answer.items.map((entry) => entry.id));
+          void refreshPending();
+        }
+
+        return answer;
       }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.nextCursor ?? undefined,

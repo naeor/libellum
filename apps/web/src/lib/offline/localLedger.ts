@@ -1,7 +1,7 @@
 import type { Transaction, TransactionListResponse } from "@libellum/shared";
 
 import { logOffline } from "./diagnostics.js";
-import { readValue, writeValue } from "./storage.js";
+import { readSnapshot, readValue, writeValue } from "./storage.js";
 
 /**
  * Reading the ledger back out of the device.
@@ -361,6 +361,17 @@ export type LedgerMarks = Record<string, EntryMark>;
 
 /** Which entries are unsynced or deleted-locally. Never throws. */
 export async function readMarks(): Promise<LedgerMarks> {
+  /**
+   * ⚠️ **The memory copy wins when it exists, because it is the one this process last wrote.**
+   *
+   * ⚠️ **A missing key is not the same as an empty map, and this distinction has cost the user twice**: the
+   * iPad reported `read ledger-marks — 键不存在` while marks had been written there, and **a device with no
+   * marks cannot know what its owner asked to delete.**
+   */
+  const cached = readSnapshot<LedgerMarks>(LEDGER_MARKS_KEY);
+
+  if (cached !== null && typeof cached === "object") return cached;
+
   const stored = await readOwn<LedgerMarks>(LEDGER_MARKS_KEY);
 
   return stored === null || typeof stored !== "object" ? {} : stored;
@@ -368,7 +379,19 @@ export async function readMarks(): Promise<LedgerMarks> {
 
 /** Set or clear one entry's mark. */
 export async function setMark(id: string, mark: EntryMark | null): Promise<void> {
-  const all = await readMarks();
+  /**
+   * ⚠️ **Read from the synchronous snapshot, not from the disk.**
+   *
+   * The owner's iPad reported `read ledger-marks — 键不存在` while marks had demonstrably been written on that
+   * device earlier — **and a read that misses is exactly how this file has lost data before**: the write path is
+   * fired without being awaited, so an `await`-based read can be answered from before it.
+   *
+   * `readSnapshot` returns what is already in memory, which is what this process last wrote. **If nothing is in
+   * memory yet the marks have never been touched in this session, so an empty object is the truth** — and the
+   * first `writeOwn` will persist it together with the new mark.
+   */
+  const cached = readSnapshot<LedgerMarks>(LEDGER_MARKS_KEY);
+  const all: LedgerMarks = cached ?? {};
   const next = { ...all };
 
   if (mark === null || (mark.pending !== true && mark.deleted !== true)) delete next[id];
