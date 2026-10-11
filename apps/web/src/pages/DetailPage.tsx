@@ -18,8 +18,10 @@ import {
   filterLocally,
   lastLocalRead,
   ledgerSnapshotValue,
+  pendingEntriesValue,
   readLocalTransactions,
   subscribeLedger,
+  subscribePending,
 } from "../lib/offline/localLedger.js";
 import {
   hasLocalTransactions,
@@ -198,6 +200,13 @@ export function DetailPage(): React.JSX.Element {
    * precisely the component that was failing.
    */
   const localEntries = useLocalEntries(filters);
+
+  /**
+   * ⚠️ **The pending set comes from the same store mechanism as the ledger**, for the reason this
+   * project spent four hours learning: a value that travels through a React state update can be dropped
+   * on the device that needs it most.
+   */
+  const pending = useSyncExternalStore(subscribePending, pendingEntriesValue, pendingEntriesValue);
 
   const entries = useMemo(() => {
     const fromQuery = (list.data?.pages ?? []).flatMap((page) => page.items);
@@ -499,7 +508,28 @@ export function DetailPage(): React.JSX.Element {
                 <h2 className="py-2 text-xs text-muted">{formatDayLabel(day)}</h2>
                 <ul className="overflow-hidden rounded-card bg-surface">
                   {dayEntries.map((entry) => (
-                    <li key={entry.id}>
+                    <li
+                      key={entry.id}
+                      /**
+                       * ⚠️ **A pending entry is coloured, and this is not decoration.**
+                       *
+                       * The owner asked for it directly: "离线状态下新建出来的记账底色要特殊一些，比如把他们
+                       * 的背景（那一行的背景）换成浅红色之类的，用来提醒用户，现在还没被备份到服务器，只是在
+                       * 本地记账而已."
+                       *
+                       * He is right, and the reason is one of this project's own lessons: **"没有反馈"和
+                       * "没有生效"在用户看来没有区别.** A row identical to a saved one, on a device that has
+                       * not sent it anywhere, is a row the user will assume is safe — and if the device is lost
+                       * before the queue drains, that assumption is what loses the entry.
+                       *
+                       * ⚠️ **`--color-danger-soft` rather than a new token**, because it is the light surface
+                       * the palette already defines and it survives theming (**status colours do not follow the
+                       * brand colour** — see `COLORS.md`). It is also the shade the owner described. If
+                       * "unsynced" and "wrong" later need to be told apart, an amber warning token is the
+                       * honest fix; **using the error colour here is a deliberate, recorded choice.**
+                       */
+                      className={pending.has(entry.id) ? "bg-danger-soft" : undefined}
+                    >
                       <button
                         type="button"
                         onClick={() => void navigate(`/transactions/${entry.id}`)}

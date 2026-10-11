@@ -22,6 +22,7 @@ import {
   toLocalIso,
 } from "../lib/datetime.js";
 import { amountPlaceholder, currencyName, minorToInput, parseAmountInput } from "../lib/format.js";
+import { createEntry as createLocally, localEntry } from "../lib/offline/write.js";
 import { useCreateTransaction, useLedger, useQuickAmounts, useTransactions } from "../lib/queries.js";
 import { uuidV7 } from "../lib/uuid.js";
 
@@ -156,9 +157,17 @@ export function AddEntryPage(): React.JSX.Element {
     }
 
     try {
-      const created = await createEntry.mutateAsync({
-        id: uuidV7(),
-        idempotencyKey: uuidV7(),
+      /**
+       * ⚠️ **The id and the idempotency key are the same value, minted here.**
+       *
+       * That is what lets the entry exist — and be shown — before the server has ever heard of it, and it
+       * is what makes a replayed upload harmless: the server's `idempotency_key` is unique, so the second
+       * delivery finds the row it already made.
+       */
+      const id = uuidV7();
+      const input = {
+        id,
+        idempotencyKey: id,
         kind,
         amountCents,
         currency,
@@ -169,11 +178,51 @@ export function AddEntryPage(): React.JSX.Element {
         occurredTz: localTimeZone(),
         note: note.trim() === "" ? null : note.trim(),
         tagIds,
-      });
+      } as const;
 
-      setSaved(created);
+      const outcome = await createLocally(
+        input,
+        localEntry(input, ledger.data),
+      );
+
+      /**
+       * ⚠️ **A locally stored entry is still a saved entry.**
+       *
+       * The screen shows its success state either way, because the user's entry *is* recorded — on the
+       * device. The only difference is the marker the ledger puts on the row: **silently reporting a write
+       * that has not left the device is how somebody loses spending they believe they recorded.**
+       */
+      setSaved(outcome.entry);
     } catch (caught) {
-      setError(errorMessage(caught));
+      /**
+       * ⚠️ **Falling back to the local write when the server refuses.**
+       *
+       * A 5xx or a dropped connection is not a reason to lose what the user typed. The write goes to the
+       * device and the queue, and reaches the server when it can — which is the whole point of this round.
+       */
+      try {
+        const id = uuidV7();
+        const input = {
+          id,
+          idempotencyKey: id,
+          kind,
+          amountCents,
+          currency,
+          categoryId,
+          paymentMethodId,
+          occurredAt: toLocalIso(occurredAt),
+          occurredLocalDate: toLocalDate(occurredAt),
+          occurredTz: localTimeZone(),
+          note: note.trim() === "" ? null : note.trim(),
+          tagIds,
+        } as const;
+
+        const outcome = await createLocally(input, localEntry(input, ledger.data));
+
+        setSaved(outcome.entry);
+      } catch {
+        setError(errorMessage(caught));
+      }
     }
   }
 

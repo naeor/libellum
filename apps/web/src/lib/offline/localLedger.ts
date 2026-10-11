@@ -329,6 +329,74 @@ export async function readLocalTransactions(): Promise<readonly Transaction[]> {
  */
 export const LEDGER_MONTHS_KEY = "ledger-months";
 
+/**
+ * Which entries have not reached the server, and which were deleted on this device.
+ *
+ * ⚠️ **A separate key, not a field on the entries.**
+ *
+ * The entries are the server's response, stored as it arrived — that is what makes them usable for
+ * conflict comparison in round 3. **Sprinkling our own bookkeeping through them would mean every
+ * future schema change to `Transaction` has to account for fields the server never sent.**
+ *
+ * | Value | Meaning |
+ * |---|---|
+ * | `pending: true` | The entry exists locally and has not been accepted by the server yet |
+ * | `deleted: true` | The entry was deleted on this device; the server has not been told |
+ *
+ * ⚠️ **A locally deleted entry stays in `ledger-months` rather than being removed.**
+ *
+ * Its stored copy is exactly what round 3 needs to show the user *what they deleted* while asking
+ * whether the delete should stand. **Keeping it costs a few hundred bytes; losing it costs the
+ * comparison.**
+ */
+export const LEDGER_MARKS_KEY = "ledger-marks";
+
+export interface EntryMark {
+  readonly pending?: boolean;
+  readonly deleted?: boolean;
+}
+
+/** Marks by entry id. */
+export type LedgerMarks = Record<string, EntryMark>;
+
+/** Which entries are unsynced or deleted-locally. Never throws. */
+export async function readMarks(): Promise<LedgerMarks> {
+  const stored = await readValue<LedgerMarks>(LEDGER_MARKS_KEY);
+
+  return stored === null || typeof stored !== "object" ? {} : stored;
+}
+
+/** Set or clear one entry's mark. */
+export async function setMark(id: string, mark: EntryMark | null): Promise<void> {
+  const all = await readMarks();
+  const next = { ...all };
+
+  if (mark === null || (mark.pending !== true && mark.deleted !== true)) delete next[id];
+  else next[id] = mark;
+
+  await writeValue(LEDGER_MARKS_KEY, next);
+
+  /**
+   * ⚠️ **The stored marks and the in-memory set are updated together**, so the row colouring on
+   * screen cannot disagree with what is actually queued. Two sources of truth for one fact is how the
+   * ledger's own cache went wrong.
+   */
+  publishPending(pendingFromMarks(next));
+}
+
+/** The entries a marks map says are stored but not yet on the server. */
+export function pendingFromMarks(marks: LedgerMarks): ReadonlySet<string> {
+  /**
+   * ⚠️ **A locally deleted entry is not "pending" for display purposes** — it is gone from the
+   * screen, so marking it would colour nothing. Its queue row still exists and still needs delivering.
+   */
+  return new Set(
+    Object.entries(marks)
+      .filter(([, mark]) => mark.pending === true && mark.deleted !== true)
+      .map(([id]) => id),
+  );
+}
+
 /** Every month's entries, keyed by `YYYY-MM`. */
 export type StoredMonths = Record<string, readonly Transaction[]>;
 
@@ -352,13 +420,40 @@ export async function storeMonth(month: string, entries: readonly Transaction[])
   await writeValue(LEDGER_MONTHS_KEY, { ...all, [month]: entries });
 }
 
-/** Every entry the device holds, from every stored month. */
+/**
+ * Add or replace one entry in its month.
+ *
+ * ⚠️ **Used by the offline write path**, and it is the whole of "the change appears immediately":
+ * the screen reads this store, so a write here is on screen before the server hears anything.
+ */
+export async function upsertEntry(entry: Transaction): Promise<void> {
+  const month = entry.occurredLocalDate.slice(0, 7);
+  const all = await readStoredMonths();
+  const existing = all[month] ?? [];
+
+  const without = existing.filter((candidate) => candidate.id !== entry.id);
+
+  await writeValue(LEDGER_MONTHS_KEY, { ...all, [month]: [...without, entry] });
+}
+
+/**
+ * Every entry the device holds, from every stored month.
+ *
+ * ⚠️ **Locally deleted entries are left out**, because the screen must not show them. They stay in
+ * storage for the conflict comparison in round 3 — see `LEDGER_MARKS_KEY` — so the filtering happens
+ * here, at the one place everything reads through.
+ */
 export async function readStoredEntries(): Promise<readonly Transaction[]> {
   const all = await readStoredMonths();
+  const marks = await readMarks();
   const found = new Map<string, Transaction>();
 
   for (const entries of Object.values(all)) {
-    for (const entry of entries) found.set(entry.id, entry);
+    for (const entry of entries) {
+      if (marks[entry.id]?.deleted === true) continue;
+
+      found.set(entry.id, entry);
+    }
   }
 
   return [...found.values()];
@@ -413,6 +508,51 @@ function publishLedger(entries: readonly Transaction[]): void {
   ledgerSnapshot = entries;
 
   for (const listener of ledgerListeners) listener();
+}
+
+/**
+ * Which entries are stored but not yet on the server — held outside React, like the ledger itself.
+ *
+ * ⚠️ **The same mechanism as the ledger, for the same reason.**
+ *
+ * The owner asked for offline entries to be visually marked: "离线状态下新建出来的记账底色要特殊一些…
+ * 用来提醒用户，现在还没被备份到服务器". That is a *value the screen reads*, and this project has already
+ * learned what happens when such a value travels through a React state update on his tablet: **it is
+ * dropped, and the screen shows a state that is not true.**
+ *
+ * ⚠️ **A `Set` replaced wholesale, never mutated.** `useSyncExternalStore` compares snapshots by
+ * identity, so mutating one would be "no change" as far as React is concerned — **and the marker would
+ * never appear, which is precisely the failure mode being avoided.**
+ */
+let pendingSnapshot: ReadonlySet<string> = new Set();
+const pendingListeners = new Set<() => void>();
+
+/** Entry ids that are stored locally and not yet accepted by the server. */
+export function pendingEntriesValue(): ReadonlySet<string> {
+  return pendingSnapshot;
+}
+
+/** Subscribe to changes, for `useSyncExternalStore`. */
+export function subscribePending(listener: () => void): () => void {
+  pendingListeners.add(listener);
+
+  return () => {
+    pendingListeners.delete(listener);
+  };
+}
+
+/**
+ * Replace the pending set and tell React.
+ *
+ * ⚠️ **Skips the notification when nothing changed**, because this is called after every write and every
+ * read — and a notify that changes nothing is a render that changes nothing.
+ */
+export function publishPending(ids: ReadonlySet<string>): void {
+  if (ids.size === pendingSnapshot.size && [...ids].every((id) => pendingSnapshot.has(id))) return;
+
+  pendingSnapshot = new Set(ids);
+
+  for (const listener of pendingListeners) listener();
 }
 
 /**
