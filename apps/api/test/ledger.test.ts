@@ -915,6 +915,69 @@ describe("PATCH and DELETE /api/v1/transactions/:id", () => {
     expect(accepted.json()).toMatchObject({ amountCents: 200 });
   });
 
+  it("⚠️ takes the server's value for every open conflict when asked", async () => {
+    /**
+     * ⚠️ **This is what the user's "clear the marks" means**: "清空印记就意味着不选了使用服务器当前的值，在清空
+     * 印记时给服务器留一条消息…告诉服务器，这个冲突已经解决了，使用服务器当前的值."
+     *
+     * ⚠️ **And it has to actually close them**, or the next pull hands the same questions back — **which is exactly
+     * what he hit**: a row that stayed yellow however many times he cleared it locally.
+     */
+    const cookie = await signUp("mama");
+    const created = await record(cookie, { amountCents: 100 });
+    const id = (created.json() as { id: string }).id;
+
+    /** Somebody moves it to 200. */
+    await app.inject({
+      method: "PATCH",
+      url: `/api/v1/transactions/${id}`,
+      headers: { cookie },
+      payload: {
+        amountCents: 200,
+        version: 1,
+        changes: [{ field: "amountCents", base: 100, wanted: 200, chain: [100, 200] }],
+      },
+    });
+
+    /** ⚠️ A device that still believes 100 asks for 300 — two decisions from one starting point. */
+    const conflicted = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/transactions/${id}`,
+      headers: { cookie },
+      payload: {
+        amountCents: 300,
+        version: 1,
+        changes: [{ field: "amountCents", base: 100, wanted: 300, chain: [100, 300] }],
+      },
+    });
+
+    expect(conflicted.statusCode).toBe(409);
+
+    /** It is listed as open. */
+    const listed = await app.inject({ method: "GET", url: "/api/v1/conflicts", headers: { cookie } });
+
+    expect((listed.json() as { conflicts: unknown[] }).conflicts).toHaveLength(1);
+
+    /** ⚠️ And "use the server's value" closes it. */
+    const resolved = await app.inject({
+      method: "POST",
+      url: "/api/v1/conflicts/resolve-with-server",
+      headers: { cookie },
+    });
+
+    expect(resolved.statusCode).toBe(200);
+    expect(resolved.json()).toMatchObject({ resolved: 1 });
+
+    const after = await app.inject({ method: "GET", url: "/api/v1/conflicts", headers: { cookie } });
+
+    expect((after.json() as { conflicts: unknown[] }).conflicts).toHaveLength(0);
+
+    /** ⚠️ **And the entry keeps the server's value** — deferring is a decision, not a reset. */
+    const entry = await app.inject({ method: "GET", url: `/api/v1/transactions/${id}`, headers: { cookie } });
+
+    expect(entry.json()).toMatchObject({ amountCents: 200 });
+  });
+
   it("⚠️ accepts an edit to a field nobody else touched, even from a stale version", async () => {
     /**
      * ⚠️ **A field decides its own fate.** Another device changed the note; this one changes the amount from the

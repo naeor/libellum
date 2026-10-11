@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Button } from "../components/Button.js";
 import { InnerPage } from "../components/Layouts.js";
 import { clearAllMarks, readStoredMonths } from "../lib/offline/localLedger.js";
+import { deferConflictsToServer } from "../lib/offline/sync.js";
 
 /**
  * The ledger's own "more" screen.
@@ -51,6 +52,13 @@ export function LedgerMorePage(): React.JSX.Element {
           <Button
             onClick={() => {
               void (async () => {
+                /**
+                 * ⚠️ **The server is told as well, and that is the half that makes this work.**
+                 *
+                 * "清空印记就意味着不选了使用服务器当前的值" — **which is a decision the server has to hear**, or it
+                 * keeps raising the same questions and the next pull hands them back.
+                 */
+                await deferConflictsToServer();
                 await clearAllMarks();
                 setCleared(true);
               })();

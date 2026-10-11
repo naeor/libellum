@@ -681,6 +681,51 @@ export function registerTransactionRoutes(
   });
 
   // -------------------------------------------------------------------------
+  // POST /api/v1/conflicts/resolve-with-server
+  // -------------------------------------------------------------------------
+  /**
+   * Settle every open conflict by taking the server's value.
+   *
+   * ⚠️ **This is what the owner decided "clear the marks" means**: "清空印记就意味着不选了使用服务器当前的值，
+   * 在清空印记时给服务器留一条消息，联网时发出内容大概就是告诉服务器，这个冲突已经解决了，使用服务器当前的值."
+   *
+   * ⚠️ **It has to reach the server, and that is the whole point.** Clearing only the local marks left the raised
+   * rows in place, **so the next pull handed the same questions back** — which is exactly what he hit: the row
+   * stayed yellow however many times he cleared it.
+   *
+   * ⚠️ **The permanent record is written for every one of them**, so "why did this entry change by itself" has an
+   * answer: **the user chose to defer to the server, and that is a decision, not an absence of one.**
+   */
+  app.post("/api/v1/conflicts/resolve-with-server", { preHandler: requireAuth }, async (request) => {
+    const userId = request.currentUser!.id;
+    const bookId = await currentBookId(prisma, userId);
+    const device = deviceIdFrom(request);
+
+    const open = await openConflicts(prisma, bookId);
+    const byTransaction = new Map<string, typeof open>();
+
+    for (const row of open) {
+      byTransaction.set(row.transactionId, [...(byTransaction.get(row.transactionId) ?? []), row]);
+    }
+
+    for (const [transactionId, rows] of byTransaction) {
+      /**
+       * ⚠️ **The server's value for each field is what gets recorded as the resolution** — the rows carry it, and
+       * it is what every device will already be showing after the next fetch. **Nothing is written to the entry
+       * itself**, because the server's value is what it holds and the device is the one that has to catch up.
+       */
+      const settled: Record<string, unknown> = {};
+
+      for (const row of rows) settled[row.field] = row.serverValue;
+
+      await settleConflicts(prisma, { transactionId, bookId, deviceId: device, settled });
+    }
+
+
+    return { resolved: byTransaction.size };
+  });
+
+  // -------------------------------------------------------------------------
   // GET /api/v1/conflicts
   // -------------------------------------------------------------------------
   /**

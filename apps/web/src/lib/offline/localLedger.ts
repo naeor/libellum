@@ -490,12 +490,24 @@ export async function readMarks(): Promise<LedgerMarks> {
  * removed, and the ledger is left exactly as the server sees it.**
  */
 export async function clearAllMarks(): Promise<void> {
+  const before = await readMarks();
+  const hadConflict = Object.values(before).some((mark) => mark.conflict !== undefined);
+
   await writeOwn(LEDGER_MARKS_KEY, {});
 
   publishPending(new Set());
   publishDeleted(new Set());
+  /**
+   * ⚠️ **The questions are cleared locally too, and the server is told separately** — see `deferConflictsToServer`.
+   * Without the second half the rows stayed on the server, the next pull returned them, **and the button looked
+   * like it did nothing.**
+   */
+  publishConflicts([]);
 
-  await logOffline("DIAGNOSTIC:marks-cleared", "用户清空了全部待同步印记");
+  await logOffline(
+    "DIAGNOSTIC:marks-cleared",
+    hadConflict ? "用户清空印记：不再选择，以服务器为准" : "用户清空了全部待同步印记",
+  );
 }
 
 /**

@@ -532,6 +532,35 @@ export async function recordServerList(entries: readonly Transaction[]): Promise
  * device will fetch — **leaving a yellow row up after somebody settled it would be showing a question that has an
  * answer.**
  */
+/**
+ * Tell the server the user has settled every open conflict by taking its values.
+ *
+ * ⚠️ **This is what the owner decided "clear the marks" means**: "清空印记就意味着不选了使用服务器当前的值，在清空
+ * 印记时给服务器留一条消息…告诉服务器，这个冲突已经解决了，使用服务器当前的值."
+ *
+ * ⚠️ **And it has to reach the server, or the question comes straight back.** Clearing only the local marks left
+ * the raised rows in place, so the next pull returned them — **which is exactly what he hit**: a row that stayed
+ * yellow however many times he cleared it.
+ *
+ * ⚠️ **A failed send is reported and retried by the next sync**, never swallowed: **an instruction that is dropped
+ * is an instruction the user believes they gave.**
+ */
+export async function deferConflictsToServer(): Promise<boolean> {
+  const answer = await apiFetch<{ readonly resolved: number }>("/conflicts/resolve-with-server", {
+    method: "POST",
+    timeoutMs: 10_000,
+  }).catch(() => null);
+
+  if (answer === null) {
+    await logOffline("DIAGNOSTIC:conflicts-deferred", "告诉服务器「以服务器为准」失败，下次同步再试");
+
+    return false;
+  }
+
+  await logOffline("DIAGNOSTIC:conflicts-deferred", `已告诉服务器：${String(answer.resolved)} 笔以它为准`);
+
+  return true;
+}
 export async function pullConflicts(): Promise<number> {
   const answer = await apiFetch<{
     readonly conflicts: readonly {
