@@ -850,7 +850,76 @@ describe("GET /api/v1/summary", () => {
 });
 
 describe("PATCH and DELETE /api/v1/transactions/:id", () => {
-  it("refuses an update built on a stale version", async () => {
+  it("⚠️ refuses an update whose base is a value the server no longer holds", async () => {
+    /**
+     * ⚠️ **The old version of this test sent only a version and expected a 409 for any mismatch** — which could
+     * not tell "somebody changed a different field" from "somebody changed this one", and could not apply the
+     * owner's rule that **a device which merely fell behind should be brought up to date silently.**
+     *
+     * A change is now sent as **"from A to B"**, so the server can tell an edit made against a current view from
+     * an edit made against a view that no longer exists.
+     */
+    const cookie = await signUp("mama");
+    const created = await record(cookie, { amountCents: 100 });
+    const id = (created.json() as { id: string }).id;
+
+    /** Somebody else moves the amount to 200. */
+    await app.inject({
+      method: "PATCH",
+      url: `/api/v1/transactions/${id}`,
+      headers: { cookie },
+      payload: {
+        amountCents: 200,
+        version: 1,
+        changes: [{ field: "amountCents", base: 100, wanted: 200, chain: [100, 200] }],
+      },
+    });
+
+    /** ⚠️ **And now a device that still believes the amount is 100 asks for 300.** Two decisions, one start. */
+    const stale = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/transactions/${id}`,
+      headers: { cookie },
+      payload: {
+        amountCents: 300,
+        version: 1,
+        changes: [{ field: "amountCents", base: 100, wanted: 300, chain: [100, 300] }],
+      },
+    });
+
+    expect(stale.statusCode).toBe(409);
+    expect(stale.json()).toMatchObject({ code: "version_conflict" });
+  });
+
+  it("⚠️ accepts a stale version when the server still holds the device's base", async () => {
+    /**
+     * ⚠️ **The case the old rule got wrong, in the owner's own words**: "如果 pad 上传的改动是从 A 改成 C 再改成
+     * B 而服务器记录的是 A，那也可以改成 B."
+     */
+    const cookie = await signUp("mama");
+    const created = await record(cookie, { amountCents: 100 });
+    const id = (created.json() as { id: string }).id;
+
+    const accepted = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/transactions/${id}`,
+      headers: { cookie },
+      payload: {
+        amountCents: 200,
+        version: 1,
+        changes: [{ field: "amountCents", base: 100, wanted: 200, chain: [100, 150, 200] }],
+      },
+    });
+
+    expect(accepted.statusCode).toBe(200);
+    expect(accepted.json()).toMatchObject({ amountCents: 200 });
+  });
+
+  it("⚠️ accepts an edit to a field nobody else touched, even from a stale version", async () => {
+    /**
+     * ⚠️ **A field decides its own fate.** Another device changed the note; this one changes the amount from the
+     * value it read. **Both edits survive** — refusing here would throw away work nobody disagreed with.
+     */
     const cookie = await signUp("mama");
     const created = await record(cookie, { amountCents: 100 });
     const id = (created.json() as { id: string }).id;
@@ -859,18 +928,31 @@ describe("PATCH and DELETE /api/v1/transactions/:id", () => {
       method: "PATCH",
       url: `/api/v1/transactions/${id}`,
       headers: { cookie },
-      payload: { amountCents: 200, version: 1 },
+      payload: {
+        note: "别人的备注",
+        version: 1,
+        changes: [{ field: "note", base: null, wanted: "别人的备注", chain: [null, "别人的备注"] }],
+      },
     });
 
-    const stale = await app.inject({
+    const accepted = await app.inject({
       method: "PATCH",
       url: `/api/v1/transactions/${id}`,
       headers: { cookie },
-      payload: { amountCents: 300, version: 1 },
+      payload: {
+        amountCents: 300,
+        version: 1,
+        changes: [{ field: "amountCents", base: 100, wanted: 300, chain: [100, 300] }],
+      },
     });
 
-    expect(stale.statusCode).toBe(409);
-    expect(stale.json()).toMatchObject({ code: "version_conflict" });
+    expect(accepted.statusCode).toBe(200);
+
+    const body = accepted.json() as { amountCents: number; note: string | null };
+
+    expect(body.amountCents).toBe(300);
+    /** ⚠️ **And the other device's note is still there** — nothing was overwritten. */
+    expect(body.note).toBe("别人的备注");
   });
 
   it("soft-deletes: gone from the list, still in the table", async () => {

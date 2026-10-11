@@ -415,6 +415,18 @@ model Transaction {
   version        Int      @default(1)
   idempotencyKey String   @unique @map("idempotency_key") @db.Uuid
 
+  /// Every value this row has ever held, newest last, capped at `HISTORY_LIMIT`.
+  ///
+  /// ⚠️ **This is what decides whether a device's value is a conflict or just a stale copy.**
+  /// The owner's rule: **"除非本地设备的值不在服务器的值的历史数据中（也就是本地 A，服务器 B 到 D，
+  /// 这种情况是冲突），否则一律用服务器数据覆盖本地数据."** A value the server has held before means the
+  /// device merely fell behind; a value it has never held is one the device invented.
+  ///
+  /// ⚠️ **A JSON column rather than a history table.** A row re-edited twenty times would be twenty rows, and
+  /// the only question ever asked of this data is "has this value appeared" — **which a list answers in one
+  /// read without a join.** The trade is that history cannot be queried by content, which nothing needs.
+  valueHistory Json @default("[]") @map("value_history")
+
   createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
@@ -424,6 +436,8 @@ model Transaction {
   category      Category       @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   paymentMethod PaymentMethod? @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull)
   tags          TransactionTag[]
+  /// ⚠️ **Disagreements about this entry**, one row per field — see `TransactionConflict`.
+  conflicts     TransactionConflict[]
 
   // The list view always asks for one book's live rows newest-first; cursor
   // pagination walks (occurred_local_date, created_at, id).
@@ -439,6 +453,79 @@ model Transaction {
   /// "Show me everything the 20261010-153012 import brought in."
   @@index([bookId, importRef])
   @@map("transactions")
+}
+
+/// A field two devices disagree about, waiting for somebody to settle it.
+///
+/// ⚠️ **The conflict lives on the server, not on the device that noticed it** — and that is what makes the
+/// owner's rule work: **"如果用户已经对这个冲突做了一次确认，那说明用户已经肯定这次账单的数值了；
+/// 此时没必要让用户在别的设备上再肯定一次."** A device that was offline when the decision was made finds no
+/// conflict here on its next sync, adopts the settled value, and is never asked again.
+///
+/// ⚠️ **One row per field, not per entry.** Two devices can disagree about the amount while agreeing about
+/// everything else, and **asking about the whole entry would make the user re-decide the fields nobody
+/// questioned.**
+model TransactionConflict {
+  id            String   @id @default(uuid()) @db.Uuid
+  transactionId String   @map("transaction_id") @db.Uuid
+  bookId        String   @map("book_id") @db.Uuid
+
+  /// Which field, named as the screens name it (`amountCents`, `note`, …).
+  field String @db.VarChar(32)
+
+  /// What the server held when the conflict was recorded.
+  serverValue Json @map("server_value")
+  /// What each side wanted, with the device that wanted it — see `ConflictClaim`.
+  claims Json @default("[]")
+  /// Every value this field had held by the time the conflict was raised. **Shown to the user**, because
+  /// "which value did you mean" is much easier to answer next to the history.
+  history Json @default("[]")
+
+  /// ⚠️ Null while unresolved. A resolved row is kept for a short while so every device learns the answer,
+  /// then deleted — **the permanent record of what happened is `ConflictResolution` below.**
+  resolvedAt   DateTime? @map("resolved_at") @db.Timestamptz(6)
+  resolvedValue Json?    @map("resolved_value")
+  resolvedBy    String?  @map("resolved_by") @db.VarChar(64)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  /// The sync loop looks for open conflicts for one book, every time a device acts.
+  @@index([bookId, resolvedAt])
+  @@index([transactionId])
+  @@map("transaction_conflicts")
+}
+
+/// What happened, in full — kept after the conflict row is gone.
+///
+/// ⚠️ **The owner asked for this in as much detail as it takes**: "最好还能记录冲突是哪两台设备传上来的，
+/// 他们传出来的结果分别是什么，服务器原来的值是什么，最后改成了什么等等，反正多几行字也占不了多少空间."
+///
+/// **And it is the only thing that can answer "why did this entry change by itself" a week later.**
+model ConflictResolution {
+  id            String   @id @default(uuid()) @db.Uuid
+  transactionId String   @map("transaction_id") @db.Uuid
+  bookId        String   @map("book_id") @db.Uuid
+  field         String   @db.VarChar(32)
+
+  /// The value the server held when the disagreement was noticed.
+  serverValue Json @map("server_value")
+  /// One entry per device: its id, the chain it tried to send, and when it tried.
+  claims Json @default("[]")
+
+  /// What it was settled to, by which device, and when.
+  resolvedValue Json      @map("resolved_value")
+  resolvedBy    String    @map("resolved_by") @db.VarChar(64)
+  resolvedAt    DateTime  @map("resolved_at") @db.Timestamptz(6)
+  /// When the original conflict was raised.
+  raisedAt DateTime @map("raised_at") @db.Timestamptz(6)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([bookId, resolvedAt])
+  @@index([transactionId])
+  @@map("conflict_resolutions")
 }
 
 model TransactionTag {

@@ -18,6 +18,17 @@ import {
   resolvePaymentMethodId,
   resolveTagIds,
 } from "../ledger/access.js";
+import {
+  appendHistory,
+  asArray,
+  CONFLICT_FIELDS,
+  judge,
+  openConflicts,
+  raiseConflict,
+  settleConflicts,
+  valuesSeen,
+  type ConflictField,
+} from "../lib/conflicts.js";
 import { badRequest, conflict, notFound } from "../lib/errors.js";
 
 const DEFAULT_PAGE_SIZE = 50;
@@ -121,6 +132,26 @@ function decodeCursor(raw: string): { d: string; c: string; i: string } {
   return cursor;
 }
 
+/** Which device is speaking. */
+function deviceIdFrom(request: FastifyRequest): string {
+  const header = request.headers["x-libellum-device"];
+
+  return typeof header === "string" && header.length > 0 ? header.slice(0, 64) : "unknown-device";
+}
+
+/**
+ * One field's current value on a row, in the shape the conflict rules compare.
+ *
+ * ⚠️ **The row's own shape, not the DTO's.** `amountCents` is a bigint here and a number there, and comparing a
+ * bigint against the number a device sent would call every amount a conflict — **a mistake that would make the
+ * yellow mark appear on every single edit.**
+ */
+function currentFieldValue(row: TransactionRow, field: ConflictField): unknown {
+  if (field === "amountCents") return Number(row.amountCents);
+  if (field === "tagIds") return row.tags.map((link) => link.tag.id);
+
+  return (row as unknown as Record<string, unknown>)[field];
+}
 function toDto(row: TransactionRow): TransactionDto {
   return {
     id: row.id,
@@ -492,35 +523,89 @@ export function registerTransactionRoutes(
 
     const existing = await prisma.transaction.findFirst({
       where: { id, bookId, deletedAt: null },
-      select: { id: true, version: true, kind: true },
+      include: TRANSACTION_INCLUDE,
     });
 
     if (!existing) throw notFound("transaction_missing", "找不到这笔记账。");
 
-    // Optimistic lock: if somebody else changed this entry since the client
-    // loaded it, refuse rather than silently overwrite their edit.
-    if (body.version !== existing.version) {
-      /**
-       * ⚠️ **The current row goes back with the refusal, and that is what makes the merge possible.**
-       *
-       * The client has to know *which fields* the two sides disagree about, and it cannot work that out without
-       * the server's copy. **A second request would race** — the row can change again between the refusal and the
-       * follow-up read, so the merge would be computed against a version that never caused the conflict.
-       *
-       * ⚠️ **Merging on the server instead was rejected**: the automatic decisions would then happen where the
-       * user cannot see them, and the owner's rule is **"自动合了哪些必须显示出来."** A merge is only reviewable
-       * if the client can show what it did.
-       */
-      const current = await prisma.transaction.findFirst({
-        where: { id, bookId },
-        include: TRANSACTION_INCLUDE,
-      });
+    /**
+     * ⚠️ **The conflict decision, and it replaces a bare version check.**
+     *
+     * The old rule refused whenever the versions differed — **which cannot tell "somebody else changed a
+     * different field" from "somebody else changed this one"**, and could not apply the owner's rule that a
+     * device which merely fell behind should be brought up to date silently:
+     *
+     * > **"只有在服务器的数值是 C，而某台设备上传的请求是把数字从 A 改成 B 时才会触发冲突机制."**
+     *
+     * ⚠️ **The device sends the *chain* of values it passed through while offline** — "设备本地在恢复网络上传
+     * 时要把从断网开始的每一步改动都上传" — so `base` is the chain's first link and `wanted` is its last, **and
+     * the ones in between go into the history**, which is what lets a later device recognise a value the server
+     * has already held.
+     *
+     * ⚠️ **A field decides its own fate.** Two devices that changed different fields both keep their work, and
+     * only the field they both changed becomes a question.
+     */
+    const changes = body.changes ?? [];
+    const settledFields: Record<string, unknown> = {};
 
-      throw conflict(
-        "version_conflict",
-        "这笔记账在别处被改过。",
-        current === null ? undefined : { current: toDto(current) },
+    for (const change of changes) {
+      const field = change.field as ConflictField;
+
+      if (!CONFLICT_FIELDS.includes(field)) continue;
+
+      const verdict = judge(
+        field,
+        change.base,
+        change.wanted,
+        currentFieldValue(existing, field),
+        body.version,
+        existing.version,
       );
+
+      if (verdict.kind === "accept") {
+        settledFields[field] = change.wanted;
+        continue;
+      }
+
+      /**
+       * ⚠️ **The device is behind, so the server's value is the answer** — the owner's rule, applied silently.
+       * It is not sent as a change, so the next read of this entry hands the device the server's value.
+       */
+      if (verdict.kind === "server-wins") continue;
+
+      await raiseConflict(prisma, {
+        transactionId: id,
+        bookId,
+        field,
+        serverValue: verdict.serverValue,
+        claim: {
+          deviceId: deviceIdFrom(request),
+          chain: change.chain,
+          at: new Date().toISOString(),
+        },
+        history: valuesSeen(asArray(existing.valueHistory), field, currentFieldValue(existing, field)),
+      });
+    }
+
+    /**
+     * ⚠️ **A conflict is reported with the server's copy and with the conflicts themselves**, so the client can
+     * show the user which fields are in question **without a second request that would race** — the row can
+     * change again between the refusal and a follow-up read.
+     */
+    const raised = await openConflicts(prisma, bookId).then((rows) =>
+      rows.filter((row) => row.transactionId === id),
+    );
+
+    if (raised.length > 0) {
+      throw conflict("version_conflict", "这笔记账在别处被改过。", {
+        current: toDto(existing),
+        conflicts: raised.map((row) => ({
+          field: row.field,
+          serverValue: row.serverValue,
+          claims: row.claims,
+          history: row.history,
+        })),
+      });
     }
 
     const kind = body.kind ?? existing.kind;
@@ -548,6 +633,42 @@ export function registerTransactionRoutes(
     if (body.tagIds !== undefined) {
       const tagIds = await resolveTagIds(prisma, bookId, body.tagIds);
       data["tags"] = { deleteMany: {}, create: tagIds.map((tagId) => ({ tagId })) };
+    }
+
+    /**
+     * ⚠️ **What this change actually altered, recorded so a later device can recognise it.** The chain's middle
+     * links are included even though the final value is what gets stored — **they are states the entry really
+     * passed through, and "the server has held this value" is the question a future conflict asks.**
+     */
+    const touched: Record<string, unknown> = {};
+
+    for (const change of changes) {
+      if (change.field in settledFields || change.wanted !== undefined) {
+        touched[change.field] = settledFields[change.field] ?? change.wanted;
+      }
+    }
+
+    if (Object.keys(touched).length > 0) {
+      data["valueHistory"] = appendHistory(
+        asArray(existing.valueHistory),
+        existing.version + 1,
+        touched,
+        deviceIdFrom(request),
+      ) as unknown;
+    }
+
+    /**
+     * ⚠️ **If the device settled a conflict with this change, every open question about this entry is closed** —
+     * "如果用户已经对这个冲突做了一次确认…此时没必要让用户在别的设备上再肯定一次." The permanent record is
+     * written first, so the decision never exists only in a row about to be deleted.
+     */
+    if (body.settlesConflict === true) {
+      await settleConflicts(prisma, {
+        transactionId: id,
+        bookId,
+        deviceId: deviceIdFrom(request),
+        settled: settledFields,
+      });
     }
 
     const updated = await prisma.transaction.update({

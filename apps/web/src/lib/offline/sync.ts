@@ -182,7 +182,7 @@ async function deliver(intent: Intent): Promise<boolean> {
     } else if (op === "update") {
       await apiFetch<Transaction>(`/transactions/${entry.id}`, {
         method: "PATCH",
-        body: updateBody(entry),
+        body: updateBody(entry, intent.mark),
       });
     } else {
       await apiFetch<unknown>(`/transactions/${entry.id}`, { method: "DELETE" });
@@ -248,7 +248,7 @@ async function deliver(intent: Intent): Promise<boolean> {
       const theirs = readConflict(error);
 
       if (theirs !== null) {
-        await recordConflict(entry, theirs);
+        await recordConflict(entry, theirs, null);
 
         failures.delete(entry.id);
 
@@ -294,8 +294,8 @@ async function deliver(intent: Intent): Promise<boolean> {
  * everywhere, and **the other device's work would be overwritten without anybody being asked.** With no base,
  * every difference becomes a question: more questions than strictly needed, and **never a silent overwrite.**
  */
-async function recordConflict(entry: Transaction, theirs: Transaction): Promise<void> {
-  await setConflict(entry.id, { mine: entry, theirs, base: null, at: Date.now() });
+async function recordConflict(entry: Transaction, theirs: Transaction, base: Transaction | null): Promise<void> {
+  await setConflict(entry.id, { mine: entry, theirs, base, at: Date.now() });
 }
 
 /**
@@ -343,8 +343,27 @@ function createBody(entry: Transaction, mark: EntryMark): CreateTransactionInput
   };
 }
 
-/** The body for changing an entry: everything the screen can edit, and the version it is based on. */
-function updateBody(entry: Transaction) {
+/**
+ * The body for changing an entry: everything the screen can edit, plus — **the part that decides conflicts** —
+ * what each field was before the user changed it.
+ *
+ * ⚠️ **"From A to B", not "set it to B"**, which is the owner's rule and the reason the server can tell an edit
+ * made against a current view from one made against a view that no longer exists:
+ * **"只有在服务器的数值是 C，而某台设备上传的请求是把数字从 A 改成 B 时才会触发冲突机制."**
+ *
+ * ⚠️ **A field with no recorded chain is left out of `changes` deliberately.** That happens for an edit made
+ * before this existed, and **inventing a base for it would be inventing a claim about what the user saw** — the
+ * server then treats the field as an ordinary write, which is what it did before.
+ */
+function updateBody(entry: Transaction, mark: EntryMark) {
+  const chain = mark.chain ?? {};
+  const changes = Object.entries(chain).map(([field, values]) => ({
+    field,
+    base: values[0],
+    wanted: values[values.length - 1],
+    chain: values,
+  }));
+
   return {
     version: entry.version,
     amountCents: entry.amountCents,
@@ -355,6 +374,8 @@ function updateBody(entry: Transaction) {
     occurredAt: entry.occurredAt,
     occurredLocalDate: entry.occurredLocalDate,
     occurredTz: entry.occurredTz,
+    /** ⚠️ Omitted when empty, so an old-style write stays exactly that. */
+    ...(changes.length === 0 ? {} : { changes }),
   };
 }
 

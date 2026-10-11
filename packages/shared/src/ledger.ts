@@ -272,6 +272,41 @@ export const updateTransactionSchema = z.object({
   tagIds: z.array(uuidSchema).max(MAX_TAGS_PER_TRANSACTION).optional(),
   /** Optimistic lock: the version the client last saw. */
   version: z.number().int().positive(),
+
+  /**
+   * The values a device passed through while it was offline, one entry per field it changed.
+   *
+   * ⚠️ **A change is sent as "from A to B", not as "set it to B"** — the owner's rule, and the whole basis of the
+   * conflict decision: **"只有在服务器的数值是 C，而某台设备上传的请求是把数字从 A 改成 B 时才会触发冲突机制."**
+   * Without the `base` the server cannot tell an edit made against a current view from an edit made against a
+   * view that no longer exists.
+   *
+   * ⚠️ **`chain` carries every step, not just the two ends**: "设备本地在恢复网络上传时要把从断网开始的每一步
+   * 改动都上传" — the ones in between become history, which is what lets a later device recognise a value the
+   * server has already held.
+   */
+  changes: z
+    .array(
+      z.object({
+        field: z.string().min(1).max(32),
+        /** What the device read before it started. */
+        base: z.unknown(),
+        /** What the user wants it to be. */
+        wanted: z.unknown(),
+        /** Every value it passed through, oldest first. */
+        chain: z.array(z.unknown()).max(64),
+      }),
+    )
+    .max(32)
+    .optional(),
+
+  /**
+   * Whether this change is the user settling a conflict.
+   *
+   * ⚠️ **It closes every open question about this entry, on every device**: "如果用户已经对这个冲突做了一次确认…
+   * 此时没必要让用户在别的设备上再肯定一次."
+   */
+  settlesConflict: z.boolean().optional(),
 });
 export type UpdateTransactionInput = z.infer<typeof updateTransactionSchema>;
 

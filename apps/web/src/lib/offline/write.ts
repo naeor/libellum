@@ -290,6 +290,7 @@ export async function updateEntry(
   input: UpdateTransactionInput,
   apply: (current: Transaction) => Transaction,
 ): Promise<WriteOutcome | null> {
+  const previousMark = (await readMarks())[id];
   const current = await findStoredEntry(id);
 
   /**
@@ -315,11 +316,22 @@ export async function updateEntry(
    * agreeing on a version is what lets the next edit be based on it** — and if they ever drift apart, the
    * conflict screen is where the user settles it, with both versions in front of them.
    */
+  /**
+   * ⚠️ **What changed, remembered as "from A to B" — the piece that was missing.**
+   *
+   * The owner's rule is that a change travels with its *starting* value as well as its destination:
+   * **"只有在服务器的数值是 C，而某台设备上传的请求是把数字从 A 改成 B 时才会触发冲突机制."** Without the base
+   * the server cannot tell an edit made against a current view from one made against a view that no longer
+   * exists — **and the fallback was to ask about everything, which is what put the yellow mark on edits nobody
+   * disagreed with.**
+   */
+  const chain = extendChain(previousMark?.chain, current, apply(current));
+
   const next: Transaction = { ...apply(current), version: current.version + 1 };
 
   await upsertEntry(next);
   /** ⚠️ synced: true because the server already has this entry, so a sync changes it rather than creating it. */
-  await setMark(id, { pending: true, synced: true });
+  await setMark(id, { pending: true, synced: true, chain });
   await afterWrite();
 
   if (isAccountOffline()) {
@@ -406,6 +418,55 @@ export async function resolveConflict(id: string, settled: Transaction): Promise
   await afterWrite();
 
   await logOffline("DIAGNOSTIC:conflict-settled", `用户选定 ${id.slice(0, 8)}`);
+}
+
+/** The editable fields, in the order the conflict screen lists them. */
+const EDITABLE_FIELDS: readonly string[] = [
+  "kind",
+  "amountCents",
+  "currency",
+  "categoryId",
+  "paymentMethodId",
+  "occurredAt",
+  "note",
+  "tagIds",
+];
+
+/** One field's value, in the form the server compares — tags as ids, not as objects. */
+function fieldValue(entry: Transaction, field: string): unknown {
+  if (field === "tagIds") return entry.tags.map((tag) => tag.id);
+
+  return (entry as unknown as Record<string, unknown>)[field];
+}
+
+/**
+ * Extend the record of what this device changed, one chain per field.
+ *
+ * ⚠️ **The first link never moves.** A device that edits the amount twice while offline reports `[30, 40, 50]` —
+ * **the base is still 30**, and that is what the server compares the row's current value against. Replacing the
+ * chain on the second edit would make it `[40, 50]`, the base would look current, **and the change would be
+ * accepted against a view the user never had** — which is the exact situation conflicts exist to catch.
+ *
+ * ⚠️ **Only the fields that actually changed are recorded**, so a chain stays about the field the user touched
+ * rather than becoming a snapshot of the whole entry on every keystroke.
+ */
+function extendChain(
+  existing: Readonly<Record<string, readonly unknown[]>> | undefined,
+  before: Transaction,
+  after: Transaction,
+): Record<string, readonly unknown[]> {
+  const chains: Record<string, readonly unknown[]> = { ...existing };
+
+  for (const field of EDITABLE_FIELDS) {
+    const was = fieldValue(before, field);
+    const now = fieldValue(after, field);
+
+    if (JSON.stringify(was) === JSON.stringify(now)) continue;
+
+    chains[field] = [...(chains[field] ?? [was]), now];
+  }
+
+  return chains;
 }
 
 /** One entry from the device's store, or `null`. */

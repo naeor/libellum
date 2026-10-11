@@ -391,6 +391,25 @@ export interface EntryMark {
   /** The tags to create it with, kept because `Transaction` does not carry their ids. */
   readonly tagIds?: readonly string[];
   /**
+   * Every value this device passed through while working offline, one entry per field.
+   *
+   * ⚠️ **A change is remembered as "from A to B", not as "set it to B"** — the owner's rule, and the whole basis
+   * of the conflict decision:
+   *
+   * > **"只有在服务器的数值是 C，而某台设备上传的请求是把数字从 A 改成 B 时才会触发冲突机制."**
+   *
+   * ⚠️ **And every step is kept, not just the two ends**: "设备本地在恢复网络上传时要把从断网开始的每一步改动都
+   * 上传." The first link is the base the server compares against, the last is what the user wants, and **the ones
+   * in between become the server's value history** — which is what lets a later device recognise a value the
+   * server has already held.
+   *
+   * ⚠️ **This is the piece that was missing**, and its absence is why every offline edit looked like a conflict:
+   * without a recorded base there was nothing to compare against, so the honest-looking fallback was to ask about
+   * everything.
+   */
+  readonly chain?: Readonly<Record<string, readonly unknown[]>>;
+
+  /**
    * Both versions of an entry that could not be sent because somebody else changed it.
    *
    * ⚠️ **The two copies are stored here rather than fetched again when the screen opens.** The server's copy

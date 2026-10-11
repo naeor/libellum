@@ -1,5 +1,22 @@
 import { apiErrorSchema } from "@libellum/shared";
 
+/**
+ * The device id, for the request header.
+ *
+ * ⚠️ **Read synchronously from a value `device.ts` keeps in memory**, because a request header cannot await.
+ * `primeDeviceId()` fills it before the first request goes out; **until then the header is omitted rather than
+ * guessed**, and the server records the change as coming from an unidentified device — **which is honest, and
+ * better than every device sharing one made-up name.**
+ */
+let deviceIdHeader = "";
+
+export function primeDeviceId(id: string): void {
+  deviceIdHeader = id;
+}
+
+function deviceHeader(): string {
+  return deviceIdHeader;
+}
 export class ApiRequestError extends Error {
   readonly status: number;
   readonly code: string;
@@ -78,7 +95,14 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
   const init: RequestInit = {
     method: options.method ?? "GET",
     credentials: "same-origin",
-    headers: { accept: "application/json" },
+    /**
+     * ⚠️ **Every request says which device it came from.**
+     *
+     * The conflict record has to answer "which two devices disagreed, and what did each send" — the owner asked
+     * for that by name — **and the server cannot tell one device from another without being told.** Sending it on
+     * every request keeps that fact in one place rather than being passed down through every call site.
+     */
+    headers: { accept: "application/json", "x-libellum-device": deviceHeader() },
     signal: controller.signal,
   };
 

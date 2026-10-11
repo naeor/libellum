@@ -9,6 +9,8 @@ import { AppShell } from "./components/Layouts.js";
 import { OfflineFillProvider } from "./components/OfflineFillProvider.js";
 import { UndoProvider } from "./components/UndoProvider.js";
 import { CACHE_MAX_AGE_MS, cachePersister, shouldPersistQuery } from "./lib/offline/cache.js";
+import { primeDeviceId } from "./lib/api.js";
+import { deviceId } from "./lib/offline/device.js";
 import { startSyncTriggers } from "./lib/offline/syncController.js";
 import { AboutPage } from "./pages/AboutPage.js";
 import { AddEntryPage } from "./pages/AddEntryPage.js";
@@ -116,6 +118,14 @@ function AppRoutes(): React.JSX.Element {
    * 发现变量为零时，就把它上传到服务器上，然后把它的变量改成一."** Delivery is what makes it synced, and
    * delivery is what removes it from the queue — **one action, not two that can disagree.**
    */
+  /**
+   * ⚠️ **The device tells the server who it is before the first request goes out**, because the conflict record
+   * has to answer "which two devices disagreed" — and a header cannot wait for a promise.
+   */
+  useEffect(() => {
+    void deviceId().then(primeDeviceId);
+  }, []);
+
   useEffect(() => startSyncTriggers(), []);
 
   // Wait for the first /auth/me before deciding where to send the visitor,
