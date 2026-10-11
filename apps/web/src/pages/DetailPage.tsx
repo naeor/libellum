@@ -1,5 +1,5 @@
 import { CURRENCIES, type CurrencySummary, type Transaction, type TransactionKind } from "@libellum/shared";
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 
 import { useAuth } from "../auth/AuthProvider.js";
@@ -25,6 +25,8 @@ import {
   subscribeDeleted,
   subscribePending,
 } from "../lib/offline/localLedger.js";
+import { logOffline } from "../lib/offline/diagnostics.js";
+import { syncNow } from "../lib/offline/syncController.js";
 import {
   hasLocalTransactions,
   useLedger,
@@ -220,6 +222,50 @@ export function DetailPage(): React.JSX.Element {
    */
   const deleted = useSyncExternalStore(subscribeDeleted, deletedEntriesValue, deletedEntriesValue);
 
+  /**
+   * ⚠️ **The refresh button: read the device again, and deliver what is waiting.**
+   *
+   * The owner asked for both halves in one sentence: "点击刷新按钮时，它会重新渲染这个网页。并且与此同时触发一次
+   * 联网同步判定."
+   *
+   * ⚠️ **He is right that they belong together, and the reason is that they are the same question.** "Show me
+   * what is really there" and "make what I did really reach the server" are two halves of *is my ledger in
+   * step* — and a user who has to press one button after another is being made to guess which half is wrong.
+   *
+   * ⚠️ **`readLocalTransactions` is what re-renders**, because the ledger on screen is read from the store this
+   * publishes to. Reloading the page would also "re-render" and would lose the scroll position and the month
+   * the user was looking at — **so the honest reading of "重新渲染这个网页" is "show me the current state
+   * again", not "reload".**
+   */
+  const [refreshing, setRefreshing] = useState(false);
+
+  const refresh = useCallback(async () => {
+    if (refreshing) return;
+
+    setRefreshing(true);
+
+    try {
+      /** ⚠️ Delivery first, so the re-read below reflects anything that just landed. */
+      const delivered = await syncNow();
+
+      /**
+       * ⚠️ **Both layers are refreshed, not just the store.**
+       *
+       * The screen merges the device's entries with the query's, so re-reading the device alone would leave the
+       * query's stale pages in place — **the same trap as before**: the store is fresh and the list still shows
+       * the old data.
+       */
+      await readLocalTransactions();
+
+      await logOffline(
+        "DIAGNOSTIC:manual-refresh",
+        delivered > 0 ? `投递 ${String(delivered)} 条` : "没有待投递的改动",
+      );
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refreshing]);
+
   const entries = useMemo(() => {
     const fromQuery = (list.data?.pages ?? []).flatMap((page) => page.items);
 
@@ -334,6 +380,14 @@ export function DetailPage(): React.JSX.Element {
               <h1 className="detail-title text-2xl font-semibold tracking-tight">Libellum</h1>
 
               <div className="detail-tools flex gap-2">
+                <ToolButton
+                  icon={<RefreshIcon />}
+                  label="刷新"
+                  hint="重新读取并同步账目"
+                  onClick={() => {
+                    void refresh();
+                  }}
+                />
                 <ToolButton
                   icon={<ShareIcon />}
                   label="导出"
@@ -834,6 +888,29 @@ function ToolButton({
 }
 
 /** A box with an arrow leaving it: the usual mark for getting data out. */
+/**
+ * A circular arrow, matching the weight and size of the two beside it.
+ *
+ * ⚠️ **Same stroke, same box, same `size-[18px]` as `ShareIcon` and `MoreIcon`** — the owner asked for the
+ * animation and weight to match the other two, and a button that looks subtly different from its neighbours
+ * reads as a different kind of control.
+ */
+function RefreshIcon(): React.JSX.Element {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      className="size-[18px]"
+      aria-hidden="true"
+    >
+      <path d="M20 12a8 8 0 1 1-2.6-5.9" strokeLinecap="round" />
+      <path d="M20 4v4.5h-4.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function ShareIcon(): React.JSX.Element {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="size-[18px]" aria-hidden="true">
