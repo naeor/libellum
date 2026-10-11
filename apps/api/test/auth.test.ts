@@ -207,7 +207,17 @@ describe("POST /api/v1/auth/login", () => {
     expect(blocked.statusCode).toBe(429);
   });
 
-  it("keeps only one session per account", async () => {
+  it("⚠️ keeps every device signed in, instead of only one", async () => {
+    /**
+     * ⚠️ **The opposite of what this test used to assert, and the owner asked for the change**:
+     * "每个账号现在都应该可以被多台设备同时登录，而不会被踢掉."
+     *
+     * It used to read "keeps only one session per account", with the older cookie answered by
+     * `401 session_expired` — **signing in on one device logging out every other one.** That was interfering with
+     * the feature being tested: **the offline design is built on two devices holding two copies of one ledger**,
+     * and conflict detection exists because those copies can diverge. **A rule that logs one of them out removes
+     * the ability to use, and to test, the thing it interrupts.**
+     */
     await seedInvite();
     const registered = await register(app);
     const firstCookie = cookieFrom(registered.headers);
@@ -215,16 +225,61 @@ describe("POST /api/v1/auth/login", () => {
     const second = await login(app);
     const secondCookie = cookieFrom(second.headers);
 
+    /** Different devices get different tokens. */
     expect(secondCookie).not.toBe(firstCookie);
 
+    /** ⚠️ **And the first device is still signed in** — this is the assertion that changed. */
     const withOldCookie = await app.inject({
       method: "GET",
       url: "/api/v1/auth/me",
       headers: { cookie: firstCookie },
     });
 
-    expect(withOldCookie.statusCode).toBe(401);
-    expect(withOldCookie.json()).toMatchObject({ code: "session_expired" });
+    expect(withOldCookie.statusCode).toBe(200);
+
+    const withNewCookie = await app.inject({
+      method: "GET",
+      url: "/api/v1/auth/me",
+      headers: { cookie: secondCookie },
+    });
+
+    expect(withNewCookie.statusCode).toBe(200);
+  });
+
+  it("⚠️ logging out on one device leaves the others signed in", async () => {
+    /**
+     * The other half of the same rule, and the easy half to get wrong: a logout must delete **the session whose
+     * token was presented**, not every session the account has.
+     */
+    await seedInvite();
+    const registered = await register(app);
+    const firstCookie = cookieFrom(registered.headers);
+    const secondCookie = cookieFrom((await login(app)).headers);
+
+    const loggedOut = await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/logout",
+      headers: { cookie: firstCookie },
+    });
+
+    expect(loggedOut.statusCode).toBe(200);
+
+    const withLoggedOutCookie = await app.inject({
+      method: "GET",
+      url: "/api/v1/auth/me",
+      headers: { cookie: firstCookie },
+    });
+
+    expect(withLoggedOutCookie.statusCode).toBe(401);
+
+    /** ⚠️ The other device is untouched — signing out somewhere is not signing out everywhere. */
+    const withOtherCookie = await app.inject({
+      method: "GET",
+      url: "/api/v1/auth/me",
+      headers: { cookie: secondCookie },
+    });
+
+    expect(withOtherCookie.statusCode).toBe(200);
   });
 });
 

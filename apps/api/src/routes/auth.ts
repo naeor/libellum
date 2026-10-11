@@ -103,29 +103,36 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
   const { prisma, throttle, cookieSecure } = options;
 
   /**
-   * There is exactly one session per user (`sessions.user_id` is unique), so
-   * signing in replaces whatever session existed before. That is the mechanism
-   * behind the "one device at a time" rule.
+   * Sign one device in, without touching any other device's session.
+   *
+   * ⚠️ **This used to be one session per user, and the owner removed that rule after a real test**:
+   * "我觉得是时候删除掉每个账号只能有一台设备登录的限制了；每个账号现在都应该可以被多台设备同时登录，而不会被
+   * 踢掉."
+   *
+   * What it did: `upsert({ where: { userId } })` overwrote whatever session existed, so **signing in on the
+   * phone logged the tablet out at its next request.** And it was interfering with the feature being tested —
+   * **the offline design is built on two devices holding two copies of one ledger**, and conflict detection only
+   * exists because those copies can diverge. **A rule that logs one of them out removes the ability to use, and
+   * to test, the thing it interrupts.**
+   *
+   * ⚠️ **Nothing about the security model needed it.** A session is identified by the hash of its own token,
+   * which is unique on its own; revocation is per-token; and a password change still clears every session for
+   * the account, **which is the one place where "all devices, all at once" is actually the intent.**
+   *
+   * ⚠️ **Old sessions are not cleaned up here.** They expire on their own after `SESSION_TTL_MS`, and deleting
+   * them on sign-in would be deleting rows on a path that has nothing to do with them — **a device that is
+   * logged out by somebody else's login is exactly the behaviour being removed.**
    */
   async function issueSession(reply: FastifyReply, userId: string, meta: RequestMeta): Promise<void> {
     const token = generateSessionToken();
-    const expiresAt = sessionExpiryFrom(new Date());
 
-    await prisma.session.upsert({
-      where: { userId },
-      create: {
+    await prisma.session.create({
+      data: {
         userId,
         tokenHash: hashSessionToken(token),
-        expiresAt,
+        expiresAt: sessionExpiryFrom(new Date()),
         userAgent: meta.userAgent ?? null,
         ipAddress: meta.ipAddress ?? null,
-      },
-      update: {
-        tokenHash: hashSessionToken(token),
-        expiresAt,
-        userAgent: meta.userAgent ?? null,
-        ipAddress: meta.ipAddress ?? null,
-        lastSeenAt: new Date(),
       },
     });
 
