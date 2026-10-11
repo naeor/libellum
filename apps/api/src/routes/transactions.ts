@@ -546,6 +546,14 @@ export function registerTransactionRoutes(
      * only the field they both changed becomes a question.
      */
     const changes = body.changes ?? [];
+
+    /**
+     * The fields the verdict says the server should move to the device's value.
+     *
+     * ⚠️ **Only a settled conflict puts anything in here.** There is no longer an "accept" verdict: **every non-conflict
+     * outcome keeps the server's value and asks nothing** — "没有冲突是一律以服务器为准" — so **a plain edit writes
+     * the field it names, and a field the verdict declined to move is not written at all.**
+     */
     const settledFields: Record<string, unknown> = {};
 
     for (const change of changes) {
@@ -558,23 +566,29 @@ export function registerTransactionRoutes(
         change.base,
         change.wanted,
         currentFieldValue(existing, field),
-        body.version,
-        existing.version,
         /**
          * ⚠️ **The history goes in, and without it the "it merely fell behind" rule can never fire** — a value the
-         * server has held before means the device is behind rather than in disagreement, **and covering those
+         * server has held before means the device is catching up rather than disagreeing, **and settling those
          * automatically is what keeps the yellow mark meaning "somebody has to decide."**
+         *
+         * ⚠️ **No version number is passed, because the decision is not about versions.** The owner had already ruled
+         * that out; an earlier version of this call passed them, **and the shortcut built on them disabled the whole
+         * feature.**
          */
         valuesSeen(asArray(existing.valueHistory), field, currentFieldValue(existing, field)),
       );
 
+      /**
+       * ⚠️ **Rule 1 of the judgement: the device is editing the value it just read, so this is an ordinary edit and
+       * the device's value is written.** There is nothing to ask about — **and nothing to compare, either.**
+       */
       if (verdict.kind === "accept") {
         settledFields[field] = change.wanted;
         continue;
       }
 
       /**
-       * ⚠️ **The device is behind, so the server's value is the answer** — the owner's rule, applied silently.
+       * ⚠️ **The server's value stands and nothing is written for this field** — the owner's rule, applied silently.
        * It is not sent as a change, so the next read of this entry hands the device the server's value.
        */
       if (verdict.kind === "server-wins") continue;
@@ -618,26 +632,49 @@ export function registerTransactionRoutes(
 
     const data: Record<string, unknown> = { version: existing.version + 1 };
 
-    if (body.kind !== undefined) data["kind"] = body.kind;
-    if (body.amountCents !== undefined) data["amountCents"] = BigInt(body.amountCents);
-    if (body.currency !== undefined) data["currency"] = body.currency;
-    if (body.occurredAt !== undefined) data["occurredAt"] = new Date(body.occurredAt);
-    if (body.occurredLocalDate !== undefined) {
-      data["occurredLocalDate"] = toDateOnly(body.occurredLocalDate);
-    }
-    if (body.occurredTz !== undefined) data["occurredTz"] = body.occurredTz;
-    if (body.note !== undefined) data["note"] = body.note ?? null;
+    /**
+     * ⚠️ **Only what the judgement said to write is written, and this is the half that used to be missing.**
+     *
+     * The body carries **what the device wanted** for every field it sent, and writing it unconditionally meant **a
+     * verdict of "the server's value stands" was followed by the server storing the device's value anyway** — the
+     * device's edit won while the judgement said it should not, **and the other device's work was lost with the
+     * judgement appearing to have approved it.**
+     *
+     * ⚠️ **`settledFields` is exactly the fields the judgement accepted**, so it is the whole picture for the fields
+     * the judgement decides. **A settled conflict is the same shape**: the user's choice is the value to write, and
+     * it is the one thing in the request that is not in dispute.
+     */
+    const write: Record<string, unknown> = { ...settledFields };
 
-    // Changing the kind means the old category no longer belongs; re-resolve.
-    if (body.categoryId !== undefined || body.kind !== undefined) {
+    if (write["kind"] !== undefined) data["kind"] = write["kind"];
+    if (write["amountCents"] !== undefined) data["amountCents"] = BigInt(Number(write["amountCents"]));
+    if (write["currency"] !== undefined) data["currency"] = write["currency"];
+    if (write["occurredAt"] !== undefined) data["occurredAt"] = new Date(String(write["occurredAt"]));
+    if (write["note"] !== undefined) data["note"] = write["note"] ?? null;
+
+    /**
+     * ⚠️ **The local date and time zone travel with the instant**, and they are written whenever `occurredAt` is —
+     * otherwise the row would carry a new instant next to the old date and zone, **and the ledger would file it
+     * under the wrong day.**
+     */
+    if (write["occurredAt"] !== undefined) {
+      if (body.occurredLocalDate !== undefined) data["occurredLocalDate"] = toDateOnly(body.occurredLocalDate);
+      if (body.occurredTz !== undefined) data["occurredTz"] = body.occurredTz;
+    }
+
+    /**
+     * ⚠️ **The kind decides whether the old category still belongs**, so it is re-resolved whenever the kind is
+     * written for any reason — **including when a settled conflict changed it.**
+     */
+    if (data["kind"] !== undefined || write["categoryId"] !== undefined) {
       data["categoryId"] = await resolveCategoryId(prisma, bookId, kind, body.categoryId ?? null);
     }
-    if (body.paymentMethodId !== undefined) {
+    if (write["paymentMethodId"] !== undefined) {
       data["paymentMethodId"] = await resolvePaymentMethodId(prisma, bookId, body.paymentMethodId);
     }
 
-    if (body.tagIds !== undefined) {
-      const tagIds = await resolveTagIds(prisma, bookId, body.tagIds);
+    if (write["tagIds"] !== undefined) {
+      const tagIds = await resolveTagIds(prisma, bookId, body.tagIds ?? []);
       data["tags"] = { deleteMany: {}, create: tagIds.map((tagId) => ({ tagId })) };
     }
 
@@ -646,12 +683,20 @@ export function registerTransactionRoutes(
      * links are included even though the final value is what gets stored — **they are states the entry really
      * passed through, and "the server has held this value" is the question a future conflict asks.**
      */
+    /**
+     * ⚠️ **The fields this write actually moved — and nothing else, because the history is what future judgements
+     * read.**
+     *
+     * It used to include `change.wanted` for **every** field the device sent, **including fields the verdict declined
+     * to move** — so a write that changed nothing still recorded the device's rejected value as something the server
+     * had held, **and a later device comparing against it would be told it was a legitimate path.**
+     */
+    const movedFields = new Set(Object.keys(write));
+
     const touched: Record<string, unknown> = {};
 
     for (const change of changes) {
-      if (change.field in settledFields || change.wanted !== undefined) {
-        touched[change.field] = settledFields[change.field] ?? change.wanted;
-      }
+      if (movedFields.has(change.field)) touched[change.field] = write[change.field];
     }
 
     if (Object.keys(touched).length > 0) {

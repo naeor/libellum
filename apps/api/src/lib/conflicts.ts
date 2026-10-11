@@ -106,8 +106,9 @@ function same(field: ConflictField, left: unknown, right: unknown): boolean {
 
 /** What should happen to one device's change. */
 export type Verdict =
+  /** ⚠️ **The device is editing from the value the server holds** — an ordinary online edit, and it is written. */
   | { readonly kind: "accept" }
-  /** ⚠️ The device is behind, and the server's value is the answer. Nothing to ask. */
+  /** ⚠️ The server's value stands and nothing is asked. **This is the owner's "以服务器为准".** */
   | { readonly kind: "server-wins" }
   /** ⚠️ Two decisions from one starting point. **This is the only case the user is asked about.** */
   | { readonly kind: "conflict"; readonly serverValue: unknown };
@@ -115,87 +116,77 @@ export type Verdict =
 /**
  * Decide what to do about one field a device is changing.
  *
- * ⚠️ **The question is not "has the server ever held this value" but "did the value this device read move".**
+ * ⚠️ **There is no version number in here, and that is deliberate.** An earlier version opened with
+ * `baseVersion >= serverVersion → accept`, and the owner had already rejected version numbers as the basis for this
+ * decision — **the idea survived inside the code and quietly disabled the whole feature**, because a device's
+ * version is its own entry's, incremented locally, and it frequently lands on the same number as the server's.
  *
- * The first version asked the former, and two tests caught what it gets wrong: when the phone changed the amount
- * to 60 while the tablet was offline at 30, **the tablet's base was 30, which the server *had* held** — so the
- * "it merely fell behind" rule fired and the tablet's edit was thrown away **without anybody being asked.**
- * That is the silent loss this whole feature exists to prevent.
+ * **The judgement is about values, so this function is about values.** Four rules, in order:
  *
- * ⚠️ **A value being in the history says nothing on its own**, because *every* value a device could have read
- * was once the current one — the base is in the history by definition. **What matters is whether it is still the
- * last one**, and that is what the version says:
- *
- * | `baseVersion` | Meaning | Outcome |
+ * | Rule | Meaning | Outcome |
  * |---|---|---|
- * | **equals the row's version** | **nothing has happened to this entry since** | the device is simply editing what it just saw → **accept** |
- * | **older** | the row moved on | **compare the values — see below** |
+ * | **`base == 服务器当前值`** | the device is editing what it just read | ✅ **accept — write it** |
+ * | **`wanted == 服务器当前值`** | both sides want the same thing | ✅ server-wins |
+ * | **`wanted` 在历史里** | the device is heading for a place the server already passed through | ✅ server-wins |
+ * | anything else | the device wants somewhere the server has never been | ⚠️ **conflict** |
  *
- * ⚠️ **And when it moved on, the values decide**, which is the owner's own rule: the server's value wins *unless*
- * both sides ended up somewhere different, **in which case two decisions were made from one starting point and
- * only the user can say which was meant.**
+ * ⚠️ **The first rule is the ordinary online edit, and it is what makes an online device unable to conflict**: the
+ * owner's rule is triggered by `服务器 == C` while the device goes `A → B`, and **here the server *is* A.**
  *
- * ⚠️ **The history is still worth keeping and still worth showing** — it is what the conflict screen puts in
- * front of the user — but it is not the judgement. **The judgement is "did the value you read change", and the
- * version answers that exactly.**
+ * ⚠️ **The second rule is his own example**, and the reason it is checked before anything else:
+ *
+ * > **"假如服务器上记录的数据是从 40 改到 60，而设备上记录的数据是从 30 改到 60，那么他们的目的一样，当然不能算
+ * > ——我想没有哪个程序会弹出一个弹窗让人选择数字是 60 还是 60."**
+ *
+ * ⚠️ **The third rule is his answer for a device that is behind**, and his words name the test exactly:
+ *
+ * > **"如果服务器里记录的是从 30 变成 50 再变成 70，那么 30 和 50 就是历史值——如果本地的数据恰好是 30 或者 50，
+ * > 那么在同步时不用判断冲突，直接改为 70."**
+ *
+ * ⚠️ **And his reason for putting the destination in the history rather than the starting value** — asked directly,
+ * about a device sitting at 30 that wants 65 while the server is at 70:
+ *
+ * > **"判冲突，因为设备是想把 30 改成 65，而不是把 30 改成 70；同时 65（最终值）并不在 30，50 这些服务器历史值里，
+ * > 所以不能说设备改的 65 是已有的路径（也就是只改了一半）."**
+ *
+ * **A device heading for a value the server has already held is finishing a journey that was already under way.**
+ * A device heading anywhere else is making a new decision — **and two decisions from one starting point is the only
+ * thing the user is ever asked about.**
  */
 export function judge(
   field: ConflictField,
+  /** The device's starting value — the owner calls it a 历史值. */
   base: unknown,
+  /** What the device wants the field to become. */
   wanted: unknown,
+  /** What the server holds right now. */
   serverValue: unknown,
-  baseVersion: number,
-  serverVersion: number,
   /**
-   * Every value the server has held for this field.
-   *
-   * ⚠️ **Consulted only when the server has moved on**, because otherwise it proves nothing — **every value a
-   * device could have read was once the current one.**
+   * Every value the server has held, **including the one it holds now** (`valuesSeen` appends it).
    */
   history: readonly unknown[] = [],
 ): Verdict {
   /**
-   * ⚠️ **The version check is only a hint, and treating it as a decision swallowed every conflict.**
-   *
-   * The first version read `baseVersion >= serverVersion` as "nothing has happened to this entry since the device
-   * read it" and returned `accept` immediately — **but the version a device sends is its own entry's, which it
-   * increments locally and which frequently lands on the same number as the server's.** So the shortcut fired and
-   * **the value comparison below — the actual rule — was never reached.**
-   *
-   * The owner's report: **"冲突检测彻底没了…他会默认使用其中一项，一般来说是断网的修改的数据."**
-   *
-   * ⚠️ **The version only proves something when it is *behind* the server**, and even then it decides nothing on its
-   * own — it just says the row moved, so the comparison is the part that matters. **A version equal to the server's
-   * proves nothing at all**, because the same number can mean "I am current" or "I edited this myself".
-   *
-   * ⚠️ **So the values decide, always.**
-   */
-  const serverMoved = baseVersion < serverVersion;
-
-  /**
-   * ⚠️ **The device is editing from the value the server holds** — the ordinary case, and the reason an online device
-   * never conflicts. **It is a statement about the values, which is what makes it safe to trust.**
+   * ⚠️ **Rule 1 — the device is editing the value it just read, so this is an ordinary edit.** This is what the
+   * owner's rule leaves untouched: it fires when the server holds something *other* than what the device read.
    */
   if (same(field, base, serverValue)) return { kind: "accept" };
 
   /**
-   * ⚠️ **The change to that field was already carried out, possibly by another device.** Nothing to change and
-   * nothing to ask — this is the owner's "设备上传的请求是把数值 A 改成数值 C，那服务器不用改".
+   * ⚠️ **Rule 2 — both sides want the same thing, so there is nothing to ask.** **"我想没有哪个程序会弹出一个弹窗让
+   * 人选择数字是 60 还是 60."**
    */
   if (same(field, wanted, serverValue)) return { kind: "server-wins" };
 
   /**
-   * ⚠️ **The device's base is a value the server has held before** — it fell behind, and the owner's rule is
-   * explicit: **"一律用服务器数据覆盖本地数据."**
-   *
-   * ⚠️ **Only consulted when the server actually moved on.** Otherwise the base being in the history proves
-   * nothing, because **every value a device could have read was once the current one.**
+   * ⚠️ **Rule 3 — the device is heading for a value the server has already held, so it is behind, not opposing it.**
+   * Nothing is asked and nothing is overwritten in the other direction: **"直接改为 70."**
    */
-  if (serverMoved && history.some((value) => same(field, value, base))) return { kind: "server-wins" };
+  if (history.some((value) => same(field, value, wanted))) return { kind: "server-wins" };
 
   /**
-   * ⚠️ **Two decisions from one starting point.** The device read something the server no longer holds, and it wants
-   * something other than what is there now — **so only the user can say which was meant.**
+   * ⚠️ **Rule 4 — the device wants somewhere the server has never been.** Both sides moved from one starting point
+   * toward different places, **and only the user can say which was meant.**
    */
   return { kind: "conflict", serverValue };
 }

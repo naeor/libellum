@@ -5,94 +5,116 @@ import { appendHistory, judge, valuesSeen, HISTORY_LIMIT } from "../src/lib/conf
 /**
  * ⚠️ **The whole conflict rule, and the owner set it in one sentence**:
  *
- * > "只有在服务器的数值是 C，而某台设备上传的请求是把数字从 A 改成 B 时才会触发冲突机制——
- * > 换句话说，某台设备上记录的原数值以及修改后数值跟服务器当前记录的数值不同时才有必要触发冲突."
+ * > "只有在服务器的数值是 C，而某台设备上传的请求是把数字从 A 改成 B 时才会触发冲突机制."
  *
- * **And its corollary is what keeps the mark meaningful**:
+ * **Four rules, and each test below is one line of the table.** They matter because every mistake here is silent:
+ * accepting when it should have asked **discards one device's edit**, and asking when it should have accepted
+ * **turns every offline edit into a question.**
  *
- * > "如果这个金额正好是服务器历史记录中的金额…那不用提醒用户，直接把本地的金额从 A 变成 B."
- *
- * **The tests below are the decision table, one case per line of it.** They matter because every mistake here is
- * silent: accepting when it should have asked silently discards one device's edit, and asking when it should have
- * accepted turns every offline edit into a question — **which is exactly what the owner hit before this rule
- * existed.**
+ * ⚠️ **There is deliberately no version number anywhere in these tests.** An earlier implementation opened with
+ * `baseVersion >= serverVersion → accept`, an idea the owner had already rejected — **and it survived inside the code
+ * and disabled the feature**, because a device's version is its own entry's, incremented locally, and it frequently
+ * lands on the same number as the server's.
  */
 
 describe("deciding what to do about one field", () => {
-  it("⚠️ accepts when the device started from the value the server holds", () => {
-    // The ordinary case, and the reason an online device can never conflict: it is editing what it just saw.
-    expect(judge("amountCents", 30, 50, 30, 1, 1)).toEqual({ kind: "accept" });
+  it("rule 1 — accepts when the device started from the value the server holds", () => {
+    // The ordinary case, and the reason an online device can never conflict: **it is editing what it just saw.**
+    expect(judge("amountCents", 30, 50, 30)).toEqual({ kind: "accept" });
   });
 
-  it("⚠️ accepts a whole chain when the base is still the server's value", () => {
-    // His example: the tablet went 30 -> 40 -> 50 while offline, and the server still holds 30.
-    // **The whole chain arrives, the first link is the base, and the last link is what he wants.**
-    expect(judge("amountCents", 30, 50, 30, 1, 1)).toEqual({ kind: "accept" });
+  it("rule 1 — accepts a whole offline chain when the base is still the server's value", () => {
+    // His example: the tablet went 30 → 40 → 50 while offline and the server still holds 30.
+    // **The whole chain arrives; the first link is the base and the last is what he wants.**
+    expect(judge("amountCents", 30, 50, 30)).toEqual({ kind: "accept" });
   });
 
-  it("⚠️ does nothing when the server already holds what the device wants", () => {
+  it("rule 1 — does not care that the two values differ when the base is current", () => {
+    // The trap this rule exists to avoid: "the values differ" is true of **every** offline edit ever made.
+    expect(judge("note", "原备注", "我改的备注", "原备注").kind).toBe("accept");
+  });
+
+  it("rule 1 — treats a null note as a value like any other", () => {
+    // Clearing a note is a real edit, and "null vs empty" must not read as a disagreement.
+    expect(judge("note", null, "写了点东西", null)).toEqual({ kind: "accept" });
+  });
+
+  it("rule 2 — ⚠️ will not ask about 60 against 60", () => {
+    /**
+     * ⚠️ **His own example, and the reason this rule is checked before the history**:
+     *
+     * > "假如服务器上记录的数据是从 40 改到 60，而设备上记录的数据是从 30 改到 60，那么他们的目的一样，当然不能算
+     * > ——我想没有哪个程序会弹出一个弹窗让人选择数字是 60 还是 60."
+     */
+    expect(
+      judge("amountCents", 30, 60, 60, [40, 60]),
+    ).toEqual({ kind: "server-wins" });
+  });
+
+  it("rule 2 — does nothing when the server already holds what the device wants", () => {
     // "如果设备上传的请求是把数值 A 改成数值 C，那服务器不用改，直接改设备上记的数就行."
-    expect(judge("amountCents", 30, 50, 50, 1, 2)).toEqual({ kind: "server-wins" });
+    expect(judge("amountCents", 30, 50, 50, [30, 50])).toEqual({ kind: "server-wins" });
   });
 
-  it("⚠️ lets the server win when the device's base is a value the server has held", () => {
-    // "如果这个金额正好是服务器历史记录中的金额…那不用提醒用户，直接把本地的金额从 A 变成 B."
-    // The device sat at 30 while the server moved 30 -> 40 -> 60. Falling behind is not disagreeing.
-    // ⚠️ **The server moved to 60, but this device was editing from 30 and 30 is still what it sees** — the\n    // entry advanced through another field, or the amount changed and came back. **Behind, not disagreeing.**\n    expect(judge("amountCents", 30, 50, 30, 1, 3)).toEqual({ kind: "server-wins" });
+  it("rule 3 — ⚠️ a device heading for a value the server has held is behind, not opposing", () => {
+    /**
+     * ⚠️ **His answer for a device that is behind, and his words name the test exactly**:
+     *
+     * > "如果服务器里记录的是从 30 变成 50 再变成 70，那么 30 和 50 就是历史值——如果本地的数据恰好是 30 或者 50，
+     * > 那么在同步时不用判断冲突，直接改为 70."
+     *
+     * **It is finishing a journey that was already under way**, so the server's value is simply taken.
+     */
+    expect(judge("amountCents", 30, 50, 70, [30, 50, 70])).toEqual({ kind: "server-wins" });
+    expect(judge("amountCents", 50, 30, 70, [30, 50, 70])).toEqual({ kind: "server-wins" });
   });
 
-  it("⚠️ raises a conflict when two decisions came from one starting point", () => {
+  it("rule 4 — ⚠️ raises a conflict for a destination the server has never been to", () => {
+    /**
+     * ⚠️ **His reason, asked directly about a device sitting at 30 that wants 65 while the server is at 70**:
+     *
+     * > "判冲突，因为设备是想把 30 改成 65，而不是把 30 改成 70；同时 65（最终值）并不在 30，50 这些服务器历史值里，
+     * > 所以不能说设备改的 65 是已有的路径（也就是只改了一半）."
+     */
+    expect(judge("amountCents", 30, 65, 70, [30, 50, 70])).toEqual({
+      kind: "conflict",
+      serverValue: 70,
+    });
+  });
+
+  it("rule 4 — raises a conflict when two decisions came from one starting point", () => {
     // The tablet saw 30 and asked for 50; the phone saw 30 and asked for 60, and got there first.
-    expect(judge("amountCents", 30, 50, 60, 1, 2)).toEqual({
+    expect(judge("amountCents", 30, 50, 60, [30, 60])).toEqual({
       kind: "conflict",
       serverValue: 60,
     });
   });
 
-  it("⚠️ raises a conflict for a value the server has never held", () => {
-    // "只有在本地的金额是 D，不在服务器里这个金额的历史数据时才标黄等用户权衡."
-    expect(judge("amountCents", 99, 50, 60, 1, 2)).toEqual({
+  it("rule 4 — raises a conflict for a base the server has never held", () => {
+    // A value chain that drifted away from the server: the device is comparing against a state that never existed.
+    expect(judge("amountCents", 99, 50, 60, [30, 60])).toEqual({
       kind: "conflict",
       serverValue: 60,
     });
   });
 
-  it("⚠️ does not care that the two values differ when the base is current", () => {
-    // The trap this whole rule exists to avoid: "the values differ" is true of every offline edit ever made.
-    expect(judge("note", "原备注", "我改的备注", "原备注", 1, 1).kind).toBe("accept");
-  });
-
-  it("⚠️ raises a conflict when the versions happen to be equal", () => {
+  it("rule 4 — ⚠️ decides by value, never by a version coincidence", () => {
     /**
-     * ⚠️ **The bug that removed conflict detection entirely**, in the owner's words: "冲突检测彻底没了…他会默认使用其中
-     * 一项，一般来说是断网的修改的数据."
+     * ⚠️ **The bug that removed conflict detection entirely**: "冲突检测彻底没了…他会默认使用其中一项，一般来说是断网的
+     * 修改的数据."
      *
-     * The first rule was `baseVersion >= serverVersion → accept`, read as "nothing has happened since the device
-     * read it" — **but the version a device sends is its own entry's, which it increments locally and which
-     * frequently lands on the same number as the server's.** So the shortcut fired and the value comparison below
-     * was never reached.
-     *
-     * **Two devices that both edited from 30, reaching 50 and 60, must be a question — whatever the numbers say.**
+     * Two devices both edited from 30 and reached 50 and 60. **It must be a question, whatever any version says** —
+     * and the signature of `judge` no longer has a place to put a version.
      */
-    expect(judge("amountCents", 30, 50, 60, 2, 2, [30, 60])).toEqual({
+    expect(judge("amountCents", 30, 50, 60, [30, 60])).toEqual({
       kind: "conflict",
       serverValue: 60,
     });
   });
+
   it("compares tags as sets rather than as sequences", () => {
-    /**
-     * Re-ordered tags are the same tags, **so the device is editing from exactly what the server holds** — and the
-     * right answer is `accept`, the same *outcome* the old expectation reached by a longer route.
-     *
-     * ⚠️ **The distinction matters because `accept` is also the path that used to swallow conflicts**: it is now
-     * decided by comparing values, not by a version check that fires on a coincidence.
-     */
-    expect(judge("tagIds", ["a", "b"], ["a"], ["b", "a"], 1, 2)).toEqual({ kind: "accept" });
-  });
-
-  it("treats a null note as a value like any other", () => {
-    // Clearing a note is a real edit, and "null vs empty string" must not read as a disagreement.
-    expect(judge("note", null, "写了点东西", null, 1, 1)).toEqual({ kind: "accept" });
+    // Re-ordered tags are the same tags, so the device is editing from exactly what the server holds.
+    expect(judge("tagIds", ["a", "b"], ["a"], ["b", "a"])).toEqual({ kind: "accept" });
   });
 });
 
@@ -104,6 +126,14 @@ describe("the value history", () => {
     ];
 
     expect(valuesSeen(history, "amountCents", 60)).toEqual([30, 40, 60]);
+  });
+
+  it("⚠️ includes the value held now, so rule 3 can name the destination", () => {
+    /**
+     * ⚠️ **Rule 3 asks whether the destination is a value the server has held** — so the list has to contain the one
+     * it holds at this moment, or **a device heading for the current value would be asked about it.**
+     */
+    expect(valuesSeen([{ version: 1, values: { amountCents: 30 } }], "amountCents", 70)).toEqual([30, 70]);
   });
 
   it("only reports the values a field actually had", () => {

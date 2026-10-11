@@ -978,6 +978,50 @@ describe("PATCH and DELETE /api/v1/transactions/:id", () => {
     expect(entry.json()).toMatchObject({ amountCents: 200 });
   });
 
+  it("⚠️ keeps the server's value when the device is merely behind", async () => {
+    /**
+     * ⚠️ **The judgement says "以服务器为准", and this test is about the other half — that nothing is written.**
+     *
+     * The route used to write every field the request named **whatever the judgement said**, so a verdict of "the
+     * server's value stands" was followed by the server storing the device's value anyway: **the device's edit won
+     * while the judgement appeared to have approved it, and the other device's work was lost.**
+     *
+     * ⚠️ **The owner's case**: the tablet is offline at 40 while the row has moved on, and its destination is a value
+     * the server has already held — **"直接改为 70."**
+     */
+    const cookie = await signUp("mama");
+    const created = await record(cookie, { amountCents: 40 });
+    const id = (created.json() as { id: string }).id;
+
+    /** ⚠️ Another device takes it 40 → 70, so 40 becomes a 历史值. */
+    await app.inject({
+      method: "PATCH",
+      url: `/api/v1/transactions/${id}`,
+      headers: { cookie },
+      payload: {
+        amountCents: 70,
+        version: 1,
+        changes: [{ field: "amountCents", base: 40, wanted: 70, chain: [40, 70] }],
+      },
+    });
+
+    /** ⚠️ And now the offline tablet, still at 40, asks for 70 as well — the same destination. */
+    const asked = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/transactions/${id}`,
+      headers: { cookie },
+      payload: {
+        amountCents: 70,
+        version: 1,
+        changes: [{ field: "amountCents", base: 40, wanted: 70, chain: [40, 70] }],
+      },
+    });
+
+    expect(asked.statusCode).toBe(200);
+    /** ⚠️ **The server's value stands** — and it happens to equal what the tablet wanted, so nothing is asked. */
+    expect(asked.json()).toMatchObject({ amountCents: 70 });
+  });
+
   it("⚠️ accepts an edit to a field nobody else touched, even from a stale version", async () => {
     /**
      * ⚠️ **A field decides its own fate.** Another device changed the note; this one changes the amount from the
