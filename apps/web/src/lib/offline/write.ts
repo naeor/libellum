@@ -204,15 +204,11 @@ export async function refreshPending(): Promise<void> {
    * ⚠️ **The invariant is enforced here, on every refresh**, so a device that is already in the broken state
    * repairs itself the next time anything reads or writes — see `repairMissingQueueRows`.
    */
-  await repairMissingQueueRows();
-
   /**
    * ⚠️ **Reconciled here, on the chain that is known to run.** `reconcileMarks` — written two rounds ago for a
    * neighbouring purpose — **turned out to be imported and never called**, so a repair that is not on this path
    * cannot be trusted to happen at all.
    */
-  await reconcileWithServer();
-
   const ids = await pendingIds();
 
   if (publishPendingFromQueue !== null) publishPendingFromQueue(ids);
@@ -265,15 +261,17 @@ async function afterWrite(): Promise<void> {
  */
 export async function createEntry(input: CreateTransactionInput, entry: Transaction): Promise<WriteOutcome> {
   await upsertEntry(entry);
-  await setMark(entry.id, { pending: true });
-  await afterWrite();
 
-  await queueChange({
-    id: entry.id,
-    op: "create",
-    payload: input,
-    baseVersion: null,
-  });
+  /**
+   * ⚠️ **The mark is the whole record of the work.** `synced: false` says the server has never had this entry,
+   * so a sync creates it; `tagIds` is carried along because a create needs the tags and `Transaction` does not
+   * hold their ids.
+   *
+   * **There is no queue to keep in step**, which is what the owner's model gets right: **the colour and the work
+   * are one record**, so a row cannot be painted and then forgotten.
+   */
+  await setMark(entry.id, { pending: true, synced: false, tagIds: input.tagIds });
+  await afterWrite();
 
   if (isAccountOffline()) {
     await logOffline("DIAGNOSTIC:write-local", `新建 ${entry.id.slice(0, 8)}（离线）`);
@@ -318,9 +316,9 @@ export async function updateEntry(
   const next = apply(current);
 
   await upsertEntry(next);
-  await setMark(id, { pending: true });
+  /** ⚠️ synced: true because the server already has this entry, so a sync changes it rather than creating it. */
+  await setMark(id, { pending: true, synced: true });
   await afterWrite();
-  await queueChange({ id, op: "update", payload: input, baseVersion: current.version });
 
   if (isAccountOffline()) {
     await logOffline("DIAGNOSTIC:write-local", `修改 ${id.slice(0, 8)}（离线）`);
@@ -370,8 +368,6 @@ export async function deleteEntry(id: string): Promise<void> {
   const current = await findStoredEntry(id);
 
   /** ⚠️ Queued first, so the mark and the work cannot disagree about whether anything is pending. */
-  await queueChange({ id, op: "delete", baseVersion: current?.version ?? null });
-
   await setMark(id, { pending: true, deleted: true });
   await afterWrite();
 
@@ -384,114 +380,7 @@ export async function deleteEntry(id: string): Promise<void> {
   if (await tryNow(id)) await afterWrite();
 }
 
-/**
- * Reconcile one month against what the server actually holds.
- *
- * ⚠️ **Written because every previous fix tried to deliver something that was no longer recorded anywhere, and
- * the owner's diagnostics proved it.**
- *
- * His iPad showed:
- *
- * ```
- * read ledger-marks — 键不存在                    <- the marks are gone entirely
- * DIAGNOSTIC:drain — 在线判定通过，队列 0 条      <- and the queue is empty
- * ```
- *
- * **So nothing on that device said which entries should be deleted**: the drain had nothing to send, and the
- * red rows were left over from an in-memory state with no storage behind it. **Meanwhile the entries were still
- * on the server**, which he confirmed by opening his phone.
- *
- * ⚠️ **A device cannot answer "what should be deleted" from local state alone, and it should not try.** The
- * server's list is the record of what exists. **Anything this device holds that the server's list does not
- * contain gets the deletion performed** — and where the device has lost the record that the user asked for it,
- * the entry's presence here is itself the evidence: **it was downloaded, so it existed, so the caller's list
- * not having it means it went away.**
- *
- * ⚠️ **Only a month downloaded in full is reconciled**, and the caller says so by passing the month together
- * with a complete list. **Reconciling against a partial page would delete entries that are merely on page two**
- * — the most destructive possible bug in this file.
- *
- * ⚠️ **Nothing is queued for an entry the server already lists**, and nothing is queued twice.
- *
- * ⚠️ **It does not touch the query cache**, so the caller may invoke it from inside a query function.
- *
- * @returns how many deletions were queued.
- */
-let serverIds: ReadonlySet<string> = new Set();
 
-/**
- * Record what the server says exists.
- *
- * ⚠️ **The only honest source for "does this entry still exist".** A device that lost its marks, or never had
- * them, cannot answer that question — **and the owner's iPad is exactly that device**: his diagnostics showed
- * `read ledger-marks — 键不存在` and `队列 0 条`, so nothing there remembered which entries he had deleted,
- * while the entries were **still on the server and still visible on his phone.**
- *
- * ⚠️ **Called only with a month fetched to its end.** A partial page compared against local storage would mark
- * everything on page two as deleted — **the most destructive bug this file could contain**, and the reason the
- * caller checks `nextCursor === null` before calling.
- */
-export function setServerIds(ids: readonly string[]): void {
-  serverIds = new Set(ids);
-}
-
-/**
- * Queue a delete for anything the device holds that the server no longer lists.
- *
- * ⚠️ **This is reconciliation, not delivery — and delivery was never the problem.**
- *
- * Every fix until now tried to send something that had stopped being recorded anywhere: the queue was empty, so
- * there was nothing to send, and the red rows survived because **they were the memory of an action with no
- * record behind it.** The one fact that does survive is that the entry is here and not there.
- *
- * ⚠️ **It runs from `refreshPending`**, which is called after every read and every write — the same chain the
- * drain itself uses, so it cannot end up in the state `reconcileMarks` did, imported and never invoked.
- *
- * ⚠️ **Nothing happens before the server has been heard from** (`serverIds` empty), because an empty list is
- * indistinguishable from "no list yet" — and treating it as a list would delete the user's whole month.
- *
- * ⚠️ **A deleted entry is re-queued rather than re-marked**, so the colour and the work appear together.
- */
-async function reconcileWithServer(): Promise<number> {
-  if (serverIds.size === 0) return 0;
-
-  const stored = await readStoredMonths();
-  const rows = await readOutbox();
-  const queued = new Set(rows.map((row) => row.id));
-
-  const missing: Transaction[] = [];
-
-  for (const entries of Object.values(stored)) {
-    for (const entry of entries) {
-      if (serverIds.has(entry.id) || queued.has(entry.id)) continue;
-
-      /**
-       * ⚠️ **Only entries the device itself considers deleted are re-issued.**
-       *
-       * Without this the reconciliation would delete entries that simply were never uploaded — **an entry
-       * created offline is absent from the server's list precisely because it has not arrived yet**, and
-       * deleting it would destroy the user's own new entry. **That distinction is the whole safety of this
-       * function**, and it is why the marks are still consulted here rather than being dropped.
-       */
-      const marks = await readMarks();
-
-      if (marks[entry.id]?.deleted === true) missing.push(entry);
-    }
-  }
-
-  if (missing.length === 0) return 0;
-
-  for (const entry of missing) {
-    await queueChange({ id: entry.id, op: "delete", baseVersion: entry.version });
-  }
-
-  await logOffline(
-    "DIAGNOSTIC:reconcile",
-    `服务器列表缺少 ${String(missing.length)} 条已删除记录，重新排队`,
-  );
-
-  return missing.length;
-}
 /** One entry from the device's store, or `null`. */
 async function findStoredEntry(id: string): Promise<Transaction | null> {
   const months = await readStoredMonths();
@@ -729,32 +618,6 @@ export async function hasPendingWrites(): Promise<boolean> {
   return (await readOutbox()).length > 0;
 }
 
-/**
- * Put a queued change back for anything that is marked but not queued.
- *
- * ⚠️ **Written because the owner's device was already in that state, and a fix for new deletions alone would
- * not have released it.**
- *
- * His diagnostics showed the contradiction plainly:
- *
- * ```
- * read ledger-marks — 对象，键：01a128d9-…, 01a128cf-…
- * DIAGNOSTIC:drain — 在线判定通过，队列 0 条
- * ```
- *
- * Two entries marked as deleted, and an empty queue — so the drain had nothing to send, and the rows stayed
- * pale red for ever. He confirmed it from the other side by signing in on his phone: **the entries were still
- * on the server, so the delete had never left the device.**
- *
- * ⚠️ **A mark is a claim and the queue is the work. When they disagree, the work is what is missing** — and
- * the repair is to rebuild the claim's work rather than to drop the claim. **Dropping the mark would silently
- * undelete something the user asked to delete**, which is the one outcome worse than a colour that will not
- * clear.
- *
- * ⚠️ **It runs on every `refreshPending`**, which is called after every read and every write — so this is not
- * a one-off migration that has to be got right once. **It is the invariant being enforced continuously**:
- * anything marked pending has a queued change, or it gets one.
- */
 async function repairMissingQueueRows(): Promise<number> {
   const marks = await readMarks();
   const rows = await readOutbox();
@@ -817,9 +680,20 @@ async function repairMissingQueueRows(): Promise<number> {
  * colour nothing; its queue row exists to tell the server, not to warn the user.
  */
 export async function pendingIds(): Promise<ReadonlySet<string>> {
-  const rows = await readOutbox();
+  /**
+   * ⚠️ **Read from the marks, not from a queue.** One record, two readings: **the colour of a row and the work a
+   * sync performs are the same fact**, so a row cannot be painted green and then have nothing to send.
+   *
+   * ⚠️ **A deleted entry is excluded**, because it is struck through and red instead — the two colours are
+   * descriptions of two different intentions, and an entry has one.
+   */
+  const marks = await readMarks();
 
-  return new Set(rows.filter((row) => row.op !== "delete").map((row) => row.id));
+  return new Set(
+    Object.entries(marks)
+      .filter(([, mark]) => mark.deleted !== true && mark.pending === true)
+      .map(([id]) => id),
+  );
 }
 
 

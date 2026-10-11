@@ -351,9 +351,28 @@ export const LEDGER_MONTHS_KEY = "ledger-months";
  */
 export const LEDGER_MARKS_KEY = "ledger-marks";
 
+/**
+ * What this device intends for one entry — **the only record of unsent work, and the source of its colour.**
+ *
+ * ⚠️ **One record, two readings.** The row's colour is this mark, and the work a sync performs is this mark.
+ * **They cannot disagree, because they are not two things** — which is the whole reason this replaced a
+ * persisted queue: a queue can be lost, never written, or emptied while the marks say otherwise, and **that is
+ * exactly what the owner's two stuck rows turned out to be.**
+ *
+ * | Field | Meaning |
+ * |---|---|
+ * | `deleted` | **Delete this.** The row is struck through and pale red, and a sync sends one `DELETE` |
+ * | `pending` | **Not in step with the server yet** — either never sent, or changed since |
+ * | `synced` | `false` means **the server has never had it**, so a sync must `POST`; otherwise it must `PATCH` |
+ * | `tagIds` | Carried here because tags are not on the stored entry and a create needs them |
+ */
 export interface EntryMark {
   readonly pending?: boolean;
   readonly deleted?: boolean;
+  /** `false` when the server has never accepted this entry. */
+  readonly synced?: boolean;
+  /** The tags to create it with, kept because `Transaction` does not carry their ids. */
+  readonly tagIds?: readonly string[];
 }
 
 /** Marks by entry id. */

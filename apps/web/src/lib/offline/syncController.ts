@@ -1,6 +1,6 @@
 import { logOffline } from "./diagnostics.js";
-import { clearGiveUpMarks } from "./outbox.js";
-import { drainOutbox, pendingIds, refreshPending } from "./write.js";
+import { pendingIds, refreshPending } from "./write.js";
+import { syncAll } from "./sync.js";
 
 /**
  * Deliver everything waiting, and repaint — the manual version of what the triggers do.
@@ -29,17 +29,11 @@ import { drainOutbox, pendingIds, refreshPending } from "./write.js";
  * one moment where retrying a rejected change is free of doubt.**
  */
 export async function syncNow(): Promise<number> {
-  const cleared = await clearGiveUpMarks();
-
-  if (cleared > 0) {
-    await logOffline("DIAGNOSTIC:sync-retry", `手动重试，清掉 ${String(cleared)} 条的放弃标记`);
-  }
-
-  const delivered = await drainOutbox();
+  const report = await syncAll();
 
   await refreshPending();
 
-  return delivered;
+  return report.delivered;
 }
 
 /**
@@ -90,9 +84,9 @@ export function startSyncTriggers(): () => void {
          * permission. The drain itself decides what succeeded, and a wrong hint costs one wasted request
          * rather than a delivery that never happens.
          */
-        const delivered = await drainOutbox();
+        const report = await syncAll();
 
-        if (delivered > 0) await logOffline("DIAGNOSTIC:sync", `${reason}：投递 ${String(delivered)} 条`);
+        if (report.delivered > 0) await logOffline("DIAGNOSTIC:sync", `${reason}：投递 ${String(report.delivered)} 条`);
 
         /**
          * ⚠️ **Republished even when nothing was delivered.** A stale colour is the symptom being fixed here,

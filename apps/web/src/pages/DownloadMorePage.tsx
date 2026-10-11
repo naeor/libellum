@@ -35,6 +35,14 @@ import { readTrace, traceLine, readValue } from "../lib/offline/storage.js";
  * could see the problem and the developer could not — and a button that puts the whole state
  * on the clipboard is the shortest path between them.
  */
+/**
+ * How many storage-trace steps the full report keeps.
+ *
+ * ⚠️ **Twenty, because the trace is a sequence of *steps*, not a log** - what matters is the run-up to whatever
+ * went wrong, and ninety lines of ead query-cache push that run-up off the top of a phone screen.
+ */
+const TRACE_LINES = 20;
+
 export function DownloadMorePage(): React.JSX.Element {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -155,14 +163,21 @@ export function DownloadMorePage(): React.JSX.Element {
       (entry) => `  ${entry.label} — ${formatBytes(entry.bytes)}`,
     ),
     "",
-    `== 存储追踪（${String(trace.length)} 条，最旧在前） ==`,
-    ...trace,
+    /**
+     * ⚠️ **Trimmed at the owner's request**: "请你稍微精简一下完成诊断，相对不那么重要的诊断可以不写出来."
+     *
+     * The trace ran to ninety lines of `read outbox` and `read query-cache` — **a hundred and fifty lines of a
+     * report somebody reads on a phone, where the two or three lines that matter are indistinguishable from the
+     * noise around them.** The last twenty steps show what just happened, which is the only thing this section
+     * has ever been used for; the total is kept so it is clear that trimming happened.
+     */
+    `== 存储追踪（最近 ${String(Math.min(trace.length, TRACE_LINES))} 条 / 共 ${String(trace.length)} 条） ==`,
+    ...trace.slice(-TRACE_LINES),
     "",
-    `== 全部存储键（${String(queries.length)} 条） ==`,
-    ...queries,
-    "",
-    `== 运行记录（${String(log.length)} 条，最新在前） ==`,
-    ...log.map((entry) => `${new Date(entry.at).toISOString()} ${entry.what}${entry.detail === undefined ? "" : ` — ${entry.detail}`}`),
+    /** ⚠️ **Omitted entirely when empty** — a heading and no content is one more thing to read past. */
+    ...(queries.length === 0 ? [] : [`== 全部存储键（${String(queries.length)} 条） ==`, ...queries, ""]),
+    `== 运行记录（最近 ${String(Math.min(log.length, 60))} 条 / 共 ${String(log.length)} 条，最新在前） ==`,
+    ...log.slice(0, 60).map((entry) => `${new Date(entry.at).toISOString()} ${entry.what}${entry.detail === undefined ? "" : ` — ${entry.detail}`}`),
     "",
   ].join("\n");
 

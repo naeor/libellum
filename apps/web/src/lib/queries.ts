@@ -47,7 +47,8 @@ import {
   transactionsFromCacheCached,
 } from "./offline/localLedger.js";
 import { readSnapshot } from "./offline/storage.js";
-import { installQueryNotifier, refreshPending, setServerIds } from "./offline/write.js";
+import { installQueryNotifier, refreshPending } from "./offline/write.js";
+import { recordServerList, syncAll } from "./offline/sync.js";
 import { withLocalFallback } from "./offline/fallback.js";
 import { computeStats, monthRange, summaryFor } from "./offline/localStats.js";
 import { uuidV7 } from "./uuid.js";
@@ -416,8 +417,18 @@ export function useTransactions(given: TransactionFilters) {
          * ⚠️ **`refreshPending` is what performs the repair**, because that is the chain already known to run.
          */
         if (answer.nextCursor === null) {
-          setServerIds(answer.items.map((entry) => entry.id));
-          void refreshPending();
+          /**
+           * ⚠️ **The server's list settles what happened elsewhere, and then the walk runs.**
+           *
+           * `recordServerList` clears marks the server proves are finished — **which is what releases a row that
+           * was stuck red with nothing left to send.** `syncAll` then walks the entries and delivers whatever
+           * remains, so a month that finishes loading also finishes syncing.
+           */
+          void (async () => {
+            await recordServerList(answer.items.map((entry) => entry.id));
+            await syncAll();
+            await refreshPending();
+          })();
         }
 
         return answer;
