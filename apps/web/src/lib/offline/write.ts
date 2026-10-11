@@ -1,9 +1,9 @@
 import type { CreateTransactionInput, Transaction, UpdateTransactionInput } from "@libellum/shared";
-import type { OutboxOp } from "./outbox.js";
 
 import { ApiRequestError, apiFetch } from "../api.js";
 import { isAccountOffline } from "./connectivity.js";
 import { logOffline } from "./diagnostics.js";
+import { syncAll } from "./sync.js";
 import {
   clearInFlight,
   publishLedger,
@@ -15,7 +15,6 @@ import {
   storeMonth,
   upsertEntry,
 } from "./localLedger.js";
-import { queueChange, readOutbox, recordFailure, resolveChange, writeOutbox } from "./outbox.js";
 
 /**
  * Writing to the ledger, whether or not the server is reachable.
@@ -183,19 +182,6 @@ export function installQueryNotifier(notify: (changed: readonly Transaction[]) =
   notifyQueryLayer = notify;
 }
 
-/**
- * Where the *store* layer asks for the pending set to be published.
- *
- * ⚠️ **Injected for the same reason as the query notifier**: `localLedger.ts` owns the published set, and this
- * module owns the queue that decides it. **Pointing one at the other is what keeps the colour from becoming a
- * second copy of the truth** \u2014 which is the whole failure this change is repairing.
- */
-let publishPendingFromQueue: ((ids: ReadonlySet<string>) => void) | null = null;
-
-/** Called once, by the store module. */
-export function installPendingPublisher(publish: (ids: ReadonlySet<string>) => void): void {
-  publishPendingFromQueue = publish;
-}
 
 /**
  * Republish the pending set from the queue.
@@ -209,14 +195,10 @@ export async function refreshPending(): Promise<void> {
    * repairs itself the next time anything reads or writes — see `repairMissingQueueRows`.
    */
   /**
-   * ⚠️ **Reconciled here, on the chain that is known to run.** `reconcileMarks` — written two rounds ago for a
-   * neighbouring purpose — **turned out to be imported and never called**, so a repair that is not on this path
-   * cannot be trusted to happen at all.
+   * ⚠️ **Read from the marks and published, in one step.** There is no intermediate record to reconcile first:
+   * the marks *are* the queue, so republishing them is all that is needed to keep the colour honest.
    */
-  const ids = await pendingIds();
-
-  if (publishPendingFromQueue !== null) publishPendingFromQueue(ids);
-  else publishPending(ids);
+  publishPending(await pendingIds());
 }
 
 /**
@@ -283,7 +265,8 @@ export async function createEntry(input: CreateTransactionInput, entry: Transact
     return { entry, pending: true };
   }
 
-  const synced = await tryNow(entry.id);
+  const report = await syncAll();
+  const synced = report.delivered > 0;
 
   /**
    * ⚠️ **Refreshed again after delivery**, because a successful sync clears the pending mark — and a row
@@ -330,7 +313,8 @@ export async function updateEntry(
     return { entry: next, pending: true };
   }
 
-  const synced = await tryNow(id);
+  const report = await syncAll();
+  const synced = report.delivered > 0;
 
   if (synced) await afterWrite();
 
@@ -381,7 +365,8 @@ export async function deleteEntry(id: string): Promise<void> {
     return;
   }
 
-  if (await tryNow(id)) await afterWrite();
+  await syncAll();
+  await afterWrite();
 }
 
 
@@ -398,291 +383,6 @@ async function findStoredEntry(id: string): Promise<Transaction | null> {
   return null;
 }
 
-/**
- * Try to deliver one change right now.
- *
- * ⚠️ **Called after every local write, so a device with a connection never accumulates a queue.** The
- * queue exists for the times the server is unreachable; on a working connection it should stay empty, and
- * the user should never see a pending marker for something that is already saved.
- *
- * @returns whether the change reached the server.
- */
-export async function tryNow(id: string): Promise<boolean> {
-  return syncOne(id);
-}
-
-/**
- * Deliver one entry's change.
- *
- * ⚠️ **4xx and 5xx are handled differently, and that distinction is load-bearing.**
- *
- * | Response | Meaning | What happens |
- * |---|---|---|
- * | 2xx | delivered | the queue row goes, the pending mark goes |
- * | **409** | somebody else changed it | **the change is kept with its conflict information** — round 3 shows it |
- * | **4xx** | this will never work | **marked as needing attention, not retried** |
- * | 5xx / network | try later | stays queued |
- *
- * **Treating a 4xx as retryable is how a queue dies**: one entry the server will never accept sits at the
- * head, is retried for ever, and every change behind it waits. **The queue only moves forward if a
- * permanent failure is recognised as permanent.**
- */
-async function syncOne(id: string): Promise<boolean> {
-  const rows = await readOutbox();
-  const row = rows.find((candidate) => candidate.id === id);
-
-  if (row === undefined) return true;
-
-  try {
-    if (row.op === "create") {
-      await apiFetch<Transaction>("/transactions", { method: "POST", body: row.payload });
-    } else if (row.op === "update") {
-      await apiFetch<Transaction>(`/transactions/${id}`, { method: "PATCH", body: row.payload });
-    } else {
-      await apiFetch<unknown>(`/transactions/${id}`, { method: "DELETE" });
-    }
-
-    await resolveChange(id);
-    await setMark(id, row.op === "delete" ? { deleted: true } : null);
-
-    await logOffline("DIAGNOSTIC:write-synced", `${row.op} ${id.slice(0, 8)}`);
-
-    return true;
-  } catch (error) {
-    const status = error instanceof ApiRequestError ? error.status : 0;
-
-    /**
-     * ⚠️ **Every failure is recorded with its status, because "it did not work" is not a diagnosis.**
-     *
-     * The owner's complaint was two rows that stayed red through an offline/online cycle and a manual refresh:
-     * "红色的部分没有被删除." **A 404, a 409, a 401 and a dropped connection all produce that same red row**, and
-     * each needs a different fix. Without the status in the log there is no way to tell them apart from the
-     * device — and the device is the only place the failure can be observed.
-     */
-    await logOffline(
-      "DIAGNOSTIC:write-failed",
-      `${row.op} ${id.slice(0, 8)} — ${status === 0 ? "无响应" : String(status)} ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    );
-
-    /**
-     * ⚠️ **A conflict is not a failure — it is information the user has to be given.**
-     *
-     * The server says this entry changed since the device last saw it. Round 2 keeps both sides and
-     * reports it; round 3 asks the user which one wins, and **the server's version is only available at
-     * this moment** — asking again later would show a third version that neither side ever saw.
-     */
-    if (status === 409) {
-      await recordFailure(id, "这笔记账在服务器上已被修改");
-
-      return false;
-    }
-
-    /**
-     * ⚠️ **A 404 on a delete means the entry is already gone, which is the outcome that was asked for.**
-     *
-     * The server answers `404 transaction_missing` when it cannot find the entry with `deletedAt: null`, which
-     * covers "already deleted" — **including deleted from another device**. Treating that as a failure leaves a
-     * row that can never succeed: every retry gets the same 404, **the entry is already invisible everywhere,
-     * and the only thing left on screen is a red row accusing the user of an unfinished deletion they did
-     * finish.**
-     *
-     * **The user wanted the entry not to exist. It does not exist. That is success**, and the row and the mark
-     * are cleared on the same path as any other delivered change.
-     *
-     * ⚠️ **The same status on a create or an update is a real failure** and falls through to the permanent
-     * branch below: a create that 404s means the endpoint is wrong, and an update that 404s means the entry
-     * vanished underneath an edit the user is still making.
-     */
-    if (status === 404 && row.op === "delete") {
-      await resolveChange(id);
-      await setMark(id, { deleted: true });
-
-      await logOffline("DIAGNOSTIC:write-already-gone", `删除 ${id.slice(0, 8)} — 服务器上已经没有它`);
-
-      return true;
-    }
-
-    /** A 4xx other than 409 will never succeed, so it must not sit at the head of the queue. */
-    if (status >= 400 && status < 500) {
-      /**
-       * ⚠️ **Recorded as permanent, which is what stops it from being retried for ever** — and from being
-       * dropped after five attempts as though the network were the problem.
-       */
-      await recordFailure(id, error instanceof Error ? error.message : String(error), {
-        permanent: true,
-      });
-
-
-      return false;
-    }
-
-    await recordFailure(id, error instanceof Error ? error.message : String(error));
-
-    return false;
-  }
-}
-
-/**
- * Deliver everything queued, oldest first.
- *
- * ⚠️ **One at a time, and oldest first.** Concurrency would make the order unpredictable, and the thing
- * the user can perceive is *whether the oldest change has gone up*. A batch that partially succeeds out
- * of order is harder to explain than one that is simply slow.
- *
- * @returns how many changes reached the server.
- */
-export async function drainOutbox(): Promise<number> {
-  /**
-   * ⚠️ **The browser's opinion is logged before it is acted on, and this is the line that settles the
-   * question the owner asked**: "我能看到 test05 和一个服务都被标红了…理论上我已经触发了，为什么他们没有被
-   * 删掉呢？"
-   *
-   * **Two causes look identical on screen**: nothing ran, or it ran and the server refused. The old code
-   * returned `0` silently in the first case, so the diagnostics showed *no* sync lines at all — which reads
-   * the same as "the sync is fine and there was nothing to do".
-   */
-  const offline = isAccountOffline();
-
-  await logOffline(
-    "DIAGNOSTIC:drain",
-    offline
-      ? "浏览器认为当前离线，不投递"
-      : `在线判定通过，队列 ${String((await readOutbox()).length)} 条`,
-  );
-
-  if (offline) return 0;
-
-  const rows = await readOutbox();
-  const ordered = [...rows].sort((left, right) => left.queuedAt - right.queuedAt);
-
-  let delivered = 0;
-
-  for (const row of ordered) {
-    /**
-     * ⚠️ **A change the server has refused outright is never retried, and never blocks the ones behind it.**
-     *
-     * `permanent` is set by `syncOne` when it sees a 4xx that is not a conflict. **Without this flag the queue
-     * had no way to tell "try again later" from "this will never work"**, and the two were handled by the same
-     * rule — attempts — which meant either retrying for ever or **dropping a change that only needed the
-     * network to come back.** The owner's queue is exactly the situation where that shows: entries recorded on
-     * a plane and delivered days later.
-     */
-    if (row.permanent === true) {
-      /**
-       * ⚠️ **Why it is being skipped is recorded.** A row that is quietly skipped for ever is indistinguishable
-       * from a row that was never queued, and **the whole complaint is a colour that will not clear.**
-       */
-      await logOffline(
-        "DIAGNOSTIC:drain-skip",
-        `${row.op} ${row.id.slice(0, 8)} — 服务器已拒绝：${row.lastError ?? "未知"}`,
-      );
-
-      continue;
-    }
-
-    /**
-     * A transient failure is retried, but not for ever: five failed attempts is not going to succeed on the
-     * sixth without something changing.
-     */
-    if (row.attempts >= MAX_ATTEMPTS) {
-      await logOffline(
-        "DIAGNOSTIC:drain-skip",
-        `${row.op} ${row.id.slice(0, 8)} — 已失败 ${String(row.attempts)} 次：${row.lastError ?? "未知"}`,
-      );
-
-      continue;
-    }
-
-    if (await syncOne(row.id)) delivered += 1;
-  }
-
-  if (delivered > 0) {
-    await logOffline("DIAGNOSTIC:outbox-drained", `投递 ${String(delivered)} 条`);
-  }
-
-  return delivered;
-}
-
-/**
- * How many times a *transient* failure is retried before the change is left for the user.
- *
- * ⚠️ **A bounded number, because an unbounded one is a battery drain** — and because a change that has failed
- * five times is not going to succeed on the sixth without something changing. It stays in the queue with its
- * error, visible in the diagnostics screen, and **the user is told rather than the program quietly retrying
- * for ever.**
- *
- * ⚠️ **It does not apply to a permanent failure**, which is not retried at all — see `drainOutbox`.
- */
-const MAX_ATTEMPTS = 5;
-
-/** Whether anything is waiting. Cheap enough for a banner. */
-export async function hasPendingWrites(): Promise<boolean> {
-  return (await readOutbox()).length > 0;
-}
-
-async function repairMissingQueueRows(): Promise<number> {
-  const marks = await readMarks();
-  const rows = await readOutbox();
-  const queued = new Set(rows.map((row) => row.id));
-
-  const missing = Object.entries(marks).filter(([id, mark]) => {
-    const pending = mark.pending === true || mark.deleted === true;
-
-    return pending && !queued.has(id);
-  });
-
-  if (missing.length === 0) return 0;
-
-  /**
-   * ⚠️ **A deletion is repaired as a deletion, and anything else as an update.**
-   *
-   * A deletion is the only one that can be reconstructed without a payload — `DELETE /transactions/:id` needs
-   * nothing else. **An entry marked pending but not deleted has no payload to rebuild**, so it is queued as an
-   * update with no body: the server will reject it, the row is recorded as a permanent failure, and **the user
-   * is told rather than the program inventing a body it does not have.** In practice this only happens for an
-   * entry created offline whose create row was somehow lost, which the create path cannot produce.
-   */
-  const next = [
-    ...rows,
-    ...missing.map(([id, mark]) => ({
-      id,
-      op: (mark.deleted === true ? "delete" : "update") as OutboxOp,
-      baseVersion: null,
-      queuedAt: Date.now(),
-      attempts: 0,
-    })),
-  ];
-
-  await writeOutbox(next);
-
-  await logOffline(
-    "DIAGNOSTIC:queue-repaired",
-    `补回 ${String(missing.length)} 条只标记未入队的改动`,
-  );
-
-  return missing.length;
-}
-
-/**
- * Which entries have not reached the server — read from the queue, which is the only thing that knows.
- *
- * ⚠️ **The owner's proposal, with one change of storage, and his reasoning is why**: "给每笔记账新增一个变量。
- * 例如'是否被同步'…如果这个变量为 0，意味着它还没被同步到服务器端，也就显示背景为淡红色."
- *
- * He is right that the state belongs with the entry. **What he is really fixing is that the colour was
- * decided by two things that could disagree** — the entry list and a separate map of marks — and every bug in
- * this area has been an attempt to keep them in step. **Two facts about one thing will eventually differ; one
- * fact cannot.**
- *
- * So the flag is not stored twice. **The queue *is* the "not yet sent" state**, and it cannot be stale about
- * itself: an entry is unsynced exactly while the queue holds a row for it, and stops being unsynced the
- * moment the row goes — **whatever route delivered it, and with nothing having to remember to clear a mark.**
- *
- * ⚠️ **A delete is not "unsynced" for colouring.** The entry is gone from the screen, so colouring it would
- * colour nothing; its queue row exists to tell the server, not to warn the user.
- */
 export async function pendingIds(): Promise<ReadonlySet<string>> {
   /**
    * ⚠️ **Read from the marks, not from a queue.** One record, two readings: **the colour of a row and the work a
