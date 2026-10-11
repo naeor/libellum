@@ -8,6 +8,7 @@ import { InnerPage } from "../components/Layouts.js";
 import { ErrorState, SkeletonRows } from "../components/States.js";
 import { useUndo } from "../components/UndoProvider.js";
 import { errorMessage } from "../lib/api.js";
+import { deleteEntry, updateEntry } from "../lib/offline/write.js";
 import {
   formatDateTimeInZone,
   fromDateTimeLocalValue,
@@ -110,18 +111,88 @@ export function EntryDetailPage(): React.JSX.Element {
     }
 
     try {
-      await update.mutateAsync({
-        version: data.version,
-        amountCents,
-        categoryId,
-        paymentMethodId,
-        currency,
-        note: note.trim() === "" ? null : note.trim(),
-        tagIds,
-        occurredAt: toLocalIso(occurredAt),
-        occurredLocalDate: toLocalDate(occurredAt),
-        occurredTz: data.occurredTz,
-      });
+      /**
+       * ⚠️ **Editing goes through the offline path, so it works with no signal and the row changes at once.**
+       *
+       * `updateEntry` writes the device's copy first and queues the change for the server, then delivers it
+       * if it can. **`occurredAt` is deliberately *not* sent as a field the device cannot resolve**: the
+       * offline copy is built from the stored entry, so everything the user did not edit keeps the value the
+       * server gave it — **including `categoryName` and `version`, which the screen shows and the queue needs
+       * as its base.** Sending only what changed is what makes the local entry identical to the server's once
+       * the queue drains, instead of a second shape that has to be reconciled.
+       */
+      const outcome = await updateEntry(
+        id,
+        {
+          version: data.version,
+          amountCents,
+          categoryId,
+          paymentMethodId,
+          currency,
+          note: note.trim() === "" ? null : note.trim(),
+          tagIds,
+          occurredAt: toLocalIso(occurredAt),
+          occurredLocalDate: toLocalDate(occurredAt),
+          occurredTz: data.occurredTz,
+        },
+        (current) => {
+          /**
+           * ⚠️ **The offline copy needs a category id, and the update may not have one.**
+           *
+           * `UpdateTransactionInput.categoryId` allows null — the server files a null category under the
+           * book's own 暂无分类 row and **resolves it on the way in**, so the stored entry always has an id.
+           * The device cannot resolve it, so it keeps the id it already holds: **the offline entry stays
+           * well-formed and the server corrects it if the two differ.**
+           */
+          const resolvedCategoryId = categoryId ?? current.categoryId;
+
+          return {
+            ...current,
+            amountCents,
+            categoryId: resolvedCategoryId,
+            currency,
+            note: note.trim() === "" ? null : note.trim(),
+            paymentMethodId,
+            occurredAt: toLocalIso(occurredAt),
+            occurredLocalDate: toLocalDate(occurredAt),
+            /**
+             * ⚠️ **The category's *name* is taken from the ledger**, because the server denormalises it onto
+             * each entry and the offline copy has no server to ask. An entry whose category was changed would
+             * otherwise keep showing the old name until the queue drained — **a display that contradicts the
+             * edit the user just made, for as long as the network is out.**
+             */
+            categoryName:
+              ledger.data?.categories.find((category) => category.id === resolvedCategoryId)?.name ??
+              current.categoryName,
+            paymentMethodName:
+              paymentMethodId === null
+                ? null
+                : (ledger.data?.paymentMethods.find((method) => method.id === paymentMethodId)?.name ??
+                  current.paymentMethodName),
+            tagIds,
+          };
+        },
+      );
+
+      /**
+       * A `null` means the device does not hold this entry, which should not happen for a screen reached from
+       * the ledger — but if it does, the server path is the honest fallback rather than a silent no-op.
+       */
+      if (outcome === null) {
+        await update.mutateAsync({
+          version: data.version,
+          amountCents,
+          categoryId,
+          paymentMethodId,
+          currency,
+          note: note.trim() === "" ? null : note.trim(),
+          tagIds,
+          occurredAt: toLocalIso(occurredAt),
+          occurredLocalDate: toLocalDate(occurredAt),
+          occurredTz: data.occurredTz,
+        });
+      }
+
       setEditing(false);
     } catch (caught) {
       setError(errorMessage(caught));
@@ -133,7 +204,15 @@ export function EntryDetailPage(): React.JSX.Element {
     setError(null);
 
     try {
-      await remove.mutateAsync(id);
+      /**
+       * ⚠️ **Deleting offline marks the entry instead of removing it.**
+       *
+       * The row leaves the screen immediately, and its stored copy stays — **that copy is what round 3 needs
+       * to show the user what they deleted while asking whether the delete should stand.** The undo below
+       * restores from the server, so it needs a connection; **its button is honest about that rather than
+       * pretending to work.**
+       */
+      await deleteEntry(id);
       await navigate("/");
       showUndo({
         message: "已删除这笔记账",

@@ -157,10 +157,27 @@ export function AddEntryPage(): React.JSX.Element {
     }
 
     /**
-     * ⚠️ **Read once, here, and used by both the online and the offline path.**
+     * ⚠️ **The time is a *default the user may override*, and that is the whole story.**
      *
-     * Taking it at submit rather than at mount is what makes the entry's time the time it was recorded — see
-     * the note where it is used.
+     * The owner settled this: **"时间不用是提交的那一刻。因为时间本质上是可以让用户自己编辑的，
+     * 预设的时间只是一个方便用户的预设，大多数情况下，记一笔账所花的时间也只有十几秒。所以问题不大。"**
+     *
+     * So there are two cases, and they must not be confused:
+     *
+     * | What the user did | What is stored |
+     * |---|---|
+     * | left the field alone | **now** — a convenience default, and now is what they meant |
+     * | **changed the field** | **what they chose**, exactly |
+     *
+     * ⚠️ **Where this value is read matters, and this is the subtle part.** Reading it *here* — at submit —
+     * rather than from the state that was captured when the screen mounted is what makes the default "now".
+     * **The screen stays mounted between entries and can sit in the background for hours**, so its mount-time
+     * value is not now, and a default that is hours stale is not a convenience. **That staleness is what the
+     * owner reported**: two evening entries filed at noon, "被放到了 19:09 和 12 点整的两个账单中间."
+     *
+     * ⚠️ **An explicitly chosen time is untouched by this**, because `occurredAt` is what the field holds and
+     * the field is what the user edited. The edit screen sets it from the entry being edited for the same
+     * reason: **a time the user chose outranks any default the program would prefer.**
      */
     const savedAt = new Date();
 
@@ -182,22 +199,7 @@ export function AddEntryPage(): React.JSX.Element {
         categoryId,
         paymentMethodId,
         /**
-         * ⚠️ **The moment of saving, not the moment the screen was opened.**
-         *
-         * `occurredAt` is a `useState(() => new Date())`, so it is captured **once, at mount**. On a phone the
-         * entry screen stays mounted between entries and is left open in the background, so its value can be
-         * **hours old** — and the owner saw exactly that: two entries recorded in the evening appeared
-         * "被放到了 19:09 和 12 点整的两个账单中间."
-         *
-         * **An entry's time is when the user recorded it**, and the only moment that is certainly right is the
-         * one where they submit. A ledger whose rows are ordered by a clock reading from when a screen happened
-         * to open is ordered by something the user cannot see — **and the order then changes under them when
-         * the server assigns the real time.**
-         *
-         * ⚠️ **Overwriting an explicitly chosen time would be wrong**, which is why the field is read here
-         * rather than after a reset: the edit screen sets this value from the entry being edited, and its
-         * timestamp is what the user chose. For a new entry the picker's value and the submit moment are the
-         * same thing, so this changes nothing they can see.
+         * ⚠️ **The default is "now", the user's own choice is kept — see `savedAt` above.**
          */
         occurredAt: toLocalIso(savedAt),
         occurredLocalDate: toLocalDate(savedAt),
