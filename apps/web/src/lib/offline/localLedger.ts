@@ -379,6 +379,14 @@ export interface ConflictRecord {
    * user do work the program could have done — see `merge.ts`.
    */
   readonly base: Transaction | null;
+  /**
+   * ⚠️ **The fields the server says are genuinely in dispute** — and nothing else is asked about.
+   *
+   * The rule is the owner's: **"只有在服务器的数值是 C，而某台设备上传的请求是把数字从 A 改成 B 时才会触发冲突
+   * 机制"** — and only the server can tell, because only it knows whether the value the device read has moved.
+   * **A field the server accepted is not here**, so the user is never asked about an edit nobody disagreed with.
+   */
+  readonly fields?: readonly { readonly field: string; readonly serverValue: unknown }[];
   /** When it was noticed, so the oldest unanswered conflict can be shown first. */
   readonly at: number;
 }

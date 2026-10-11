@@ -73,7 +73,27 @@ export function ConflictScreen({ conflict, onResolve, onLater }: ConflictScreenP
     [merged.merged, answers, conflict.mine, conflict.theirs],
   );
 
-  const unanswered = merged.conflicts.filter((field) => !answers.has(field.field)).length;
+  /**
+   * ⚠️ **Only the fields the server named are asked about**, and the rest of the merge is applied silently.
+   *
+   * The rule is the owner's — **"只有在服务器的数值是 C，而某台设备上传的请求是把数字从 A 改成 B 时才会触发冲突
+   * 机制"** — and **only the server can apply it**, because only it knows whether the value this device read has
+   * moved. A field the server accepted is already saved there, **so asking about it would be asking the user to
+   * re-decide something that is not in question.**
+   */
+  const questions = useMemo(() => {
+    const named = conflict.fields;
+
+    if (named === undefined || named.length === 0) return merged.conflicts;
+
+    const byField = new Map(merged.conflicts.map((item) => [item.field, item]));
+
+    return named
+      .map((item) => byField.get(item.field as MergeField))
+      .filter((item): item is (typeof merged.conflicts)[number] => item !== undefined);
+  }, [conflict.fields, merged.conflicts]);
+
+  const unanswered = questions.filter((field) => !answers.has(field.field)).length;
 
   return (
     <div className="flex flex-col gap-5 px-6 py-5">
@@ -119,9 +139,9 @@ export function ConflictScreen({ conflict, onResolve, onLater }: ConflictScreenP
         )}
 
         <section className="flex flex-col gap-2">
-          <h2 className="text-xs text-muted">需要你选的地方（{merged.conflicts.length} 处）</h2>
+          <h2 className="text-xs text-muted">需要你选的地方（{questions.length} 处）</h2>
 
-          {merged.conflicts.map((field) => {
+          {questions.map((field) => {
             const chosen = answers.get(field.field);
             const options = [
               { side: "mine" as const, label: "这台设备", value: field.mine },

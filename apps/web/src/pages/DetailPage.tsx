@@ -466,7 +466,23 @@ export function DetailPage(): React.JSX.Element {
                     void navigate("/export");
                   }}
                 />
-                <ToolButton icon={<MoreIcon />} label="更多" hint="更多操作即将开放" />
+                <ToolButton
+                  icon={<MoreIcon />}
+                  label="更多"
+                  hint="本机存放与待同步印记"
+                  onClick={() => {
+                    /**
+                     * ⚠️ **This button was disabled from the day it was drawn** — "更多操作即将开放" — and the
+                     * owner pointed out that the screen it should open already had somewhere to go:
+                     * **"明细页面不是还有一个'更多'键没用吗？"**
+                     *
+                     * ⚠️ **And it is the right home for the clear-marks action**, which had been sitting under
+                     * 下载管理: **clearing a "not yet synced" mark is a statement about entries, not about
+                     * downloads**, and nobody looking for it would look there.
+                     */
+                    void navigate("/ledger/more");
+                  }}
+                />
               </div>
             </div>
 

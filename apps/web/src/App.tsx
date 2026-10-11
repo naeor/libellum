@@ -23,6 +23,7 @@ import { SoftwareUpdatePage } from "./pages/SoftwareUpdatePage.js";
 import { MonthDownloadPage } from "./pages/MonthDownloadPage.js";
 import { EntryDetailPage } from "./pages/EntryDetailPage.js";
 import { ExportPage } from "./pages/ExportPage.js";
+import { LedgerMorePage } from "./pages/LedgerMorePage.js";
 import { ImportPage } from "./pages/ImportPage.js";
 import { LoginPage } from "./pages/LoginPage.js";
 import { CategoriesPage, PaymentMethodsPage, TagsPage } from "./pages/ManagePages.js";
@@ -190,6 +191,7 @@ function AppRoutes(): React.JSX.Element {
 
       <Route path="/scan" element={<RequireAuth><ScanPage /></RequireAuth>} />
         <Route path="/record" element={<RequireAuth><RecordPage /></RequireAuth>} />
+        <Route path="/ledger/more" element={<RequireAuth><LedgerMorePage /></RequireAuth>} />
         <Route path="/voice/review" element={<RequireAuth><VoiceReviewPage /></RequireAuth>} />
       <Route path="/export" element={<RequireAuth><ExportPage /></RequireAuth>} />
       <Route path="/import" element={<RequireAuth><ImportPage /></RequireAuth>} />

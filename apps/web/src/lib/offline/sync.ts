@@ -245,10 +245,10 @@ async function deliver(intent: Intent): Promise<boolean> {
      * captured now, the thing the user actually typed is gone before anybody can show it to them.
      */
     if (status === 409) {
-      const theirs = readConflict(error);
+      const refusal = readRefusal(error);
 
-      if (theirs !== null) {
-        await recordConflict(entry, theirs, null);
+      if (refusal !== null) {
+        await recordConflict(entry, refusal);
 
         failures.delete(entry.id);
 
@@ -294,21 +294,48 @@ async function deliver(intent: Intent): Promise<boolean> {
  * everywhere, and **the other device's work would be overwritten without anybody being asked.** With no base,
  * every difference becomes a question: more questions than strictly needed, and **never a silent overwrite.**
  */
-async function recordConflict(entry: Transaction, theirs: Transaction, base: Transaction | null): Promise<void> {
-  await setConflict(entry.id, { mine: entry, theirs, base, at: Date.now() });
+async function recordConflict(entry: Transaction, refusal: Refusal): Promise<void> {
+  await setConflict(entry.id, {
+    mine: entry,
+    theirs: refusal.current,
+    base: null,
+    fields: refusal.fields,
+    at: Date.now(),
+  });
+}
+
+/** One field the server says is genuinely in dispute. */
+export interface RefusedField {
+  readonly field: string;
+  readonly serverValue: unknown;
+}
+
+/** What a 409 carried back. */
+interface Refusal {
+  readonly current: Transaction;
+  readonly fields: readonly RefusedField[];
 }
 
 /**
- * The server's copy of an entry, out of a 409 response.
+ * The server's answer, out of a 409 response.
  *
- * ⚠️ **Validated rather than trusted.** The shape comes over the wire, and a malformed one would put a
- * half-built entry in front of the user — **which is worse than showing no conflict at all**, because they would
- * be choosing between their real edit and a nonsense one.
+ * ⚠️ **It is the server's list of conflicting fields that decides what gets asked** — the client does not work it
+ * out again. This is the owner's rule applied literally:
+ *
+ * > **"只有在服务器的数值是 C，而某台设备上传的请求是把数字从 A 改成 B 时才会触发冲突机制."**
+ *
+ * **Only the server can tell** whether the value the device read has moved, and **a second implementation of the
+ * same rule on the client would eventually disagree with the first.** It also cannot be derived here at all: the
+ * copy the user started from lives in the value chain, not in a stored snapshot.
+ *
+ * ⚠️ **And the whole entry comes back with the refusal** rather than being fetched afterwards — **the row can
+ * change again between the refusal and a follow-up read, and the user would then be choosing against a version
+ * that never caused the disagreement.**
  */
-function readConflict(error: unknown): Transaction | null {
+function readRefusal(error: unknown): Refusal | null {
   if (!(error instanceof ApiRequestError)) return null;
 
-  const details = error.details as { readonly current?: unknown } | null | undefined;
+  const details = error.details as { readonly current?: unknown; readonly conflicts?: unknown } | null | undefined;
   const current = details?.current;
 
   if (typeof current !== "object" || current === null) return null;
@@ -317,7 +344,17 @@ function readConflict(error: unknown): Transaction | null {
 
   if (typeof candidate.id !== "string" || typeof candidate.version !== "number") return null;
 
-  return current as Transaction;
+  const fields: RefusedField[] = [];
+
+  if (Array.isArray(details?.conflicts)) {
+    for (const item of details.conflicts) {
+      const shape = item as { readonly field?: unknown; readonly serverValue?: unknown };
+
+      if (typeof shape.field === "string") fields.push({ field: shape.field, serverValue: shape.serverValue });
+    }
+  }
+
+  return { current: current as Transaction, fields };
 }
 
 /**
@@ -426,9 +463,9 @@ export async function recordServerList(ids: readonly string[]): Promise<void> {
     }
 
     /**
-     * ⚠️ **`mark.synced !== false` here means the server once had it.** An entry the device never created is
-     * one it downloaded, so its absence from the list means it was deleted by somebody — **and the deletion the
-     * user asked for has therefore happened, whichever route it took.**
+     * ⚠️ **`mark.synced !== false` here means the server once had it.** An entry the device never created is one
+     * it downloaded, so its absence from the list means it was deleted by somebody — **and the deletion the user
+     * asked for has therefore happened, whichever route it took.**
      */
     if (mark.deleted === true || mark.synced !== false) {
       await setMark(id, null);
@@ -439,9 +476,9 @@ export async function recordServerList(ids: readonly string[]): Promise<void> {
   /**
    * ⚠️ **The screens are republished, because clearing a mark is not visible on its own.**
    *
-   * `setMark` publishes the marks, but the row is drawn from the ledger snapshot — and a deletion disappears
-   * only when that snapshot is rebuilt. **Without this the mark is gone and the entry is still on screen**,
-   * which is precisely what the owner reported: "我刷新的时候，他会直接把删除印记给去掉，东西是实际上并没删除."
+   * `setMark` publishes the marks, but the row is drawn from the ledger snapshot — and a deletion disappears only
+   * when that snapshot is rebuilt. **Without this the mark is gone and the entry is still on screen**, which is
+   * precisely what the owner reported: "我刷新的时候，他会直接把删除印记给去掉，东西是实际上并没删除."
    */
   if (cleared > 0) {
     await logOffline("DIAGNOSTIC:server-list", `服务器确认 ${String(cleared)} 条已完成，印记已清`);
@@ -449,6 +486,70 @@ export async function recordServerList(ids: readonly string[]): Promise<void> {
     await republishLedger();
   }
 }
+
+/**
+ * Ask the server what is still in dispute, and put those questions in front of the user.
+ *
+ * ⚠️ **This is how a conflict raised on one device reaches the others**, since there is no push channel — the
+ * owner's own description of the loop: **"任何一台设备触发服务器同步…服务器会立刻跟所有账号的本地记录来一次大核对."**
+ *
+ * ⚠️ **A conflict that has been settled is simply absent here**, which is what stops a second device asking the
+ * same question: **"如果用户已经对这个冲突做了一次确认…此时没必要让用户在别的设备上再肯定一次."**
+ *
+ * ⚠️ **Conflicts the server no longer lists are cleared locally**, because the answer is already in the entry the
+ * device will fetch — **leaving a yellow row up after somebody settled it would be showing a question that has an
+ * answer.**
+ */
+export async function pullConflicts(): Promise<number> {
+  const answer = await apiFetch<{
+    readonly conflicts: readonly {
+      readonly transactionId: string;
+      readonly fields: readonly { readonly field: string; readonly serverValue: unknown }[];
+    }[];
+  }>("/conflicts", { timeoutMs: 10_000 }).catch(() => null);
+
+  /** ⚠️ A failed pull changes nothing — an unanswered question stays on screen rather than disappearing. */
+  if (answer === null) return 0;
+
+  const marks = await readMarks();
+  const stored = await readStoredMonths();
+  const byId = new Map<string, Transaction>();
+
+  for (const entries of Object.values(stored)) {
+    for (const entry of entries) byId.set(entry.id, entry);
+  }
+
+  const listed = new Set(answer.conflicts.map((item) => item.transactionId));
+
+  /** ⚠️ Questions the server no longer has are answered — drop them so the yellow mark goes. */
+  for (const [id, mark] of Object.entries(marks)) {
+    if (mark.conflict !== undefined && !listed.has(id)) await setMark(id, null);
+  }
+
+  let found = 0;
+
+  for (const item of answer.conflicts) {
+    const entry = byId.get(item.transactionId);
+
+    /** ⚠️ A conflict for an entry this device does not hold cannot be shown, and is left for the server to keep. */
+    if (entry === undefined) continue;
+
+    await setConflict(item.transactionId, {
+      mine: entry,
+      theirs: entry,
+      base: null,
+      fields: item.fields,
+      at: Date.now(),
+    });
+
+    found += 1;
+  }
+
+  if (found > 0) await logOffline("DIAGNOSTIC:conflicts-pulled", `服务器上有 ${String(found)} 笔待选择`);
+
+  return found;
+}
+
 
 /**
  * Entries the server has that this device also has, and that this device believes are deleted.

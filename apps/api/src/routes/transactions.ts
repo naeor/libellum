@@ -681,6 +681,44 @@ export function registerTransactionRoutes(
   });
 
   // -------------------------------------------------------------------------
+  // GET /api/v1/conflicts
+  // -------------------------------------------------------------------------
+  /**
+   * ⚠️ **Every device asks this whenever it acts**, and that is how a conflict raised on one device reaches the
+   * others: "任何一台设备触发服务器同步——也就是登录；修改了某个账单；从离线恢复到在线；或者点击刷新时，服务器
+   * 会立刻跟所有账号的本地记录来一次大核对."
+   *
+   * ⚠️ **There is no push channel, and the owner accepted that**: "假设有两台设备 A 跟 B；服务器对某个事件标黄时
+   * B 设备选择把这个值改成 X，那在 A 触发服务器同步时直接把这个值也改成 X 就行."
+   *
+   * ⚠️ **Raised conflicts live on the server, so a device that was offline when the decision was made simply
+   * finds nothing here** — "如果用户已经对这个冲突做了一次确认…此时没必要让用户在别的设备上再肯定一次."
+   */
+  app.get("/api/v1/conflicts", { preHandler: requireAuth }, async (request) => {
+    const userId = request.currentUser!.id;
+    const bookId = await currentBookId(prisma, userId);
+
+    const rows = await openConflicts(prisma, bookId);
+    const ids = [...new Set(rows.map((row) => row.transactionId))];
+
+    const rowsById = new Map(rows.map((row) => [row.id, row]));
+
+    return {
+      conflicts: ids.map((transactionId) => ({
+        transactionId,
+        fields: rows
+          .filter((row) => row.transactionId === transactionId)
+          .map((row) => ({
+            field: row.field,
+            serverValue: row.serverValue,
+            claims: row.claims,
+            history: row.history,
+            raisedAt: rowsById.get(row.id)?.createdAt.toISOString() ?? null,
+          })),
+      })),
+    };
+  });
+  // -------------------------------------------------------------------------
   // DELETE /api/v1/transactions/:id
   // -------------------------------------------------------------------------
   app.delete("/api/v1/transactions/:id", { preHandler: requireAuth }, async (request, reply) => {

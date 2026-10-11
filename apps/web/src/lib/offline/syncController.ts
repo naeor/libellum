@@ -1,6 +1,6 @@
 import { logOffline } from "./diagnostics.js";
 import { pendingIds, refreshPending } from "./write.js";
-import { syncAll } from "./sync.js";
+import { pullConflicts, syncAll } from "./sync.js";
 
 /**
  * Deliver everything waiting, and repaint — the manual version of what the triggers do.
@@ -29,6 +29,16 @@ import { syncAll } from "./sync.js";
  * one moment where retrying a rejected change is free of doubt.**
  */
 export async function syncNow(): Promise<number> {
+  /**
+   * ⚠️ **The server is asked what is still in dispute on every trigger**, because there is no push channel and
+   * this is how a conflict raised on one device reaches the others — the owner's own description of the loop:
+   * **"任何一台设备触发服务器同步…服务器会立刻跟所有账号的本地记录来一次大核对."**
+   *
+   * ⚠️ **Before delivering, not after**: a device with an answer waiting should adopt it **before** it sends its
+   * own edit, so what it sends is based on what it now knows rather than on what it thought.
+   */
+  await pullConflicts();
+
   const report = await syncAll();
 
   await refreshPending();
@@ -84,6 +94,9 @@ export function startSyncTriggers(): () => void {
          * permission. The drain itself decides what succeeded, and a wrong hint costs one wasted request
          * rather than a delivery that never happens.
          */
+        /** ⚠️ Asked on every automatic trigger too, for the same reason as `syncNow`. */
+        await pullConflicts();
+
         const report = await syncAll();
 
         if (report.delivered > 0) await logOffline("DIAGNOSTIC:sync", `${reason}：投递 ${String(report.delivered)} 条`);

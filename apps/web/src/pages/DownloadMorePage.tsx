@@ -16,7 +16,7 @@ import { clearOfflineLog, readOfflineLog, type LogEntry } from "../lib/offline/d
 import { formatBytes, storageBreakdown, type StorageBreakdown } from "../lib/offline/persistence.js";
 import { resetEverything } from "../lib/offline/reset.js";
 import { databaseReport, type DatabaseReport } from "../lib/offline/dbstatus.js";
-import { clearAllMarks, readStoredMonths } from "../lib/offline/localLedger.js";
+import { readStoredMonths } from "../lib/offline/localLedger.js";
 import { readTrace, traceLine, readValue } from "../lib/offline/storage.js";
 
 /**
@@ -53,7 +53,6 @@ export function DownloadMorePage(): React.JSX.Element {
   const [queries, setQueries] = useState<readonly string[]>([]);
   const [trace, setTrace] = useState<readonly string[]>([]);
   const [db, setDb] = useState<DatabaseReport | null>(null);
-  const [cleared, setCleared] = useState(false);
   const [storedMonths, setStoredMonths] = useState(0);
   const [storedEntries, setStoredEntries] = useState(0);
   const [confirmReset, setConfirmReset] = useState(false);
@@ -257,35 +256,6 @@ export function DownloadMorePage(): React.JSX.Element {
 
         <p className="text-xs leading-relaxed text-muted">
           服务器上的账目不受影响；这里只是本机的副本。
-        </p>
-      </section>
-
-      <section className="flex flex-col gap-2">
-        {/*
-          ⚠️ **An escape hatch, and the owner's own words are the reason for it**:
-          "一个你明确要求删掉、却删不掉的记录，比一个颜色不对更糟."
-
-          Every automatic path in this area has now been wrong at least once — a queue that was never drained,
-          a mark cleared while the entry stayed, a merge that emptied the screen — and **when the program cannot
-          carry out an instruction, the person who gave it must be able to withdraw it.** This does exactly one
-          thing: it stops announcing. **Nothing is sent, nothing is removed, and the ledger is left as the
-          server sees it.**
-        */}
-        <Button
-          onClick={() => {
-            void (async () => {
-              await clearAllMarks();
-              setCleared(true);
-            })();
-          }}
-        >
-          {cleared ? "已清空待同步印记" : "清空「待同步」印记"}
-        </Button>
-
-        <p className="text-xs leading-relaxed text-muted">
-          停止把这些账目当作「还没同步」或「还没删除」来提醒。
-          不会发送任何请求，也不会删掉服务器或本机上的任何账目 ——
-          只是让它们不再带颜色。如果服务器上确实已经删掉，本机下次取回列表时会照常消失。
         </p>
       </section>
 

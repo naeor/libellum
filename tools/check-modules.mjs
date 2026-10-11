@@ -58,6 +58,7 @@ const MODULES = [
   "/src/lib/offline/merge.ts",
   "/src/lib/offline/device.ts",
   "/src/components/ConflictScreen.tsx",
+  "/src/pages/LedgerMorePage.tsx",
   "/src/lib/clipboard.ts",
   "/src/lib/version.ts",
   "/src/components/CopyButton.tsx",
