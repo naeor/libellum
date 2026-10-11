@@ -204,6 +204,27 @@ function monthOfKey(queryKey: unknown): string | null {
 }
 
 /**
+ * One merge at a time.
+ *
+ * ⚠️ **The merge is a read–modify–write, and serialising only the write is not enough.**
+ *
+ * `writeValue` already queues writes per key, and that was mistaken for enough. It is not: two merges
+ * can both read the stored cache *before* either has written, both decide what to preserve from the
+ * same old copy, and then the second write — based on a snapshot that never saw the first one's
+ * additions — **overwrites the first one's work.**
+ *
+ * The owner's trace shows exactly that shape: `write query-cache — 14247 字节` immediately after a run
+ * that had logged `DIAGNOSTIC:cache-merge — 保留 60 个月份记录`, with only four `transactions` entries
+ * surviving in the end. **The preservation happened and was then written over by a merge that had
+ * started before it.**
+ *
+ * ⚠️ **The lock covers the read as well as the write**, which is the whole point: the decision of what
+ * to keep must be made against the state that is actually on disk when the write happens, not against
+ * the state that was on disk a moment earlier.
+ */
+let mergeQueue: Promise<void> = Promise.resolve();
+
+/**
  * Write the incoming cache, keeping per-month transaction lists the incoming one does not mention.
  *
  * ⚠️ **Written after the owner's cache listing showed the damage**: `ledger`, a single `transaction`,
@@ -211,10 +232,34 @@ function monthOfKey(queryKey: unknown): string | null {
  * analysis screen had nothing to compute from and only one local read ever happened.
  */
 async function writeMerged(key: string, value: string): Promise<void> {
+  /**
+   * ⚠️ **`then` on both outcomes**, so one failed merge cannot block every later write to the cache for
+   * the rest of the session — the failure is reported by its own caller, and the next attempt deserves
+   * a clean run.
+   */
+  const next = mergeQueue.then(
+    () => mergeAndWrite(key, value),
+    () => mergeAndWrite(key, value),
+  );
+
+  mergeQueue = next.catch(() => undefined);
+
+  return next;
+}
+
+async function mergeAndWrite(key: string, value: string): Promise<void> {
   try {
     const incoming = JSON.parse(value) as DehydratedCache;
     const storedRaw = await readValue<string>(key);
 
+    /**
+     * ⚠️ **The sizes are logged, because the failure was a silent one.**
+     *
+     * "The months were dropped somewhere between the merge saying it kept sixty of them and the write
+     * finishing" is not something a count of preserved entries can show. **Both sides of the write, in
+     * bytes, makes it visible at a glance** — and a merge that produced a *smaller* cache than it read
+     * is the signature of exactly this bug.
+     */
     if (storedRaw === null) {
       await writeValue(key, value);
 
@@ -253,18 +298,32 @@ async function writeMerged(key: string, value: string): Promise<void> {
       return;
     }
 
+    const merged = JSON.stringify({
+      ...incoming,
+      clientState: { ...incoming.clientState, queries: [...incomingQueries, ...preserved] },
+    });
+
+    /**
+     * ⚠️ **A merge must never shrink the cache.** If it did, the preservation logic did not do what it
+     * says, and writing a smaller cache would destroy data the device holds. Failing safe here means
+     * keeping what is stored — the device's copy — and reporting it, rather than trusting arithmetic
+     * that has already been wrong once.
+     */
+    if (merged.length < storedRaw.length) {
+      await logCacheEvent(
+        "DIAGNOSTIC:cache-merge-refused",
+        `合并后反而更小（${String(storedRaw.length)} → ${String(merged.length)} 字节），保留设备上的版本`,
+      );
+
+      return;
+    }
+
     await logCacheEvent(
       "DIAGNOSTIC:cache-merge",
-      `保留 ${String(preserved.length)} 个月份记录（内存里已不在，但设备上有）`,
+      `保留 ${String(preserved.length)} 个月份记录；${String(storedRaw.length)} → ${String(merged.length)} 字节`,
     );
 
-    await writeValue(
-      key,
-      JSON.stringify({
-        ...incoming,
-        clientState: { ...incoming.clientState, queries: [...incomingQueries, ...preserved] },
-      }),
-    );
+    await writeValue(key, merged);
   } catch (error) {
     /**
      * ⚠️ **A failed merge falls back to a plain write.**
