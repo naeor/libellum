@@ -117,16 +117,27 @@
     }
   }
 
-  .refresh-turn {
-    animation: libellum-refresh-turn 700ms cubic-bezier(0.4, 0, 0.2, 1);
-  }
-
   /* ---- Shape ---------------------------------------------------------- */
   --radius-card: 1.25rem;
   --radius-field: 0.875rem;
 
   --font-sans:
     system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+/*
+  ⚠️ **The rule that uses the keyframes lives out here, and putting it inside `@theme` broke the whole app.**
+ *
+  Tailwind's `@theme` accepts **only custom properties and `@keyframes`** — so a plain class rule inside it fails the
+  build, and Vite shows its error overlay **instead of the application**. The symptom the owner saw was "程序出错了，
+  突然登录不上去", which is what a CSS compile failure looks like from outside: **every route, including the login
+  page, is replaced by the error.**
+ *
+  ⚠️ **And my own change did it** — the keyframes were placed correctly and the class came along with them.
+  **`@theme` is not "any CSS I want"; it is a declaration block with a shape.**
+ */
+.refresh-turn {
+  animation: libellum-refresh-turn 700ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 html,

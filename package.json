@@ -15,6 +15,7 @@
     "dev:api": "pnpm --filter @libellum/api dev",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
+    "check:build": "node tools/check-build.mjs",
     "test": "pnpm -r test",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
