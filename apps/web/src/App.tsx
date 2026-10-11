@@ -55,6 +55,31 @@ const queryClient = new QueryClient({
       refetchOnWindowFocus: false,
       retry: 1,
       staleTime: 30_000,
+      /**
+       * ⚠️ **`Infinity`, and this default was deleting the user's downloaded history.**
+       *
+       * TanStack's default is five minutes: a query nobody is observing any more has its data
+       * **removed from the in-memory cache**. That is sensible for a web app whose cache is a cache.
+       *
+       * **Here the cache is the data.** The owner asked for his whole history to be available offline,
+       * the download writes sixty months of it, and **the persistence layer saves the in-memory cache
+       * wholesale** — so every month whose screen had been left five minutes earlier was dropped from
+       * memory and then written out of storage with it. His cache listing showed it exactly:
+       * `ledger`, a single `transaction`, `summary` and several `stats` entries all present, and
+       * **not one `transactions · month=…` entry** — the per-month lists were gone, which is why the
+       * analysis screen had nothing to compute from and why only one local read ever appeared.
+       *
+       * **A cache that has to be held open to stay on the device is not an offline copy.** With
+       * `Infinity`, what was downloaded stays until something deliberately replaces it.
+       *
+       * The cost is bounded and known: this is one person's ledger, about 115 KB for sixty months.
+       * The alternative — evicting it — costs the feature it was downloaded for.
+       *
+       * ⚠️ **It matches `CACHE_MAX_AGE_MS`, which was already `Infinity`.** The stored copy was never
+       * allowed to expire; the in-memory copy was expiring after five minutes and taking the stored one
+       * with it. **Two expiry policies for one cache, and the shorter one won.**
+       */
+      gcTime: Number.POSITIVE_INFINITY,
     },
   },
 });

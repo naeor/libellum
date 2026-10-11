@@ -150,8 +150,30 @@ export const cachePersister = createAsyncStoragePersister({
   },
   storage: {
     getItem: (key) => readValue<string>(key),
+    /**
+     * ⚠️ **Merge, rather than replace.**
+     *
+     * The library hands over the dehydrated **in-memory** cache, and writing that verbatim is what lost
+     * the owner's downloaded months: anything that left memory — through eviction, a reload before a
+     * month was ever observed, any path not yet found — **was written out of storage with it.**
+     *
+     * `gcTime: Infinity` in `App.tsx` stops the eviction that was doing it. **This stops the loss being
+     * possible at all**: a month the device already holds is kept even when the write does not mention
+     * it, so the stored copy can only ever grow or be replaced by something newer, never silently shrink.
+     *
+     * ⚠️ **Only transaction lists are preserved this way, and deliberately.**
+     *
+     * They are the expensive thing to lose — sixty requests to rebuild — and they are addressed by month,
+     * so "the memory write did not mention February" almost always means "no screen is showing February",
+     * not "February is no longer true". Everything else (`stats`, `summary`, `ledger`, single entries)
+     * is cheap to fetch again and **must** be allowed to change: a summary that cannot be replaced is a
+     * summary showing yesterday's totals.
+     *
+     * Merging is by query key, exactly as the dehydrated cache is addressed, and the new value always
+     * wins for any key it does contain.
+     */
     setItem: (key, value) => {
-      void writeValue(key, value);
+      void writeMerged(key, value);
     },
     /**
      * ⚠️ **Never called by us, and inert if the library calls it.**
@@ -166,6 +188,98 @@ export const cachePersister = createAsyncStoragePersister({
   },
   throttleTime: 1_000,
 });
+
+/** A dehydrated cache, as the persister hands it over. */
+interface DehydratedCache {
+  readonly clientState?: { readonly queries?: readonly { readonly queryKey?: unknown }[] };
+}
+
+/** The month a stored transaction-list query is for, or `null`. */
+function monthOfKey(queryKey: unknown): string | null {
+  if (!Array.isArray(queryKey) || queryKey[0] !== "transactions") return null;
+
+  const filters = queryKey[1] as { readonly month?: unknown } | undefined;
+
+  return typeof filters?.month === "string" ? filters.month : null;
+}
+
+/**
+ * Write the incoming cache, keeping per-month transaction lists the incoming one does not mention.
+ *
+ * ⚠️ **Written after the owner's cache listing showed the damage**: `ledger`, a single `transaction`,
+ * `summary` and several `stats` entries present, and **not one `transactions · month=…`** — so the
+ * analysis screen had nothing to compute from and only one local read ever happened.
+ */
+async function writeMerged(key: string, value: string): Promise<void> {
+  try {
+    const incoming = JSON.parse(value) as DehydratedCache;
+    const storedRaw = await readValue<string>(key);
+
+    if (storedRaw === null) {
+      await writeValue(key, value);
+
+      return;
+    }
+
+    const stored = JSON.parse(storedRaw) as DehydratedCache;
+
+    const incomingQueries = incoming.clientState?.queries ?? [];
+    const storedQueries = stored.clientState?.queries ?? [];
+
+    if (storedQueries.length === 0) {
+      await writeValue(key, value);
+
+      return;
+    }
+
+    /** Keys the incoming write already speaks for — these are replaced, not duplicated. */
+    const covered = new Set(incomingQueries.map((query) => JSON.stringify(query.queryKey)));
+
+    /**
+     * ⚠️ **Only transaction lists, only months, and only when the incoming write is silent about them.**
+     *
+     * A broader merge would keep `stats` and `summary` entries for ever, and a summary that cannot be
+     * replaced is a summary showing yesterday's totals.
+     */
+    const preserved = storedQueries.filter((query) => {
+      const month = monthOfKey(query.queryKey);
+
+      return month !== null && !covered.has(JSON.stringify(query.queryKey));
+    });
+
+    if (preserved.length === 0) {
+      await writeValue(key, value);
+
+      return;
+    }
+
+    await logCacheEvent(
+      "DIAGNOSTIC:cache-merge",
+      `保留 ${String(preserved.length)} 个月份记录（内存里已不在，但设备上有）`,
+    );
+
+    await writeValue(
+      key,
+      JSON.stringify({
+        ...incoming,
+        clientState: { ...incoming.clientState, queries: [...incomingQueries, ...preserved] },
+      }),
+    );
+  } catch (error) {
+    /**
+     * ⚠️ **A failed merge falls back to a plain write.**
+     *
+     * Refusing to save would be worse than saving less: the incoming cache is what the running app
+     * actually has, and losing *it* would be the larger problem.
+     */
+    void logCacheEvent(
+      "DIAGNOSTIC:cache-merge-failed",
+      error instanceof Error ? error.message : String(error),
+    );
+
+    await writeValue(key, value);
+  }
+}
 
 /** A breadcrumb, so a refused deletion is visible in the report rather than silent. */
 async function logCacheEvent(what: string, detail: string): Promise<void> {
