@@ -156,6 +156,14 @@ export function AddEntryPage(): React.JSX.Element {
       return;
     }
 
+    /**
+     * ⚠️ **Read once, here, and used by both the online and the offline path.**
+     *
+     * Taking it at submit rather than at mount is what makes the entry's time the time it was recorded — see
+     * the note where it is used.
+     */
+    const savedAt = new Date();
+
     try {
       /**
        * ⚠️ **The id and the idempotency key are the same value, minted here.**
@@ -173,8 +181,26 @@ export function AddEntryPage(): React.JSX.Element {
         currency,
         categoryId,
         paymentMethodId,
-        occurredAt: toLocalIso(occurredAt),
-        occurredLocalDate: toLocalDate(occurredAt),
+        /**
+         * ⚠️ **The moment of saving, not the moment the screen was opened.**
+         *
+         * `occurredAt` is a `useState(() => new Date())`, so it is captured **once, at mount**. On a phone the
+         * entry screen stays mounted between entries and is left open in the background, so its value can be
+         * **hours old** — and the owner saw exactly that: two entries recorded in the evening appeared
+         * "被放到了 19:09 和 12 点整的两个账单中间."
+         *
+         * **An entry's time is when the user recorded it**, and the only moment that is certainly right is the
+         * one where they submit. A ledger whose rows are ordered by a clock reading from when a screen happened
+         * to open is ordered by something the user cannot see — **and the order then changes under them when
+         * the server assigns the real time.**
+         *
+         * ⚠️ **Overwriting an explicitly chosen time would be wrong**, which is why the field is read here
+         * rather than after a reset: the edit screen sets this value from the entry being edited, and its
+         * timestamp is what the user chose. For a new entry the picker's value and the submit moment are the
+         * same thing, so this changes nothing they can see.
+         */
+        occurredAt: toLocalIso(savedAt),
+        occurredLocalDate: toLocalDate(savedAt),
         occurredTz: localTimeZone(),
         note: note.trim() === "" ? null : note.trim(),
         tagIds,
@@ -210,8 +236,8 @@ export function AddEntryPage(): React.JSX.Element {
           currency,
           categoryId,
           paymentMethodId,
-          occurredAt: toLocalIso(occurredAt),
-          occurredLocalDate: toLocalDate(occurredAt),
+          occurredAt: toLocalIso(savedAt),
+          occurredLocalDate: toLocalDate(savedAt),
           occurredTz: localTimeZone(),
           note: note.trim() === "" ? null : note.trim(),
           tagIds,
@@ -274,7 +300,7 @@ export function AddEntryPage(): React.JSX.Element {
           void save();
         }}
       >
-        <header className="flex flex-col gap-5 bg-brand px-6 pt-8 pb-6 text-white">
+        <header className="flex flex-col gap-4 bg-brand px-6 pt-8 pb-6 text-white">
           <div className="flex gap-2">
             {(["expense", "income"] as const).map((option) => (
               <button
@@ -292,9 +318,30 @@ export function AddEntryPage(): React.JSX.Element {
               </button>
             ))}
           </div>
+        </header>
 
-          <label className="flex items-baseline gap-2 border-b border-white/30 pb-2">
-            <span className="text-2xl">{currency === "CNY" ? "¥" : ""}</span>
+        {/*
+          ⚠️ **The amount is its own card, in white, with a green frame — and the owner asked for exactly
+          this**: "现在的手动记账页面金钱的部分底色是绿色的，看起来上面太接近了。我手动记账的时候也出现过
+          直接往下滑，没计钱的情况。建议把绿色改为只有支出和收入两个按钮使用绿色。然后把金额的稍微往下移动
+          一点，并且周围改为多一个绿色的框，中间还是白底，让人第一时间能把视觉重心放到这里."
+
+          **Two problems, and the second one is about losing money.**
+
+          The green header and the amount field inside it were the same colour family, so the most important
+          field on the screen read as part of the chrome. **And he scrolled past it**: with the field flush
+          against the buttons, a scroll that was meant to reveal the rest of the form could take the amount
+          out of view — and an entry saved with no amount is an entry that has to be found and fixed later.
+
+          **White inside a green frame is the answer to both**: the eye lands on the only white thing above the
+          fold, and the frame is a boundary the scroll has to cross rather than a place the cursor can sit
+          ambiguously.
+        */}
+        <section className="bg-canvas px-6 pt-4">
+          <label
+            className="flex items-baseline gap-2 rounded-card border-2 border-brand bg-surface px-4 py-4 shadow-sm"
+          >
+            <span className="text-2xl text-brand-dark">{currency === "CNY" ? "¥" : ""}</span>
             <input
               ref={amountRef}
               value={amountText}
@@ -305,12 +352,12 @@ export function AddEntryPage(): React.JSX.Element {
               placeholder={amountPlaceholder(currency)}
               aria-label="金额"
               autoFocus
-              className="w-full bg-transparent text-4xl font-semibold text-white outline-none placeholder:text-white/40"
+              className="w-full bg-transparent text-4xl font-semibold text-ink outline-none placeholder:text-muted/50"
             />
-            <span className="text-sm text-white/70">{currency}</span>
+            <span className="text-sm text-muted">{currency}</span>
           </label>
 
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2 pt-3">
             {quickAmounts.map((cents) => (
               <button
                 key={cents}
@@ -318,14 +365,19 @@ export function AddEntryPage(): React.JSX.Element {
                 onClick={() => {
                   setAmountText(minorToInput(cents, currency));
                 }}
-                className="rounded-full bg-white/15 px-3.5 py-1.5 text-sm text-white transition hover:bg-white/25"
+                className="rounded-full border border-brand-soft bg-brand-soft px-3.5 py-1.5 text-sm text-brand-dark transition hover:border-brand"
               >
                 {minorToInput(cents, currency)}
               </button>
             ))}
           </div>
-        </header>
+        </section>
 
+        {/*
+          ⚠️ **The rest of the form starts here.** The old markup continued a single header past the amount, so
+          everything below was inside the white-on-green block; it now sits on the page background, where
+          ordinary fields belong.
+        */}
         {error ? (
           <div className="px-6 pt-4">
             <Alert>{error}</Alert>
