@@ -6,7 +6,12 @@ import { Button } from "../components/Button.js";
 import { ChoiceDialog, type Choice } from "../components/ChoiceDialog.js";
 import { InnerPage } from "../components/Layouts.js";
 import { CopyButton } from "../components/CopyButton.js";
-import { cacheFootprint, describeKey, type CacheFootprint } from "../lib/offline/downloadManager.js";
+import {
+  cacheFootprint,
+  describeKey,
+  forgetStaleEntries,
+  type CacheFootprint,
+} from "../lib/offline/downloadManager.js";
 import { clearOfflineLog, readOfflineLog, type LogEntry } from "../lib/offline/diagnostics.js";
 import { formatBytes, storageBreakdown, type StorageBreakdown } from "../lib/offline/persistence.js";
 import { resetEverything } from "../lib/offline/reset.js";
@@ -44,6 +49,19 @@ export function DownloadMorePage(): React.JSX.Element {
 
   const load = useCallback(async () => {
     setLoading(true);
+
+    /**
+     * ⚠️ **Stale entries are cleared on sight rather than only on request.**
+     *
+     * The owner's report showed "共 82 条，其中 74 条当前版本会读" — eight entries under a key shape
+     * this version no longer writes, left over from before the filter fields changed. They are
+     * invisible, never read, and counted in the storage total. **A cleanup that only happens when
+     * somebody presses a button is a cleanup that never happens.**
+     *
+     * Safe by construction: it only removes entries whose key shape cannot be read by this version,
+     * and it writes nothing when it finds none — see `forgetStaleEntries`.
+     */
+    void forgetStaleEntries();
 
     try {
       const [entries, measured, breakdown, database] = await Promise.all([

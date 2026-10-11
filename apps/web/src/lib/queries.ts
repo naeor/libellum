@@ -30,7 +30,7 @@ import {
   type QueryClient,
   type UseMutationResult,
 } from "@tanstack/react-query";
-import { useMemo, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useSyncExternalStore } from "react";
 
 import { useAuth } from "../auth/AuthProvider.js";
 import { ApiRequestError, apiFetch, apiFetchFile } from "./api.js";
@@ -408,7 +408,31 @@ export function useTransaction(id: string) {
  * picker later changes nothing here.
  */
 export function useStats(query: StatsQuery) {
-  return useQuery({
+  /**
+   * ⚠️ **The same external store the ledger uses, and for the same reason.**
+   *
+   * The owner confirmed the mechanism works: with the store in place "明细界面大成功，所有的都能看了，
+   * 而且甚至不需要等待时间" — the ledger renders with no wait at all. **The analysis screen was still on
+   * its loading state**, and his diagnosis of why was right: "是不是因为明细界面只用调用，不用计算，
+   * 而分析界面还得仔细计算一遍呢？" — the ledger only has to *find* the entries, while this has to
+   * **compute** a result before there is anything to show.
+   *
+   * **So the computed result is published, not returned.** Kicking the calculation off and letting the
+   * screen read the answer synchronously from a store means the analysis screen is no longer waiting on
+   * a state update to arrive — which is the step that was being dropped.
+   *
+   * ⚠️ **Both callbacks are memoised on the key, and that is not an optimisation.**
+   * `useSyncExternalStore` re-subscribes whenever the subscribe function changes identity, so an inline
+   * arrow would unsubscribe and resubscribe on **every render** — with the extra renders that causes,
+   * on the device where extra renders are the problem.
+   */
+  const key = keyOfStats(query);
+  const subscribe = useCallback(() => subscribeAnalysis(key), [key]);
+  const read = useCallback(() => analysisSnapshot(key), [key]);
+
+  const storeValue = useSyncExternalStore(subscribe, read, read);
+
+  const result = useQuery({
     queryKey: queryKeys.stats(query),
     queryFn: () =>
       /**
@@ -435,19 +459,130 @@ export function useStats(query: StatsQuery) {
             },
             timeoutMs,
           }),
-        local: async () =>
-          computeStats(await readLocalTransactions(), {
+        local: async () => {
+          const computed = computeStats(await readLocalTransactions(), {
             from: query.from,
             to: query.to,
             bucket: query.bucket,
             currency: query.currency,
             compareFrom: query.compareFrom,
             compareTo: query.compareTo,
-          }),
+          });
+
+          /**
+           * ⚠️ **Published as well as returned**, so the screen has it whether or not the query's
+           * update arrives. See the note at the top of this hook.
+           */
+          publishAnalysis(keyOfStats(query), computed);
+
+          return computed;
+        },
+      }).then((value) => {
+        /**
+         * ⚠️ **Published whether it came from the server or from the device.**
+         *
+         * Either answer is a real answer; publishing both means the next render has something to draw
+         * whichever path produced it.
+         */
+        publishAnalysis(key, value);
+
+        return value;
       }),
     // A statistic is derived from entries; when none change, it cannot change.
     staleTime: 60_000,
   });
+
+  /**
+   * ⚠️ **The computed answer, or the query's — whichever exists.**
+   *
+   * The store is consulted first because it is the one that arrives without waiting; the query's data
+   * wins when it has anything, because a server answer is the truth and a local computation is a
+   * reproduction of it. Returning the query unchanged when neither exists keeps `isPending` and
+   * `isError` meaningful for the screen, which reads all three.
+   */
+  return useMemo(() => {
+    if (result.data !== undefined) return result;
+    if (storeValue === null) return result;
+
+    return {
+      ...result,
+      data: storeValue,
+      isPending: false,
+      isError: false,
+      error: null,
+      status: "success" as const,
+    };
+  }, [result, storeValue]);
+}
+
+/**
+ * A stable string for one analysis request.
+ *
+ * ⚠️ **String-keyed, because the store is compared by value.** An object key would have to be
+ * stringified on every read anyway, and `useSyncExternalStore` needs the same key to produce the same
+ * answer every time or it reports a change that never happened.
+ *
+ * The fields are written in a fixed order so that two requests differing only in field order are
+ * recognised as the same request.
+ */
+function keyOfStats(query: StatsQuery): string {
+  return [
+    query.from,
+    query.to,
+    query.bucket,
+    query.currency ?? "",
+    query.compareFrom ?? "",
+    query.compareTo ?? "",
+  ].join("|");
+}
+
+/** Computed analysis results, by request. */
+const analysisStore = new Map<string, StatsResponse>();
+
+/** Subscribers, by request key. */
+const analysisListeners = new Map<string, Set<() => void>>();
+
+/** The computed result for a request, synchronously. */
+export function analysisSnapshot(key: string): StatsResponse | null {
+  return analysisStore.get(key) ?? null;
+}
+
+/** Subscribe to one request's result. */
+export function subscribeAnalysis(key: string): () => void {
+  const listeners = analysisListeners.get(key) ?? new Set<() => void>();
+  analysisListeners.set(key, listeners);
+
+  const listener = (): void => {
+    for (const notify of listeners) notify();
+  };
+
+  listeners.add(listener);
+
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+/** Store a computed result and tell that request's subscribers. */
+function publishAnalysis(key: string, value: StatsResponse): void {
+  analysisStore.set(key, value);
+
+  for (const listener of analysisListeners.get(key) ?? []) listener();
+}
+
+/**
+ * Forget every computed result, and the ledger snapshot with it.
+ *
+ * ⚠️ **Called when the signed-in account changes**, because these stores hold one person's spending —
+ * and a store that outlives a sign-out would show the next person the last person's ledger, which is
+ * the exact reason the query cache is wiped on sign-out in the first place.
+ */
+export function clearLocalSnapshots(): void {
+  analysisStore.clear();
+
+  for (const listeners of analysisListeners.values()) {
+    for (const listener of listeners) listener();
+  }
 }
 
 /** Amounts offered as one-tap shortcuts. */
