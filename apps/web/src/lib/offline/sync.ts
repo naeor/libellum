@@ -3,6 +3,7 @@ import type { CreateTransactionInput, Transaction } from "@libellum/shared";
 import { ApiRequestError, apiFetch } from "../api.js";
 import { readMarks, readStoredMonths, readStoredEntries, setMark, type EntryMark } from "./localLedger.js";
 import { logOffline } from "./diagnostics.js";
+import { republishLedger } from "./write.js";
 
 /**
  * Delivering the device's intentions to the server.
@@ -203,18 +204,27 @@ async function deliver(intent: Intent): Promise<boolean> {
     const status = error instanceof ApiRequestError ? error.status : 0;
 
     /**
-     * ⚠️ **A 404 on a delete means it is already gone, which is the outcome that was wanted.** The server
-     * answers that when the entry has no live row — **including deleted from another device** — and treating it
-     * as failure leaves a row that can never succeed.
+     * ⚠️ **A 404 on a delete is NOT success, and treating it as success is what made the owner's rows
+     * undeletable.** His diagnostics show the whole sequence:
+     *
+     * ```
+     * write-failed — delete 01a128c9 — 404 找不到这笔记账。
+     * write-already-gone — 删除 01a128c9 — 服务器上已经没有它
+     * sync-ok — delete 01a128c9（服务器上本就没有）        <- the mark was cleared
+     * ```
+     *
+     * The mark was cleared, the colour went, **and the entry was still there** — which is exactly what he
+     * reported: "我刷新的时候，他会直接把删除印记给去掉，东西是实际上并没删除."
+     *
+     * ⚠️ **The server answers 404 in two situations that must not be conflated**: the row has already been
+     * soft-deleted, **or this id does not exist in this book at all.** The second happens for an entry that was
+     * never uploaded — **and clearing the mark then means the program forgets the deletion while the entry is
+     * still in front of the user.**
+     *
+     * **So a delete is succeeded by the server's own list, and by nothing else** — see `recordServerList`,
+     * which clears a deletion precisely when the month's list comes back without that entry. **One authority
+     * for "is it gone", and it is the server's list rather than an inference from an error code.**
      */
-    if (status === 404 && op === "delete") {
-      await setMark(entry.id, null);
-      failures.delete(entry.id);
-
-      await logOffline("DIAGNOSTIC:sync-ok", `delete ${short}（服务器上本就没有）`);
-
-      return true;
-    }
 
     const message = error instanceof Error ? error.message : String(error);
 
@@ -313,6 +323,8 @@ export async function recordServerList(ids: readonly string[]): Promise<void> {
    */
   const marks = await readMarks();
 
+  let cleared = 0;
+
   for (const [id, mark] of Object.entries(marks)) {
     if (onServer.has(id)) continue;
 
@@ -328,7 +340,21 @@ export async function recordServerList(ids: readonly string[]): Promise<void> {
      */
     if (mark.deleted === true || mark.synced !== false) {
       await setMark(id, null);
+      cleared += 1;
     }
+  }
+
+  /**
+   * ⚠️ **The screens are republished, because clearing a mark is not visible on its own.**
+   *
+   * `setMark` publishes the marks, but the row is drawn from the ledger snapshot — and a deletion disappears
+   * only when that snapshot is rebuilt. **Without this the mark is gone and the entry is still on screen**,
+   * which is precisely what the owner reported: "我刷新的时候，他会直接把删除印记给去掉，东西是实际上并没删除."
+   */
+  if (cleared > 0) {
+    await logOffline("DIAGNOSTIC:server-list", `服务器确认 ${String(cleared)} 条已完成，印记已清`);
+
+    await republishLedger();
   }
 }
 

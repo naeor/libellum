@@ -131,6 +131,10 @@ export function localEntry(
  * and a write must not be answered by a read that started before it — **that would publish the state the
  * user just changed away from.**
  */
+export async function republishLedger(): Promise<void> {
+  await refreshView();
+}
+
 async function refreshView(): Promise<void> {
   clearInFlight();
 

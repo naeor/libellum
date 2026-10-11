@@ -396,6 +396,26 @@ export async function readMarks(): Promise<LedgerMarks> {
   return stored === null || typeof stored !== "object" ? {} : stored;
 }
 
+/**
+ * Forget every mark — "stop telling me about these, I have looked".
+ *
+ * ⚠️ **An escape hatch the owner asked for by implication**: "一个你明确要求删掉、却删不掉的记录，比一个颜色不对
+ * 更糟." Every automatic path in this area has now been wrong at least once, and **when the program cannot carry
+ * out an instruction, the person who gave it must be able to withdraw it.**
+ *
+ * ⚠️ **It does not touch the entries** — only the intentions. Anything already deleted on the server stays
+ * deleted; anything still there stays there and is simply no longer announced. **Nothing is created, nothing is
+ * removed, and the ledger is left exactly as the server sees it.**
+ */
+export async function clearAllMarks(): Promise<void> {
+  await writeOwn(LEDGER_MARKS_KEY, {});
+
+  publishPending(new Set());
+  publishDeleted(new Set());
+
+  await logOffline("DIAGNOSTIC:marks-cleared", "用户清空了全部待同步印记");
+}
+
 /** Set or clear one entry's mark. */
 export async function setMark(id: string, mark: EntryMark | null): Promise<void> {
   /**
