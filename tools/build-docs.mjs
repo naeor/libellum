@@ -117,20 +117,30 @@ if (python === null) {
     ["ROADMAP.md", "制作计划.docx", "Libellum 制作计划与大纲", ["制作计划.pdf", "制作计划与大纲.pdf"]],
     ["BACKLOG.md", "后期待办.docx", "Libellum 后期待办与想法池", ["后期待办.pdf"]],
     ["DEVLOG.md", "开发日志.docx", "Libellum 开发日志", ["开发日志.pdf"]],
+    /**
+     * ⚠️ **The design documents live in `档案/`, and the path is why.**
+     *
+     * They were moved there at the owner's request — **"新建一个不常用文件夹，把所有现在用不到的文件放进去"** —
+     * and `档案` means **"rarely opened, but still the authority"**, not "obsolete".
+     *
+     * ⚠️ **The source path carries the folder; the output name does not.** `.docx` files stay in `docs/` so the
+     * export names this document has always used keep working, **and only the `source` element of each entry
+     * changes.**
+     */
     [
-      "S6-导出与导入-设计决定.md",
+      "档案/S6-导出与导入-设计决定.md",
       "S6-导出与导入-设计决定.docx",
       "Libellum S6 · 导出与导入 · 设计决定",
       ["S6-导出与导入-设计决定.pdf"],
     ],
     [
-      "协作与多账本-设计决定.md",
+      "档案/协作与多账本-设计决定.md",
       "协作与多账本-设计决定.docx",
       "Libellum · 协作与多账本 · 设计决定",
       ["协作与多账本-设计决定.pdf"],
     ],
     [
-      "S8-离线写入-设计决定.md",
+      "档案/S8-离线写入-设计决定.md",
       "S8-离线写入-设计决定.docx",
       "Libellum S8 · 离线写入 · 设计决定",
       ["S8-离线写入-设计决定.pdf"],
@@ -142,7 +152,7 @@ if (python === null) {
      * to need on a phone.
      */
     [
-      "S8-冲突-设计决定.md",
+      "档案/S8-冲突-设计决定.md",
       "S8-冲突-设计决定.docx",
       "Libellum S8 · 冲突 · 设计决定",
       ["S8-冲突-设计决定.pdf"],
@@ -160,7 +170,7 @@ if (python === null) {
       ["版本记录.pdf"],
     ],
     [
-      "离线与同步-设计决定.md",
+      "档案/离线与同步-设计决定.md",
       "离线与同步-设计决定.docx",
       "Libellum · 离线与同步 · 设计决定",
       ["离线与同步-设计决定.pdf"],

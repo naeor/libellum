@@ -526,7 +526,7 @@
 > | `attachments` 小票图片表 | **不存在** | S5 改成"付款截图识别"且**图片不落盘**之后，这张表不再需要 |
 > | 预设分类"12 类" | **17 行**：支出 10（9 + 暂无分类）/ 收入 7（6 + 暂无分类） | 系统分类各算一行 |
 > | 所有币种统一 2 位小数 | **按币种**：日元 0 位，其余 2 位 | 见 BACKLOG §2.1 |
-> | — | 新增 `transactions.source_ref` / `import_ref`、`export_logs`、`import_logs` | S6 可追溯编号方案，见 `S6-导出与导入-设计决定.md` §8 |
+> | — | 新增 `transactions.source_ref` / `import_ref`、`export_logs`、`import_logs` | S6 可追溯编号方案，见 `档案/S6-导出与导入-设计决定.md` §8 |
 
 **users — 用户**
 
