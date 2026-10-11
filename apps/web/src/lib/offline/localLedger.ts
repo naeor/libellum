@@ -188,7 +188,24 @@ export async function readLocalTransactions(): Promise<readonly Transaction[]> {
      * wholesale — which is how sixty downloaded months became six. **This map is only ever added to**, so
      * a month the user downloaded is available even when the query cache has forgotten it.
      */
-    const mine = await readStoredEntries();
+    /**
+     * ⚠️ **With one retry, because a first read can come back empty and the second does not.**
+     *
+     * The owner's report had `本机存储：60 个月 / 138 条` from the diagnostics page and an empty read
+     * from the ledger **at the same time, on the same device, from the same store**. A `get` that
+     * returns nothing while the value is demonstrably present is a known IndexedDB behaviour under load
+     * and during page resumption ([WebKit #251203](https://wiki.webkit.org/show_bug.cgi?id=251203)
+     * describes requests failing with no error).
+     *
+     * **One retry is the difference between "the device has nothing" and "this particular read did not
+     * see it"** — and everywhere else in the program those two are indistinguishable.
+     */
+    let mine = await readStoredEntries();
+
+    if (mine.length === 0) {
+      await logOffline("DIAGNOSTIC:ledger-reread", "第一次读本机存储为空，重试一次");
+      mine = await readStoredEntries();
+    }
 
     const raw = await readValue<string>(CACHE_KEY);
 
@@ -206,12 +223,20 @@ export async function readLocalTransactions(): Promise<readonly Transaction[]> {
      * `readLocalTransactions` is the only place that knows all four numbers at once: what the disk
      * held, what memory held, what they add up to after merging, and — when there is nothing — a
      * phrase a person can read.
+     *
+     * ⚠️ **`storedEntries` is counted separately, and that separation is the point.**
+     *
+     * The owner's report had `本机存储：60 个月 / 138 条` from the diagnostics page and `磁盘 0 条，
+     * 内存 138 条` from this banner **at the same time** — so the data was stored and this read did not
+     * see it. **One number that says "stored" and one that says "read" is what tells those apart**;
+     * a merged total hides exactly the disagreement being investigated.
      */
     localRead = {
       at: Date.now(),
       diskBytes: raw === null ? 0 : raw.length,
       diskEntries: fromDisk.length,
       liveEntries: live.length,
+      storedEntries: mine.length,
       total: mergedEntries.length,
       note:
         mine.length > 0
@@ -416,6 +441,8 @@ export interface LocalReadReport {
   readonly diskBytes: number;
   readonly diskEntries: number;
   readonly liveEntries: number;
+  /** Entries our own month-keyed store held. Counted apart from `diskEntries` on purpose. */
+  readonly storedEntries: number;
   readonly total: number;
   /** A plain-language reason, when there is nothing to show. */
   readonly note: string | null;
@@ -426,6 +453,7 @@ let localRead: LocalReadReport = {
   diskBytes: 0,
   diskEntries: 0,
   liveEntries: 0,
+  storedEntries: 0,
   total: 0,
   note: "还没有读过本机数据",
 };

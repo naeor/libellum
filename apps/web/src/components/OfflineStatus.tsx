@@ -166,7 +166,9 @@ export function OfflineStatus(): React.JSX.Element | null {
           <p>连不上服务器，现在显示的是本机保存的数据。</p>
           <p>
             本机共有 {read.total} 条记录
-            {read.at === 0 ? "（还没有读取过）" : `（磁盘 ${read.diskEntries} 条 / 内存 ${read.liveEntries} 条）`}
+            {read.at === 0
+              ? "（还没有读取过）"
+              : `（本机存储 ${read.storedEntries} 条 / 查询缓存 ${read.diskEntries} 条 / 内存 ${read.liveEntries} 条）`}
             。联网后会自动同步。
           </p>
         </>

@@ -1026,7 +1026,7 @@ function StuckOnLoad(): React.JSX.Element {
       <p className="font-mono text-[10px] opacity-70">
         {read.at === 0
           ? "本机读取：尚未尝试"
-          : `本机读取：磁盘 ${String(read.diskEntries)} 条 / 内存 ${String(read.liveEntries)} 条 / 合计 ${String(read.total)} 条${
+          : `本机读取：本机存储 ${String(read.storedEntries)} 条 / 查询缓存 ${String(read.diskEntries)} 条 / 内存 ${String(read.liveEntries)} 条 / 合计 ${String(read.total)} 条${
               read.note === null ? "" : `（${read.note}）`
             }`}
       </p>
