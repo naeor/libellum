@@ -41,7 +41,7 @@ import {
   findLocalTransaction,
   installLiveSource,
   readLocalTransactions,
-  transactionsFromCache,
+  transactionsFromCacheCached,
 } from "./offline/localLedger.js";
 import { readSnapshot } from "./offline/storage.js";
 import { withLocalFallback } from "./offline/fallback.js";
@@ -245,7 +245,11 @@ export function hasLocalTransactions(filters: TransactionFilters): boolean {
   const raw = readSnapshot<string>(CACHE_KEY);
   if (raw === null) return false;
 
-  const stored = transactionsFromCache(raw);
+  /**
+   * ⚠️ **Through the memo.** This is called during render, so re-parsing a hundred-kilobyte
+   * blob here would block the frame it is meant to speed up.
+   */
+  const stored = transactionsFromCacheCached(raw);
 
   return stored.length > 0 && filterLocally(stored, filters).length > 0;
 }

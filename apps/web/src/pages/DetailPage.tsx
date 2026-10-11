@@ -14,6 +14,7 @@ import { useAccountOffline } from "../lib/offline/connectivity.js";
 import { currentMonth, formatDayLabel, formatTimeInZone } from "../lib/datetime.js";
 import { readSession, useDetailTransition, writeSession } from "../lib/detailTransition.js";
 import { currencyName, formatMoney } from "../lib/format.js";
+import { lastLocalRead } from "../lib/offline/localLedger.js";
 import { hasLocalTransactions, useLedger, useSummary, useTransactions } from "../lib/queries.js";
 import { handOverForScan } from "../lib/scanHandoff.js";
 
@@ -388,12 +389,15 @@ export function DetailPage(): React.JSX.Element {
                 ⚠️ **After three seconds, say what is happening instead of only flickering.**
                 See `waitedTooLong` above. It does not replace the skeleton — it explains it.
               */}
-              {list.isPending && waitedTooLong ? (
-                <p className="py-3 text-center text-xs leading-relaxed text-muted">
-                  这一段时间的记录没有存在本机，而且现在连不上服务器，所以暂时看不到。
-                  联网后会自动补上；也可以在「账户 → 下载管理」里提前下载。
-                </p>
-              ) : null}
+              {/*
+                ⚠️ **What was tried, not just that something failed.**
+
+                The owner asked for this: "如果此时没有读到数据或者出现了任何问题，就显示尝试读取数据但
+                失败（也可以分得详细些）". A message naming the numbers lets the reader tell a month that
+                was never downloaded from a database that is not answering — which are different
+                problems with different fixes, and which look identical otherwise.
+              */}
+              {list.isPending && waitedTooLong ? <StuckOnLoad /> : null}
 
             {/*
               ⚠️ **"加载失败" is suppressed when there is nothing the user can do.**
@@ -863,4 +867,49 @@ function shiftMonth(month: string, delta: number): string {
   const nextYear = year + Math.floor(index / 12);
   const nextIndex = ((index % 12) + 12) % 12;
   return `${String(nextYear)}-${String(nextIndex + 1).padStart(2, "0")}`;
+}
+
+/**
+ * Why a screen is still waiting, in terms a person can act on.
+ *
+ * ⚠️ **Two different problems, told apart on screen.**
+ *
+ * "It will not load offline" has two very different causes and the owner has hit both:
+ *
+ *  * **the device holds nothing for this view** — a download that never happened, or a month outside
+ *    the range that was downloaded. Fixable by downloading, and the message says so;
+ *  * **the device was never successfully read** — the cache is there but something failed. Fixable
+ *    by nothing the user can do, and the message says that instead of sending them to re-download.
+ *
+ * Telling them apart needs the counts from the last local read, which is why that is recorded at all.
+ */
+function StuckOnLoad(): React.JSX.Element {
+  const read = lastLocalRead();
+
+  const nothingStored = read.at === 0 || read.total === 0;
+
+  return (
+    <div className="flex flex-col gap-1.5 py-3 text-center text-xs leading-relaxed text-muted">
+      {nothingStored ? (
+        <>
+          <p>本机没有这一段时间的记录，而且现在连不上服务器。</p>
+          <p>联网后会自动补上；也可以在「账户 → 下载管理」里提前下载。</p>
+        </>
+      ) : (
+        <>
+          <p>本机有 {read.total} 条记录，但这次没能读到。</p>
+          <p>联网后会自动恢复。</p>
+        </>
+      )}
+
+      {/* The numbers, so the line above can be checked rather than believed. */}
+      <p className="font-mono text-[10px] opacity-70">
+        {read.at === 0
+          ? "本机读取：尚未尝试"
+          : `本机读取：磁盘 ${String(read.diskEntries)} 条 / 内存 ${String(read.liveEntries)} 条 / 合计 ${String(read.total)} 条${
+              read.note === null ? "" : `（${read.note}）`
+            }`}
+      </p>
+    </div>
+  );
 }

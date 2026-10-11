@@ -109,6 +109,40 @@ export function transactionsFromCache(raw: string | null): readonly Transaction[
 }
 
 /**
+ * The parsed ledger, remembered against the exact string it came from.
+ *
+ * ⚠️ **Written because the tablet's reads were slow and the phone's were not, with the same work to
+ * do.**
+ *
+ * Every consumer calls `transactionsFromCache(raw)`, and every call parses the whole blob: on the
+ * owner's device that is **115 KB of JSON, parsed afresh, for every month lookup, every filter
+ * change, every screen**. A phone absorbs that; a tablet that is also suspending pages does not, and
+ * the symptom is a screen sitting on its loading state while the data is right there.
+ *
+ * **The memo is keyed by the string itself**, not by a flag or a timestamp — so it cannot return
+ * something the stored value does not say. If the cache is written the string changes and the parse
+ * happens once more; if it is not written, nothing is recomputed. **There is no invalidation logic
+ * to get wrong, because the key is the content.**
+ *
+ * One entry is enough: the app writes one cache key, and alternating between two versions of it
+ * would mean re-parsing anyway.
+ */
+let parsedFrom: string | null = null;
+let parsedResult: readonly Transaction[] = [];
+
+/** The entries in a stored cache, parsing only when the stored text has changed. */
+export function transactionsFromCacheCached(raw: string | null): readonly Transaction[] {
+  if (raw === null || raw === "") return [];
+
+  if (raw === parsedFrom) return parsedResult;
+
+  parsedResult = transactionsFromCache(raw);
+  parsedFrom = raw;
+
+  return parsedResult;
+}
+
+/**
  * Read the cache and return every entry it holds.
  *
  * ⚠️ **The stored copy first, then the live one — and the second half is not belt and
@@ -136,7 +170,28 @@ export async function readLocalTransactions(): Promise<readonly Transaction[]> {
   const live = liveSource?.() ?? [];
 
   const raw = await readValue<string>(CACHE_KEY);
-  const fromDisk = transactionsFromCache(raw);
+
+  /**
+   * ⚠️ **Through the memo**, because this runs for every screen and every filter change and the
+   * blob is over a hundred kilobytes. See `transactionsFromCacheCached`.
+   */
+  const fromDisk = transactionsFromCacheCached(raw);
+
+  /**
+   * ⚠️ **Recorded before the read is logged, so the report and the log cannot disagree.**
+   *
+   * `readLocalTransactions` is the only place that knows all four numbers at once: what the disk
+   * held, what memory held, what they add up to after merging, and — when there is nothing — a
+   * phrase a person can read.
+   */
+  localRead = {
+    at: Date.now(),
+    diskBytes: raw === null ? 0 : raw.length,
+    diskEntries: fromDisk.length,
+    liveEntries: live.length,
+    total: mergeLocal(fromDisk, live).length,
+    note: raw === null ? "本机没有缓存" : fromDisk.length === 0 ? "缓存里没有账目" : null,
+  };
 
   /**
    * ⚠️ **Both counts, and they are the whole point of this line.**
@@ -152,10 +207,45 @@ export async function readLocalTransactions(): Promise<readonly Transaction[]> {
   await logOffline(
     "DIAGNOSTIC:local-read",
     `磁盘 ${raw === null ? "无缓存键" : `${String(raw.length)} 字节`} → ${String(fromDisk.length)} 条；` +
-      `内存 ${String(live.length)} 条；合计 ${String(mergeLocal(fromDisk, live).length)} 条`,
+      `内存 ${String(live.length)} 条；合计 ${String(localRead.total)} 条`,
   );
 
   return mergeLocal(fromDisk, live);
+}
+
+/**
+ * What the last attempt to read the device's ledger found.
+ *
+ * ⚠️ **Module state read at render time, and that is deliberate.**
+ *
+ * The owner asked for exactly this: "如果此时没有读到数据或者出现了任何问题，就显示尝试读取数据但失败
+ * （也可以分得详细些）". **A message that says what was tried is worth more than one that says
+ * something went wrong**, because the person reading it can tell a missing download from a broken
+ * database — and the numbers belong on the screen rather than in a log they must open another page
+ * to read.
+ */
+export interface LocalReadReport {
+  readonly at: number;
+  readonly diskBytes: number;
+  readonly diskEntries: number;
+  readonly liveEntries: number;
+  readonly total: number;
+  /** A plain-language reason, when there is nothing to show. */
+  readonly note: string | null;
+}
+
+let localRead: LocalReadReport = {
+  at: 0,
+  diskBytes: 0,
+  diskEntries: 0,
+  liveEntries: 0,
+  total: 0,
+  note: "还没有读过本机数据",
+};
+
+/** The last local read, so a waiting screen can say what was tried. */
+export function lastLocalRead(): LocalReadReport {
+  return localRead;
 }
 
 /**
