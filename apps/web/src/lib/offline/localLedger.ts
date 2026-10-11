@@ -382,6 +382,13 @@ export async function setMark(id: string, mark: EntryMark | null): Promise<void>
    * ledger's own cache went wrong.
    */
   publishPending(pendingFromMarks(next));
+  publishDeleted(
+    new Set(
+      Object.entries(next)
+        .filter(([, mark]) => mark.deleted === true)
+        .map(([id]) => id),
+    ),
+  );
 }
 
 /** The entries a marks map says are stored but not yet on the server. */
@@ -494,6 +501,23 @@ export async function upsertEntry(entry: Transaction): Promise<void> {
 export async function readStoredEntries(): Promise<readonly Transaction[]> {
   const all = await readStoredMonths();
   const marks = await readMarks();
+
+  /**
+   * ⚠️ **The deleted set is published from the same read that filters them out.**
+   *
+   * The filtering here removes them from *this* list, which is not enough: **the screen merges this list with
+   * the query's, and the query still holds the entry the server has not been told about.** Publishing the set
+   * is what gives the merge a way to express "this one is gone" — without it, **adding nothing cannot remove
+   * anything**, and the entry the user deleted comes straight back. That is what the owner saw:
+   * "我尝试去删掉 test04。但是在离线删除时…他都在那儿，好像没什么变化."
+   */
+  publishDeleted(
+    new Set(
+      Object.entries(marks)
+        .filter(([, mark]) => mark.deleted === true)
+        .map(([id]) => id),
+    ),
+  );
   const found = new Map<string, Transaction>();
 
   for (const entries of Object.values(all)) {
@@ -591,6 +615,47 @@ export function subscribeLedger(listener: () => void): () => void {
   return () => {
     ledgerListeners.delete(listener);
   };
+}
+
+/**
+ * Which entries were deleted on this device — held outside React, like the ledger itself.
+ *
+ * ⚠️ **Needed because a locally deleted entry comes back through the merge, and the owner hit exactly that**:
+ * "我尝试去删掉 test04。但是在离线删除时，不管是离线还是在线，他都在那儿，好像没什么变化."
+ *
+ * The stored copy is kept on purpose — round 3 needs to show the user what they deleted while asking whether
+ * the delete should stand — and `readStoredEntries` filters it out. **But the screen merges the device's
+ * entries with the query's, and the query still holds the entry the server has not yet been told about.
+ * Adding nothing cannot remove anything**: the merge had no way to express "this one is gone", so the entry
+ * it was told to forget came straight back.
+ *
+ * ⚠️ **A published set rather than a filter buried in the merge**, because this is the same external-store
+ * mechanism that has been proved to work on the tablet — see the note on `ledgerSnapshot`.
+ */
+let deletedSnapshot: ReadonlySet<string> = new Set();
+const deletedListeners = new Set<() => void>();
+
+/** Entry ids deleted on this device and not yet deleted on the server. */
+export function deletedEntriesValue(): ReadonlySet<string> {
+  return deletedSnapshot;
+}
+
+/** Subscribe to changes, for `useSyncExternalStore`. */
+export function subscribeDeleted(listener: () => void): () => void {
+  deletedListeners.add(listener);
+
+  return () => {
+    deletedListeners.delete(listener);
+  };
+}
+
+/** Replace the deleted set and tell React. */
+export function publishDeleted(ids: ReadonlySet<string>): void {
+  if (ids.size === deletedSnapshot.size && [...ids].every((id) => deletedSnapshot.has(id))) return;
+
+  deletedSnapshot = new Set(ids);
+
+  for (const listener of deletedListeners) listener();
 }
 
 /**

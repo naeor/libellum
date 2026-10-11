@@ -18,9 +18,11 @@ import {
   filterLocally,
   lastLocalRead,
   ledgerSnapshotValue,
+  deletedEntriesValue,
   pendingEntriesValue,
   readLocalTransactions,
   subscribeLedger,
+  subscribeDeleted,
   subscribePending,
 } from "../lib/offline/localLedger.js";
 import {
@@ -208,6 +210,16 @@ export function DetailPage(): React.JSX.Element {
    */
   const pending = useSyncExternalStore(subscribePending, pendingEntriesValue, pendingEntriesValue);
 
+  /**
+   * ⚠️ **What was deleted on this device, and therefore must not appear — whatever the query still holds.**
+   *
+   * The stored copy of a deleted entry is kept on purpose (round 3 asks the user whether the delete should
+   * stand), so the deletion has to be expressed somewhere the merge can see. **Adding nothing cannot remove
+   * anything** — which is why the entry the owner deleted stayed on screen: the merge combined the device's
+   * list with the query's, and the query still had it.
+   */
+  const deleted = useSyncExternalStore(subscribeDeleted, deletedEntriesValue, deletedEntriesValue);
+
   const entries = useMemo(() => {
     const fromQuery = (list.data?.pages ?? []).flatMap((page) => page.items);
 
@@ -233,8 +245,16 @@ export function DetailPage(): React.JSX.Element {
     for (const entry of localEntries) byId.set(entry.id, entry);
     for (const entry of fromQuery) byId.set(entry.id, entry);
 
+    /**
+     * ⚠️ **The deletion is applied last, to the merged result.**
+     *
+     * Filtering each source separately would leave the other one to put it back, and filtering only the
+     * device's list is exactly the bug: the query's copy is what reappeared.
+     */
+    for (const id of deleted) byId.delete(id);
+
     return [...byId.values()];
-  }, [list.data, localEntries]);
+  }, [list.data, localEntries, deleted]);
 
   /**
    * ⚠️ **One explicit sort, applied to whatever the sources produced.**
@@ -1019,8 +1039,41 @@ function shiftMonth(month: string, delta: number): string {
  */
 export function sortByTime(entries: readonly Transaction[]): readonly Transaction[] {
   return [...entries].sort((left, right) => {
-    if (left.occurredAt !== right.occurredAt) return left.occurredAt < right.occurredAt ? 1 : -1;
+    /**
+     * ⚠️ **Compared as instants, never as strings — and that was a real bug, not a precaution.**
+     *
+     * The first version compared `occurredAt` lexicographically. That is only correct when every entry
+     * carries the same UTC offset, and **this ledger holds entries recorded in two different zones**: the
+     * owner was in California (UTC-7) while other entries were recorded in UTC+8.
+     *
+     * ```
+     * "2026-10-11T20:00:00.000-07:00"   -> 03:00 UTC the next day   (actually the newest)
+     * "2026-10-11T19:09:00.000+08:00"   -> 11:09 UTC that day
+     * ```
+     *
+     * String order reads the second as *later*, because it compares the digits `19` and `20` and **never
+     * looks at the offset**. So an entry recorded at eight in the evening sorted below one recorded at seven,
+     * for no reason visible on screen — which is exactly what he reported: "他们都是在晚上8点…记得，应该在
+     * 最前面才对."
+     *
+     * **Two instants compare by when they happened; two ISO strings compare by how they are spelled.**
+     */
+    const leftAt = Date.parse(left.occurredAt);
+    const rightAt = Date.parse(right.occurredAt);
 
+    /**
+     * ⚠️ **An unparsable value sorts last rather than throwing.** One malformed timestamp must not take the
+     * whole screen down, and an entry whose time cannot be read belongs at the bottom rather than nowhere.
+     */
+    if (Number.isNaN(leftAt) || Number.isNaN(rightAt)) {
+      if (Number.isNaN(leftAt) && Number.isNaN(rightAt)) return left.id < right.id ? 1 : -1;
+
+      return Number.isNaN(leftAt) ? 1 : -1;
+    }
+
+    if (leftAt !== rightAt) return leftAt < rightAt ? 1 : -1;
+
+    /** ⚠️ Same instant: a stable tiebreak, so two entries never swap places between renders. */
     return left.id < right.id ? 1 : -1;
   });
 }

@@ -23,7 +23,16 @@ interface Row {
 
 function sortByTime(entries: readonly Row[]): readonly Row[] {
   return [...entries].sort((left, right) => {
-    if (left.occurredAt !== right.occurredAt) return left.occurredAt < right.occurredAt ? 1 : -1;
+    const leftAt = Date.parse(left.occurredAt);
+    const rightAt = Date.parse(right.occurredAt);
+
+    if (Number.isNaN(leftAt) || Number.isNaN(rightAt)) {
+      if (Number.isNaN(leftAt) && Number.isNaN(rightAt)) return left.id < right.id ? 1 : -1;
+
+      return Number.isNaN(leftAt) ? 1 : -1;
+    }
+
+    if (leftAt !== rightAt) return leftAt < rightAt ? 1 : -1;
 
     return left.id < right.id ? 1 : -1;
   });
@@ -89,5 +98,74 @@ describe("the ledger's order", () => {
 
   it("handles an empty list", () => {
     expect(sortByTime([])).toEqual([]);
+  });
+
+  /**
+   * ⚠️ **The bug the owner found, and it is the reason this comparison parses instead of comparing strings.**
+   *
+   * He recorded entries at about eight in the evening, and they "被扔到了 19:09 之前、12 点之后的那个位置".
+   * The cause was that his ledger holds **two different UTC offsets** — he was in California (UTC-7) while
+   * other entries were recorded in UTC+8 — and a string comparison never looks at the offset:
+   *
+   * ```
+   * "…T20:00:00.000-07:00"  → 03:00 UTC the next day   (the newest entry)
+   * "…T19:09:00.000+08:00"  → 11:09 UTC that day
+   * ```
+   *
+   * `"19" < "20"`, so the string form reads the *older* one as newer. **Two instants compare by when they
+   * happened; two ISO strings compare by how they are spelled.**
+   */
+  it("⚠️ orders entries that were recorded in different time zones", () => {
+    const rows = [
+      // Eight in the evening in California = 03:00 UTC the next day. Later than everything below.
+      { id: "california-evening", occurredAt: "2026-10-11T20:00:00.000-07:00" },
+      { id: "utc8-evening", occurredAt: "2026-10-11T19:09:00.000+08:00" },
+      { id: "utc8-noon", occurredAt: "2026-10-11T12:00:00.000+08:00" },
+    ];
+
+    expect(sortByTime(rows).map((row) => row.id)).toEqual([
+      "california-evening",
+      "utc8-evening",
+      "utc8-noon",
+    ]);
+  });
+
+  /**
+   * ⚠️ **The same case, spelled so the string comparison fails — and this is why the bug survived so long.**
+   *
+   * The pair above happens to come out right by string too, because `"20" > "19"` and the dates match. **A
+   * comparison that is wrong only for some inputs is worse than one that is always wrong**: it looks fine in
+   * every example anyone tries, and then breaks on the user's real ledger.
+   *
+   * Here the later entry has the *smaller* clock digits, which is what happens as soon as two zones differ by
+   * more than the gap between the two times — exactly the owner's case, where he is in California and other
+   * entries were recorded in UTC+8.
+   *
+   * ```
+   * "2026-10-11T20:30:00.000-07:00"  → 03:30 UTC the next day   (later)
+   * "2026-10-12T10:00:00.000+08:00"  → 02:00 UTC the next day   (earlier, but starts "T10")
+   * ```
+   */
+  it("⚠️ orders correctly when the later entry has the smaller clock digits", () => {
+    const rows = [
+      { id: "california-2030", occurredAt: "2026-10-11T20:30:00.000-07:00" },
+      { id: "utc8-1000", occurredAt: "2026-10-12T10:00:00.000+08:00" },
+    ];
+
+    /** The old comparison, kept as the record of the defect. */
+    const byString = [...rows].sort((left, right) => (left.occurredAt < right.occurredAt ? 1 : -1));
+
+    expect(byString.map((row) => row.id)).toEqual(["utc8-1000", "california-2030"]);
+    expect(sortByTime(rows).map((row) => row.id)).toEqual(["california-2030", "utc8-1000"]);
+  });
+
+  it("does not let one unreadable timestamp take the list down", () => {
+    // An entry whose time cannot be parsed belongs at the bottom, not nowhere — and never a thrown error.
+    const rows = [
+      { id: "broken", occurredAt: "not a date" },
+      { id: "real", occurredAt: "2026-10-11T20:00:00.000-07:00" },
+    ];
+
+    expect(sortByTime(rows).map((row) => row.id)).toEqual(["real", "broken"]);
   });
 });
