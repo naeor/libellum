@@ -14,8 +14,14 @@ import { useAccountOffline } from "../lib/offline/connectivity.js";
 import { currentMonth, formatDayLabel, formatTimeInZone } from "../lib/datetime.js";
 import { readSession, useDetailTransition, writeSession } from "../lib/detailTransition.js";
 import { currencyName, formatMoney } from "../lib/format.js";
-import { lastLocalRead } from "../lib/offline/localLedger.js";
-import { hasLocalTransactions, useLedger, useSummary, useTransactions } from "../lib/queries.js";
+import { filterLocally, readLocalTransactions, lastLocalRead } from "../lib/offline/localLedger.js";
+import {
+  hasLocalTransactions,
+  useLedger,
+  useSummary,
+  useTransactions,
+  type TransactionFilters,
+} from "../lib/queries.js";
 import { handOverForScan } from "../lib/scanHandoff.js";
 
 /**
@@ -168,7 +174,35 @@ export function DetailPage(): React.JSX.Element {
     [currencies, mainCode],
   );
 
-  const entries = useMemo(() => (list.data?.pages ?? []).flatMap((page) => page.items), [list.data]);
+  /**
+   * ⚠️ **A copy of this month that does not depend on the query layer at all.**
+   *
+   * The owner's tablet settled a long argument with one measurement: the diagnostics showed
+   * `local-read — 磁盘 … → 138 条`, the banner correctly reported 138 entries, **and the screen still
+   * flickered placeholders.** The data was found and `isPending` stayed true — so the fault is in the
+   * query's state, not in the reading, and no amount of fixing the read was ever going to help.
+   *
+   * **So the screen stops asking the query whether it has anything.** It reads the device itself, on
+   * mount and whenever the view changes, and shows what it finds. The query still runs underneath and
+   * still supplies fresher data when it can — `list.data` wins whenever it exists — but a screen with
+   * the user's ledger on it can no longer be held hostage by a query state that never settles.
+   *
+   * ⚠️ **This is what the owner asked for, twice**: "加载超过一秒后，立刻去本地读取数据并运算，显示".
+   * It took three rounds to see that the "立刻" part had to bypass the query, because the query is
+   * precisely the component that was failing.
+   */
+  const localEntries = useLocalEntries(filters);
+
+  const entries = useMemo(() => {
+    const fromQuery = (list.data?.pages ?? []).flatMap((page) => page.items);
+
+    /**
+     * ⚠️ **The query wins when it has anything**, because its answer is from the server and this one
+     * is from the device. Falling back only when it is empty keeps the online behaviour identical and
+     * the offline behaviour possible.
+     */
+    return fromQuery.length > 0 ? fromQuery : localEntries;
+  }, [list.data, localEntries]);
 
   const grouped = useMemo(() => {
     const groups = new Map<string, Transaction[]>();
@@ -403,7 +437,7 @@ export function DetailPage(): React.JSX.Element {
                 sentence is a screen contradicting itself — one part saying "coming soon" while the
                 other says "this is not coming". When the wait is over, the wait indicator goes.
               */}
-              {list.isPending && !hasLocalTransactions(filters) && !waitedTooLong ? (
+              {entries.length === 0 && list.isPending && !hasLocalTransactions(filters) && !waitedTooLong ? (
                 <SkeletonRows />
               ) : null}
 
@@ -415,7 +449,7 @@ export function DetailPage(): React.JSX.Element {
                 was never downloaded from a database that is not answering — different problems with
                 different fixes, and identical on screen otherwise.
               */}
-              {list.isPending && waitedTooLong ? <StuckOnLoad /> : null}
+              {entries.length === 0 && list.isPending && waitedTooLong ? <StuckOnLoad /> : null}
 
             {/*
               ⚠️ **"加载失败" is suppressed when there is nothing the user can do.**
@@ -885,6 +919,54 @@ function shiftMonth(month: string, delta: number): string {
   const nextYear = year + Math.floor(index / 12);
   const nextIndex = ((index % 12) + 12) % 12;
   return `${String(nextYear)}-${String(nextIndex + 1).padStart(2, "0")}`;
+}
+
+/**
+ * This month's entries, read straight from the device.
+ *
+ * ⚠️ **Deliberately outside the query layer.** The owner's tablet proved that a query can hold
+ * `isPending: true` while a read of the same data succeeds four times over — so anything that waits
+ * for the query to resolve can wait for ever. This hook waits for nothing but the device.
+ *
+ * It does not poll: one read on mount and one whenever the view changes. **A read of the same
+ * hundred-kilobyte blob on a timer is exactly the cost that made the tablet struggle in the first
+ * place**, and the data only changes when the user does something.
+ */
+function useLocalEntries(filters: TransactionFilters): readonly Transaction[] {
+  const [entries, setEntries] = useState<readonly Transaction[]>([]);
+
+  /**
+   * The filters as a value, so the effect compares strings rather than object identity — otherwise a
+   * new object literal on every render would re-read the whole cache on every render, which is the
+   * bug being fixed.
+   */
+  const month = filters.month ?? "";
+  const kind = filters.kind ?? "";
+  const categoryId = filters.categoryId ?? "";
+  const currency = filters.currency ?? "";
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void readLocalTransactions().then((all) => {
+      if (cancelled) return;
+
+      setEntries(
+        filterLocally(all, {
+          ...(month === "" ? {} : { month }),
+          ...(kind === "" ? {} : { kind: kind as Transaction["kind"] }),
+          ...(categoryId === "" ? {} : { categoryId }),
+          ...(currency === "" ? {} : { currency }),
+        }),
+      );
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [month, kind, categoryId, currency]);
+
+  return entries;
 }
 
 /**
