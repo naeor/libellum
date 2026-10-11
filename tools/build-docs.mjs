@@ -108,6 +108,11 @@ if (python === null) {
    * the mismatch instead of papering over it.
    */
   const DOCUMENTS = [
+    /**
+     * ⚠️ **The handover document is deliberately first**, because it is the one that says where to start —
+     * "读这一份就够了；每一节都指到更细的文档，而不是重复它们."
+     */
+    ["交接.md", "交接.docx", "Libellum · 交接：从这里开始", ["交接.pdf"]],
     ["PLAN.md", "技术方案.docx", "Libellum 记账应用 · 技术方案", ["技术方案.pdf"]],
     ["ROADMAP.md", "制作计划.docx", "Libellum 制作计划与大纲", ["制作计划.pdf", "制作计划与大纲.pdf"]],
     ["BACKLOG.md", "后期待办.docx", "Libellum 后期待办与想法池", ["后期待办.pdf"]],
@@ -129,6 +134,18 @@ if (python === null) {
       "S8-离线写入-设计决定.docx",
       "Libellum S8 · 离线写入 · 设计决定",
       ["S8-离线写入-设计决定.pdf"],
+    ],
+    /**
+     * ⚠️ **`S8-冲突-设计决定.md` was missing from this list entirely**, so the document that carries the whole
+     * conflict rule — the four judgements, the candidate-generation rule, the resolution sequence — **had no
+     * `.docx` and was not in the count.** It is the round that took the longest and the one a reader is most likely
+     * to need on a phone.
+     */
+    [
+      "S8-冲突-设计决定.md",
+      "S8-冲突-设计决定.docx",
+      "Libellum S8 · 冲突 · 设计决定",
+      ["S8-冲突-设计决定.pdf"],
     ],
     [
       "教训.md",
