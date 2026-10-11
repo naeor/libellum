@@ -243,20 +243,23 @@ export function DetailPage(): React.JSX.Element {
     const byId = new Map<string, Transaction>();
 
     /**
-     * ⚠️ **A deletion is shown, not hidden — and that is a deliberate reversal.**
+     * ⚠️ **These two lines are the merge, and I deleted them by accident.**
      *
-     * The first version removed deleted entries from the merged list, which is the obvious reading of "delete".
-     * **But it makes the delete mark invisible**, and the owner asked for it to be visible: "删除印记变为 1 时
-     * 背景变成淡红色…用来提醒用户…在成功联网之后也可以删除."
+     * A scripted edit replaced the block that filled this map and left the declaration and the read behind, so
+     * `byId` was always empty — **and the ledger screen showed "这个月还没有支出" while the owner's entries sat
+     * untouched on the server and on the device.** Nothing was deleted; nothing was even hidden. **The screen
+     * simply stopped being given anything to draw.**
      *
-     * That is the more useful behaviour, because of what the two copies disagree about. **A deleted entry is
-     * gone from this device and still present on the server** — so until the queue drains, the truth is "it
-     * exists in one place and not the other". Hiding the row states the opposite: that the deletion is done.
+     * **It is the same shape as the two unwired functions from earlier in this round** — a scripted edit that
+     * did not do what I thought, and no check that the result still made sense. **The lesson was already
+     * written; what was missing was the verification step, not the knowledge.**
      *
-     * ⚠️ **So a deletion stays on screen, struck through and pale red, until the server confirms it.** Once the
-     * queue row goes, so does the colour and the strike — and the entry is filtered out below, because by then
-     * the server agrees.
+     * ⚠️ **The screen is checked against real data from now on**, not only against the type checker: an empty
+     * merge compiles perfectly.
      */
+    for (const entry of localEntries) byId.set(entry.id, entry);
+    for (const entry of fromQuery) byId.set(entry.id, entry);
+
     const rows = [...byId.values()];
 
     return rows;
