@@ -219,15 +219,51 @@ export function DetailPage(): React.JSX.Element {
     return fromQuery.length > 0 ? fromQuery : localEntries;
   }, [list.data, localEntries]);
 
+  /**
+   * ⚠️ **Sorted here, once, so the order never depends on where an entry came from.**
+   *
+   * The owner reported two symptoms that are one cause: an entry recorded offline "会在网络恢复之后出现在
+   * '今天'的最下面一笔", and "离线状态跟恢复网络之后的明细顺序好像还被打乱了".
+   *
+   * **Both come from the order being whatever the source happened to produce.** A downloaded month arrives
+   * in the server's order; `upsertEntry` appends a newly created entry to the end of the month's array; and
+   * after a sync the query takes over with the server's order again — **so the same entry moves from the
+   * bottom to the top for no reason the user can see, and the list appears to shuffle itself.**
+   *
+   * **Sorting by the entry's own instant removes the question.** Newest first, oldest last, whatever the
+   * source and whatever the timing. The date the user sees is the order they see, and nothing about how
+   * the data travelled can change it.
+   *
+   * ⚠️ **An entry with the same instant keeps a stable relative order** — the comparison falls back to the
+   * id, so two entries recorded in the same second do not swap places between renders. **A list that
+   * reshuffles while being read is worse than one that is slightly wrong.**
+   */
+  const ordered = useMemo(
+    () =>
+      [...entries].sort((left, right) => {
+        if (left.occurredAt !== right.occurredAt) return left.occurredAt < right.occurredAt ? 1 : -1;
+
+        return left.id < right.id ? 1 : -1;
+      }),
+    [entries],
+  );
+
   const grouped = useMemo(() => {
     const groups = new Map<string, Transaction[]>();
-    for (const entry of entries) {
+
+    for (const entry of ordered) {
       const bucket = groups.get(entry.occurredLocalDate) ?? [];
       bucket.push(entry);
       groups.set(entry.occurredLocalDate, bucket);
     }
-    return [...groups.entries()];
-  }, [entries]);
+
+    /**
+     * ⚠️ **The day headings are ordered too, by date descending** — a map preserves insertion order, so
+     * without this the sections would follow whatever the entries happened to arrive in. **The heading and
+     * its contents have to agree about which end is newest.**
+     */
+    return [...groups.entries()].sort(([left], [right]) => (left < right ? 1 : -1));
+  }, [ordered]);
 
   const isEmptyMonth = list.isSuccess && entries.length === 0;
   const year = month.slice(0, 4);

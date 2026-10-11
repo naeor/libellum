@@ -503,8 +503,13 @@ export function subscribeLedger(listener: () => void): () => void {
   };
 }
 
-/** Publish a new snapshot, and tell React. */
-function publishLedger(entries: readonly Transaction[]): void {
+/**
+ * Publish a new snapshot, and tell React.
+ *
+ * ⚠️ **Exported because the write path needs it.** A write that changes storage without telling the
+ * view is the mistake this project spent four hours on, one layer down — see `refreshView` in `write.ts`.
+ */
+export function publishLedger(entries: readonly Transaction[]): void {
   ledgerSnapshot = entries;
 
   for (const listener of ledgerListeners) listener();
@@ -564,6 +569,17 @@ export function publishPending(ids: ReadonlySet<string>): void {
  * millisecond.
  */
 let inFlight: Promise<readonly Transaction[]> | null = null;
+
+/**
+ * Forget a read that is still in progress.
+ *
+ * ⚠️ **Called after a write, so the write is not answered by a read that began before it.**
+ * The join exists to stop four screens reading the same blob at once; it must not serve a stale answer to
+ * the code that just changed the data.
+ */
+export function clearInFlight(): void {
+  inFlight = null;
+}
 
 /**
  * What the last attempt to read the device's ledger found.

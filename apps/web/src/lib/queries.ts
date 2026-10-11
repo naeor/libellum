@@ -46,6 +46,7 @@ import {
   transactionsFromCacheCached,
 } from "./offline/localLedger.js";
 import { readSnapshot } from "./offline/storage.js";
+import { installQueryNotifier } from "./offline/write.js";
 import { withLocalFallback } from "./offline/fallback.js";
 import { computeStats, monthRange, summaryFor } from "./offline/localStats.js";
 import { uuidV7 } from "./uuid.js";
@@ -280,6 +281,25 @@ export function useTransactions(given: TransactionFilters) {
    * idempotent — every render of this hook offers the same reader, and the last one wins.
    */
   installLiveSource(() => transactionsIn(queryClient));
+
+  /**
+   * ⚠️ **Tell the query layer when a local write happens.**
+   *
+   * The ledger screen prefers the query's data when it has any — deliberately, since a server answer is
+   * the truth. **That preference is why an offline edit did not appear**: the store was refreshed and the
+   * query's cached pages were sitting in front of it, so the screen kept showing the old list until the
+   * network came back and the query itself changed.
+   *
+   * Invalidating is what makes the trusted layer let go of an answer that is no longer true. **A refetch
+   * that fails while offline does not undo anything** — the store already holds the change.
+   */
+  installQueryNotifier(async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["transactions"] }),
+      queryClient.invalidateQueries({ queryKey: ["summary"] }),
+      queryClient.invalidateQueries({ queryKey: ["transaction"] }),
+    ]);
+  });
 
   /**
    * ⚠️ **The device is read on mount, whether or not the query ever runs.**
