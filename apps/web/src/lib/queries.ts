@@ -30,7 +30,7 @@ import {
   type QueryClient,
   type UseMutationResult,
 } from "@tanstack/react-query";
-import { useCallback, useMemo, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
 
 import { useAuth } from "../auth/AuthProvider.js";
 import { ApiRequestError, apiFetch, apiFetchFile } from "./api.js";
@@ -281,6 +281,30 @@ export function useTransactions(given: TransactionFilters) {
    */
   installLiveSource(() => transactionsIn(queryClient));
 
+  /**
+   * ⚠️ **The device is read on mount, whether or not the query ever runs.**
+   *
+   * The same gap the owner found in the analysis screen: `ledgerSnapshot` was only ever written by
+   * `readLocalTransactions`, and the only thing that called it was a `queryFn` — **so a query that never
+   * runs means a snapshot that is never filled, and a screen with nothing to draw.** He put it exactly
+   * right: "为什么之前的那个卡住一秒自动开始计算的逻辑没有生效呢？"
+   *
+   * So this reads the device by itself, once per view. `readLocalTransactions` publishes to the store,
+   * the screens read it synchronously, and **the query layer is no longer in the path between the user's
+   * data and the user's screen.**
+   *
+   * ⚠️ **Once per view, not on a timer.** Re-reading a hundred-kilobyte store repeatedly is the cost
+   * that made the tablet struggle; the data only changes when the user does something.
+   */
+  const viewMonth = filters.month ?? "";
+  const viewKind = filters.kind ?? "";
+  const viewCategory = filters.categoryId ?? "";
+  const viewCurrency = filters.currency ?? "";
+
+  useEffect(() => {
+    void readLocalTransactions();
+  }, [viewMonth, viewKind, viewCategory, viewCurrency]);
+
   return useInfiniteQuery({
     queryKey: queryKeys.transactions(filters),
     queryFn: ({ pageParam }) =>
@@ -407,6 +431,14 @@ export function useTransaction(id: string) {
  * hook and the endpoint both deal in concrete dates, so adding a custom date
  * picker later changes nothing here.
  */
+/**
+ * How long to wait before computing the analysis on the device.
+ *
+ * One second: long enough that a working server answer almost always arrives first and is used, short
+ * enough that nobody stares at a placeholder wondering whether anything is happening.
+ */
+const STATS_COMPUTE_DELAY_MS = 1_000;
+
 export function useStats(query: StatsQuery) {
   /**
    * ⚠️ **The same external store the ledger uses, and for the same reason.**
@@ -431,6 +463,61 @@ export function useStats(query: StatsQuery) {
   const read = useCallback(() => analysisSnapshot(key), [key]);
 
   const storeValue = useSyncExternalStore(subscribe, read, read);
+
+  /**
+   * ⚠️ **The computation starts on its own, without waiting for the query.**
+   *
+   * The owner asked the question that exposed the gap: "既然数据跑通了，为什么之前的那个卡住一秒自动开始
+   * 计算的逻辑没有生效呢？" **It did not exist.** The store was only ever published from inside `queryFn` — so if
+   * the query never runs, nothing is ever computed, and an empty store is exactly what the screen sees
+   * while it waits. **I had built "publish when the query runs", not "compute after a moment".**
+   *
+   * So this fires by itself: a moment after mount, if the store has nothing for this request and the
+   * device holds entries, it reads them, computes, and publishes. **The screen then has an answer whether
+   * or not the query layer ever does anything.**
+   *
+   * ⚠️ **The query is still made, and a server answer still wins** — the `useMemo` below prefers the
+   * query's data whenever it exists, so online behaviour is unchanged.
+   *
+   * ⚠️ **Nothing here is awaited by a render.** The result arrives through the store, which is the one
+   * path the tablet has been shown to accept.
+   */
+  useEffect(() => {
+    if (analysisSnapshot(key) !== null) return;
+
+    let cancelled = false;
+
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const entries = await readLocalTransactions();
+          if (cancelled || entries.length === 0) return;
+
+          publishAnalysis(
+            key,
+            computeStats(entries, {
+              from: query.from,
+              to: query.to,
+              bucket: query.bucket,
+              currency: query.currency,
+              compareFrom: query.compareFrom,
+              compareTo: query.compareTo,
+            }),
+          );
+        } catch {
+          /**
+           * A computation that fails leaves the store empty and the screen shows its waiting state, which
+           * is honest. Nothing is published that was not computed.
+           */
+        }
+      })();
+    }, STATS_COMPUTE_DELAY_MS);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [key, query.from, query.to, query.bucket, query.currency, query.compareFrom, query.compareTo]);
 
   const result = useQuery({
     queryKey: queryKeys.stats(query),

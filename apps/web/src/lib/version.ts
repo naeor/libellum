@@ -30,7 +30,7 @@
  */
 
 /** The version, as displayed. Bump the last part when behaviour changes. */
-export const APP_VERSION = "1.08.16";
+export const APP_VERSION = "1.08.17";
 
 /**
  * When this bundle was built.
