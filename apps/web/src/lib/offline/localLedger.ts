@@ -427,6 +427,26 @@ export interface EntryMark {
   readonly settlesConflict?: boolean;
 
   /**
+   * The version the server last confirmed for this entry, and what it held then.
+   *
+   * ⚠️ **This is the value a new edit's chain must start from, and using the local copy instead was a silent
+   * data loss.** The owner's own test caught it: the tablet went 20 → 40 and synced; the phone changed it to 20;
+   * the tablet — still showing 40 — edited again and **the server took the tablet's 40**, overwriting the phone's
+   * change with nobody asked.
+   *
+   * ⚠️ **Why that happened**: the chain was built from `current`, the device's own copy, **and the version sent
+   * was the device's own too — which the device had just incremented itself.** The server compared those two and
+   * found them equal, so it read the change as "editing what I just saw" and accepted it. **The device was
+   * describing a state the server had never been in.**
+   *
+   * ⚠️ **Both halves matter**: the version decides whether the server thinks anything has happened, and the
+   * snapshot is the "from A" half of "from A to B". **A chain whose base is the device's own value is a claim
+   * about the past that is not true.**
+   */
+  readonly serverVersion?: number;
+  readonly serverEntry?: Transaction;
+
+  /**
    * Both versions of an entry that could not be sent because somebody else changed it.
    *
    * ⚠️ **The two copies are stored here rather than fetched again when the screen opens.** The server's copy

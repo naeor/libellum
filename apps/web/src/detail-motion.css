@@ -294,9 +294,23 @@
   margin-right: calc(-10px + var(--p-twin) * 10px);
 }
 
-/* F. The tool buttons only move; a rotating button would say nothing. */
+/*
+ * F. The tool buttons do not move at all.
+ *
+ * ⚠️ **They used to rise by 4px in the list state, and that made them hard to tap** — the owner's report:
+ * "在进入明细态时右上角的三个按钮很难被点击到，似乎是判定的问题，因为展示态他们仨就很容易被点到."
+ *
+ * ⚠️ **He was right that it was a hit-testing problem, and the 4px was the cause.** The bar above the scrolling
+ * area — `SyncBanner` — is `position: sticky; z-index: 30`, while the pinned hero is `z-index: 20`. **The buttons
+ * rise into the strip the banner occupies, and the banner is above them**, so a tap in the overlap lands on the
+ * banner instead of the button. **The button looks fine and is drawn on top; it simply is not the element
+ * receiving the touch.**
+ *
+ * ⚠️ **The honest fix is to stop moving them**, not to raise their z-index: a control that has to win a stacking
+ * fight to be tappable is one that will lose it again the next time something is added above it.
+ */
 .detail-tools {
-  transform: translate3d(0, calc(var(--p-tools) * 10px - var(--p) * 4px), 0);
+  transform: none;
 }
 
 /*

@@ -402,7 +402,18 @@ function updateBody(entry: Transaction, mark: EntryMark) {
   }));
 
   return {
-    version: entry.version,
+    /**
+     * ⚠️ **The version is the server's last confirmed one, not this entry's own.**
+     *
+     * The entry's version is incremented locally on every edit, so sending it told the server "nothing has
+     * happened since we agreed" — **even when another device had moved the row in between.** That is what let the
+     * tablet's 40 overwrite the phone's 20: the server had no way to tell the difference, **because the device
+     * claimed to be current.**
+     *
+     * ⚠️ **Falling back to the entry's own version keeps the previous behaviour** for a mark with no confirmed
+     * version — an entry edited before this existed.
+     */
+    version: mark.serverVersion ?? entry.version,
     amountCents: entry.amountCents,
     categoryId: entry.categoryId === "" ? null : entry.categoryId,
     paymentMethodId: entry.paymentMethodId,
@@ -439,7 +450,8 @@ function updateBody(entry: Transaction, mark: EntryMark) {
  * ⚠️ **The one thing this must never do is delete an entry nobody asked to delete**, so it only ever *removes*
  * intentions that the server confirms have been carried out.
  */
-export async function recordServerList(ids: readonly string[]): Promise<void> {
+export async function recordServerList(entries: readonly Transaction[]): Promise<void> {
+  const ids = entries.map((entry) => entry.id);
   const onServer = new Set(ids);
 
   /**
@@ -451,6 +463,26 @@ export async function recordServerList(ids: readonly string[]): Promise<void> {
    * "钉子户" the owner reported: a row that cannot be deleted even from a working connection.**
    */
   const marks = await readMarks();
+
+  /**
+   * ⚠️ **The server's own copy of each entry is kept, and this is the base the next edit must start from.**
+   *
+   * A full month came back, so **these are the versions the server is holding right now** — and without them the
+   * next edit builds its chain from this device's own copy, sends this device's own version, and **the server
+   * reads the change as "editing what I just saw"** and accepts it, overwriting whatever another device did in
+   * between. That is the owner's tablet taking the phone's 20 back to 40 with nobody asked.
+   *
+   * ⚠️ **Only the bytes matter, not the bookkeeping**: the copy is stored so a later edit can say "the server had
+   * A, I want B". **Storing it is the difference between describing the past truthfully and describing it as this
+   * device wishes it were.**
+   */
+  for (const entry of entries) {
+    const mark = marks[entry.id];
+
+    if (mark === undefined) continue;
+
+    await setMark(entry.id, { ...mark, serverVersion: entry.version, serverEntry: entry });
+  }
 
   let cleared = 0;
 

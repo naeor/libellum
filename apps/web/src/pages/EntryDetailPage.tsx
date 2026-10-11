@@ -193,7 +193,19 @@ export function EntryDetailPage(): React.JSX.Element {
         });
       }
 
-      setEditing(false);
+      /**
+       * ⚠️ **Saving an edit goes back to the ledger, not to the entry's own read-only view.**
+       *
+       * The owner's report: "修改记账之后不会跳转到明细；反而会跳转到记账详情，还要自己退出."
+       *
+       * ⚠️ **His reading of it is the right one** — the screen behaves differently for its two jobs. **Deleting
+       * already returns to the ledger** (the entry is gone; there is nothing to stay for), while editing left the
+       * user on a read-only page **they had just finished with**, so every edit cost an extra tap to get back to
+       * the list they were working in.
+       *
+       * ⚠️ **The screen is reached from the ledger and returns to the ledger** — a push and a pop, not a detour.
+       */
+      await navigate("/");
     } catch (caught) {
       setError(errorMessage(caught));
     }

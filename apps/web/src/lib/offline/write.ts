@@ -325,7 +325,22 @@ export async function updateEntry(
    * exists — **and the fallback was to ask about everything, which is what put the yellow mark on edits nobody
    * disagreed with.**
    */
-  const chain = extendChain(previousMark?.chain, current, apply(current));
+  /**
+   * ⚠️ **The chain is built from the server's last confirmed copy, and building it from the local one lost data.**
+   *
+   * The owner's test: the tablet went 20 → 40 and synced; the phone changed it to 20; the tablet — still showing
+   * 40 — edited again, **and the server took the tablet's 40, overwriting the phone's change with nobody asked.**
+   *
+   * **Why**: the chain started from `current`, the device's own copy, and the version sent was the device's own
+   * too — which it had just incremented itself. The server compared the two, found them equal, read the change as
+   * "editing what I just saw", and accepted it. **The device was describing a state the server had never been in.**
+   *
+   * ⚠️ **Falling back to the local copy when there is no confirmed one is the safe direction**: the version will
+   * then be older than the server's, the server compares properly, and **a genuine disagreement becomes a conflict
+   * instead of a silent overwrite.** The alternative — sending a version that looks current — is the bug.
+   */
+  const base = previousMark?.serverEntry ?? current;
+  const chain = extendChain(previousMark?.chain, base, apply(current));
 
   const next: Transaction = { ...apply(current), version: current.version + 1 };
 
@@ -447,6 +462,14 @@ export async function resolveConflict(
     synced: true,
     /** ⚠️ **Tells the server to close the question**, so it is not handed back on the next pull. */
     settlesConflict: true,
+    /**
+     * ⚠️ **The version the server is about to hold, and the value it is about to hold it at.**
+     *
+     * A settled conflict is a fresh agreed state, **and leaving the old base behind would make the very next edit
+     * describe a past the server was never in** — which is the silent overwrite this whole change repairs.
+     */
+    serverVersion: next.version,
+    serverEntry: next,
     ...(Object.keys(chain).length === 0 ? {} : { chain }),
   });
   await afterWrite();
