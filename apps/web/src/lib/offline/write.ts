@@ -1,4 +1,5 @@
 import type { CreateTransactionInput, Transaction, UpdateTransactionInput } from "@libellum/shared";
+import type { OutboxOp } from "./outbox.js";
 
 import { ApiRequestError, apiFetch } from "../api.js";
 import { isAccountOffline } from "./connectivity.js";
@@ -14,7 +15,7 @@ import {
   storeMonth,
   upsertEntry,
 } from "./localLedger.js";
-import { queueChange, readOutbox, recordFailure, resolveChange } from "./outbox.js";
+import { queueChange, readOutbox, recordFailure, resolveChange, writeOutbox } from "./outbox.js";
 
 /**
  * Writing to the ledger, whether or not the server is reachable.
@@ -199,6 +200,12 @@ export function installPendingPublisher(publish: (ids: ReadonlySet<string>) => v
  * having to write anything first \u2014 the queue is on disk, and the colour comes from it.
  */
 export async function refreshPending(): Promise<void> {
+  /**
+   * ⚠️ **The invariant is enforced here, on every refresh**, so a device that is already in the broken state
+   * repairs itself the next time anything reads or writes — see `repairMissingQueueRows`.
+   */
+  await repairMissingQueueRows();
+
   const ids = await pendingIds();
 
   if (publishPendingFromQueue !== null) publishPendingFromQueue(ids);
@@ -326,16 +333,40 @@ export async function updateEntry(
  *
  * ⚠️ **Marked, not removed.** The stored copy is what round 3 needs to show the user what they deleted
  * while asking whether the delete should stand, and it costs a few hundred bytes to keep.
+ *
+ * ⚠️ **The delete is queued unconditionally, and that `.` is the fix for the owner's stuck rows.**
+ *
+ * The first version marked the entry and *then* queued it, **but only if the device could find the entry it
+ * was deleting**:
+ *
+ * ```ts
+ * const current = await findStoredEntry(id);
+ * await setMark(id, { pending: true, deleted: true });   // mark: unconditional
+ * if (current !== null) { queueChange(...); }            // queue: conditional
+ * ```
+ *
+ * **When the lookup came back empty the mark was still written and nothing was ever queued** — so the row went
+ * pale red and **stayed pale red for ever**, because there was nothing for the drain to send. His diagnostics
+ * show exactly that state: `ledger-marks` holding two ids, and `DIAGNOSTIC:drain — 在线判定通过，队列 0 条`. And
+ * he confirmed it from the other side by signing in on his phone: the entries were still on the server, so the
+ * delete had never left the device.
+ *
+ * **The condition was never needed.** A queued delete carries no payload — it is `DELETE /transactions/:id` —
+ * so it does not matter whether the device still holds a copy. **An entry can be missing from the device's
+ * store for entirely ordinary reasons** (it came from the query cache and was never written to `ledger-months`,
+ * a month was never downloaded), **and none of them are a reason to refuse to delete it.**
+ *
+ * ⚠️ **If the server has already deleted it, the delete is a 404 — and a 404 on a delete means the job is
+ * done**, which `syncOne` now treats as success rather than a permanent failure to retry for ever.
  */
 export async function deleteEntry(id: string): Promise<void> {
   const current = await findStoredEntry(id);
 
+  /** ⚠️ Queued first, so the mark and the work cannot disagree about whether anything is pending. */
+  await queueChange({ id, op: "delete", baseVersion: current?.version ?? null });
+
   await setMark(id, { pending: true, deleted: true });
   await afterWrite();
-
-  if (current !== null) {
-    await queueChange({ id, op: "delete", baseVersion: current.version });
-  }
 
   if (isAccountOffline()) {
     await logOffline("DIAGNOSTIC:write-local", `删除 ${id.slice(0, 8)}（离线）`);
@@ -438,6 +469,31 @@ async function syncOne(id: string): Promise<boolean> {
       await recordFailure(id, "这笔记账在服务器上已被修改");
 
       return false;
+    }
+
+    /**
+     * ⚠️ **A 404 on a delete means the entry is already gone, which is the outcome that was asked for.**
+     *
+     * The server answers `404 transaction_missing` when it cannot find the entry with `deletedAt: null`, which
+     * covers "already deleted" — **including deleted from another device**. Treating that as a failure leaves a
+     * row that can never succeed: every retry gets the same 404, **the entry is already invisible everywhere,
+     * and the only thing left on screen is a red row accusing the user of an unfinished deletion they did
+     * finish.**
+     *
+     * **The user wanted the entry not to exist. It does not exist. That is success**, and the row and the mark
+     * are cleared on the same path as any other delivered change.
+     *
+     * ⚠️ **The same status on a create or an update is a real failure** and falls through to the permanent
+     * branch below: a create that 404s means the endpoint is wrong, and an update that 404s means the entry
+     * vanished underneath an edit the user is still making.
+     */
+    if (status === 404 && row.op === "delete") {
+      await resolveChange(id);
+      await setMark(id, { deleted: true });
+
+      await logOffline("DIAGNOSTIC:write-already-gone", `删除 ${id.slice(0, 8)} — 服务器上已经没有它`);
+
+      return true;
     }
 
     /** A 4xx other than 409 will never succeed, so it must not sit at the head of the queue. */
@@ -556,6 +612,75 @@ const MAX_ATTEMPTS = 5;
 /** Whether anything is waiting. Cheap enough for a banner. */
 export async function hasPendingWrites(): Promise<boolean> {
   return (await readOutbox()).length > 0;
+}
+
+/**
+ * Put a queued change back for anything that is marked but not queued.
+ *
+ * ⚠️ **Written because the owner's device was already in that state, and a fix for new deletions alone would
+ * not have released it.**
+ *
+ * His diagnostics showed the contradiction plainly:
+ *
+ * ```
+ * read ledger-marks — 对象，键：01a128d9-…, 01a128cf-…
+ * DIAGNOSTIC:drain — 在线判定通过，队列 0 条
+ * ```
+ *
+ * Two entries marked as deleted, and an empty queue — so the drain had nothing to send, and the rows stayed
+ * pale red for ever. He confirmed it from the other side by signing in on his phone: **the entries were still
+ * on the server, so the delete had never left the device.**
+ *
+ * ⚠️ **A mark is a claim and the queue is the work. When they disagree, the work is what is missing** — and
+ * the repair is to rebuild the claim's work rather than to drop the claim. **Dropping the mark would silently
+ * undelete something the user asked to delete**, which is the one outcome worse than a colour that will not
+ * clear.
+ *
+ * ⚠️ **It runs on every `refreshPending`**, which is called after every read and every write — so this is not
+ * a one-off migration that has to be got right once. **It is the invariant being enforced continuously**:
+ * anything marked pending has a queued change, or it gets one.
+ */
+async function repairMissingQueueRows(): Promise<number> {
+  const marks = await readMarks();
+  const rows = await readOutbox();
+  const queued = new Set(rows.map((row) => row.id));
+
+  const missing = Object.entries(marks).filter(([id, mark]) => {
+    const pending = mark.pending === true || mark.deleted === true;
+
+    return pending && !queued.has(id);
+  });
+
+  if (missing.length === 0) return 0;
+
+  /**
+   * ⚠️ **A deletion is repaired as a deletion, and anything else as an update.**
+   *
+   * A deletion is the only one that can be reconstructed without a payload — `DELETE /transactions/:id` needs
+   * nothing else. **An entry marked pending but not deleted has no payload to rebuild**, so it is queued as an
+   * update with no body: the server will reject it, the row is recorded as a permanent failure, and **the user
+   * is told rather than the program inventing a body it does not have.** In practice this only happens for an
+   * entry created offline whose create row was somehow lost, which the create path cannot produce.
+   */
+  const next = [
+    ...rows,
+    ...missing.map(([id, mark]) => ({
+      id,
+      op: (mark.deleted === true ? "delete" : "update") as OutboxOp,
+      baseVersion: null,
+      queuedAt: Date.now(),
+      attempts: 0,
+    })),
+  ];
+
+  await writeOutbox(next);
+
+  await logOffline(
+    "DIAGNOSTIC:queue-repaired",
+    `补回 ${String(missing.length)} 条只标记未入队的改动`,
+  );
+
+  return missing.length;
 }
 
 /**

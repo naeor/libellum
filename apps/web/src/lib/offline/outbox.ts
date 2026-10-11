@@ -242,6 +242,6 @@ export async function clearOutbox(): Promise<void> {
  * which is exactly what a batch edit does — would otherwise interleave their read-modify-write and one
  * would be lost. **This file has been bitten by that pattern once already**, in the cache layer.
  */
-async function writeOutbox(rows: readonly OutboxRow[]): Promise<void> {
+export async function writeOutbox(rows: readonly OutboxRow[]): Promise<void> {
   await writeValue(OUTBOX_KEY, rows);
 }
