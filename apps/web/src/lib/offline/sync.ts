@@ -1,7 +1,7 @@
 import type { CreateTransactionInput, Transaction } from "@libellum/shared";
 
 import { ApiRequestError, apiFetch } from "../api.js";
-import { readMarks, readStoredMonths, setConflict, setMark, storeMonth, type EntryMark } from "./localLedger.js";
+import { readMarks, readStoredMonths, setConflict, setMark, storeMonth, upsertEntry, type ConflictFieldRecord, type EntryMark } from "./localLedger.js";
 import { logOffline } from "./diagnostics.js";
 import { republishLedger } from "./write.js";
 
@@ -77,9 +77,11 @@ async function intents(): Promise<readonly Intent[]> {
     if (entry === undefined) continue;
 
     if (mark.deleted === true) {
-      found.push({ entry, op: "delete", mark });
+      if (mark.pending === true) found.push({ entry, op: "delete", mark });
       continue;
     }
+
+    if (mark.conflict !== undefined && mark.settlesConflict !== true) continue;
 
     if (mark.pending === true) {
       /**
@@ -121,7 +123,14 @@ export interface SyncReport {
  * Every marked entry is examined, in order, every time this runs. **An entry cannot be skipped because some
  * separate record forgot about it**, which is what happened to his two rows.
  */
-export async function syncAll(): Promise<SyncReport> {
+let syncing: Promise<SyncReport> | null = null;
+export function syncAll(): Promise<SyncReport> {
+  if (syncing !== null) return syncing;
+  syncing = runSync().finally(() => { syncing = null; });
+  return syncing;
+}
+
+async function runSync(): Promise<SyncReport> {
   const work = await intents();
 
   let delivered = 0;
@@ -138,12 +147,12 @@ export async function syncAll(): Promise<SyncReport> {
      * row for ever** — the middle path is what the owner's experience asks for: **it stops now, and it starts
      * again next time.**
      */
-    if (failure?.permanent === true) {
+    if (failure?.permanent === true && intent.mark.settlesConflict !== true) {
       refused += 1;
       continue;
     }
 
-    if (failure !== undefined && failure.attempts >= MAX_ATTEMPTS) {
+    if (failure !== undefined && failure.attempts >= MAX_ATTEMPTS && intent.mark.settlesConflict !== true) {
       refused += 1;
       continue;
     }
@@ -174,13 +183,17 @@ async function deliver(intent: Intent): Promise<boolean> {
   const short = entry.id.slice(0, 8);
 
   try {
+    let confirmed: Transaction | undefined;
+    await logOffline("DIAGNOSTIC:sync-request", JSON.stringify({ id: short, op,
+      settlesConflict: intent.mark.settlesConflict === true,
+      amountCents: entry.amountCents, fields: Object.keys(intent.mark.chain ?? {}) }));
     if (op === "create") {
-      await apiFetch<Transaction>("/transactions", {
+      confirmed = await apiFetch<Transaction>("/transactions", {
         method: "POST",
         body: createBody(entry, intent.mark),
       });
     } else if (op === "update") {
-      await apiFetch<Transaction>(`/transactions/${entry.id}`, {
+      confirmed = await apiFetch<Transaction>(`/transactions/${entry.id}`, {
         method: "PATCH",
         body: updateBody(entry, intent.mark),
       });
@@ -194,8 +207,16 @@ async function deliver(intent: Intent): Promise<boolean> {
      * A delivered deletion leaves `deleted: true` out of the mark entirely, so the entry is filtered from the
      * screens — **"removed from the server and from here", which is what the owner asked for in as many words.**
      */
-    await setMark(entry.id, null);
+    // Never acknowledge an edit made while this request was in flight.
+    if (JSON.stringify((await readMarks())[entry.id]) === JSON.stringify(intent.mark)) {
+      if (confirmed !== undefined) await upsertEntry(confirmed);
+      // Keep an acknowledged tombstone so an older query cache cannot resurrect a deleted row.
+      await setMark(entry.id, op === "delete" ? { deleted: true, pending: false, synced: true } : null);
+      await republishLedger();
+    }
     failures.delete(entry.id);
+    await logOffline("DIAGNOSTIC:sync-confirmed", JSON.stringify({ id: short,
+      settlesConflict: intent.mark.settlesConflict === true, amountCents: confirmed?.amountCents }));
 
     await logOffline("DIAGNOSTIC:sync-ok", `${op} ${short}`);
 
@@ -203,28 +224,7 @@ async function deliver(intent: Intent): Promise<boolean> {
   } catch (error) {
     const status = error instanceof ApiRequestError ? error.status : 0;
 
-    /**
-     * ⚠️ **A 404 on a delete is NOT success, and treating it as success is what made the owner's rows
-     * undeletable.** His diagnostics show the whole sequence:
-     *
-     * ```
-     * write-failed — delete 01a128c9 — 404 找不到这笔记账。
-     * write-already-gone — 删除 01a128c9 — 服务器上已经没有它
-     * sync-ok — delete 01a128c9（服务器上本就没有）        <- the mark was cleared
-     * ```
-     *
-     * The mark was cleared, the colour went, **and the entry was still there** — which is exactly what he
-     * reported: "我刷新的时候，他会直接把删除印记给去掉，东西是实际上并没删除."
-     *
-     * ⚠️ **The server answers 404 in two situations that must not be conflated**: the row has already been
-     * soft-deleted, **or this id does not exist in this book at all.** The second happens for an entry that was
-     * never uploaded — **and clearing the mark then means the program forgets the deletion while the entry is
-     * still in front of the user.**
-     *
-     * **So a delete is succeeded by the server's own list, and by nothing else** — see `recordServerList`,
-     * which clears a deletion precisely when the month's list comes back without that entry. **One authority
-     * for "is it gone", and it is the server's list rather than an inference from an error code.**
-     */
+    // HTTP failures retain the local intent. A list page cannot acknowledge a write.
 
     const message = error instanceof Error ? error.message : String(error);
 
@@ -248,7 +248,9 @@ async function deliver(intent: Intent): Promise<boolean> {
       const refusal = readRefusal(error);
 
       if (refusal !== null) {
-        await recordConflict(entry, refusal);
+        if (JSON.stringify((await readMarks())[entry.id]) === JSON.stringify(intent.mark)) {
+          await recordConflict(entry, refusal);
+        }
 
         failures.delete(entry.id);
 
@@ -305,28 +307,7 @@ async function recordConflict(entry: Transaction, refusal: Refusal): Promise<voi
 }
 
 /** The editable fields, in the order the conflict screen lists them. */
-const EDITABLE_FIELD_NAMES: readonly string[] = [
-  "kind",
-  "amountCents",
-  "currency",
-  "categoryId",
-  "paymentMethodId",
-  "occurredAt",
-  "note",
-  "tagIds",
-];
-
-/** One field's value, in the form both sides can be compared in — tags as ids, not as objects. */
-function fieldValueOf(entry: Transaction, field: string): unknown {
-  if (field === "tagIds") return entry.tags.map((tag) => tag.id);
-
-  return (entry as unknown as Record<string, unknown>)[field];
-}
-/** One field the server says is genuinely in dispute. */
-export interface RefusedField {
-  readonly field: string;
-  readonly serverValue: unknown;
-}
+export type RefusedField = ConflictFieldRecord;
 
 /** What a 409 carried back. */
 interface Refusal {
@@ -366,9 +347,12 @@ function readRefusal(error: unknown): Refusal | null {
 
   if (Array.isArray(details?.conflicts)) {
     for (const item of details.conflicts) {
-      const shape = item as { readonly field?: unknown; readonly serverValue?: unknown };
+      const shape = item as Partial<ConflictFieldRecord>;
 
-      if (typeof shape.field === "string") fields.push({ field: shape.field, serverValue: shape.serverValue });
+      if (typeof shape.field === "string") fields.push({ field: shape.field, serverValue: shape.serverValue,
+        ...(Array.isArray(shape.claims) ? { claims: shape.claims } : {}),
+        ...(Array.isArray(shape.history) ? { history: shape.history } : {}),
+      });
     }
   }
 
@@ -432,6 +416,9 @@ function updateBody(entry: Transaction, mark: EntryMark) {
      * version — an entry edited before this existed.
      */
     version: entry.version,
+    settlesConflict: mark.settlesConflict === true,
+    kind: entry.kind,
+    tagIds: entry.tags.map(tag => tag.id),
     amountCents: entry.amountCents,
     categoryId: entry.categoryId === "" ? null : entry.categoryId,
     paymentMethodId: entry.paymentMethodId,
@@ -445,115 +432,6 @@ function updateBody(entry: Transaction, mark: EntryMark) {
   };
 }
 
-/**
- * Record what the server says exists, and settle the three cases it decides.
- *
- * ⚠️ **This is the part the device cannot work out for itself**: the marks say what *this* device intends, and
- * the server's list says what everyone still has. **Comparing them is the only way to notice a change made
- * somewhere else** — and the owner's iPad reached a state with no marks at all, which no amount of local
- * reasoning could recover from.
- *
- * Three cases, and each has exactly one sensible outcome:
- *
- * | On the server | On this device | What it means | What happens |
- * |---|---|---|---|
- * | yes | marked deleted | **the deletion never arrived** | it is delivered on the next walk |
- * | **yes** | **not here at all** | **someone else deleted it, or it was never downloaded** | **nothing is invented** — the entry is not on screen either way |
- * | **no** | marked `synced: false` | **created here, not delivered yet** | it is uploaded on the next walk |
- * | **no** | not here | nothing to do | — |
- *
- * ⚠️ **Only a month fetched to its end may be handed over.** Comparing a partial page would treat everything on
- * the next page as deleted — **the most destructive mistake available in this file.**
- *
- * ⚠️ **The one thing this must never do is delete an entry nobody asked to delete**, so it only ever *removes*
- * intentions that the server confirms have been carried out.
- */
-export async function recordServerList(ids: readonly string[]): Promise<void> {
-  const onServer = new Set(ids);
-
-  /**
-   * ⚠️ **A mark for an entry the server confirms is gone is finished work, and it is cleared here.**
-   *
-   * This is what releases a row that was stuck: the entry was deleted somewhere — here, from another device, or
-   * by a delivery whose mark was never cleared — **and the server's list is the authority on that.** Without
-   * this the row keeps its colour for ever while there is nothing left to send, **which is precisely the
-   * "钉子户" the owner reported: a row that cannot be deleted even from a working connection.**
-   */
-  const marks = await readMarks();
-
-  /**
-   * ⚠️ **The server's own copy of each entry is kept, and this is the base the next edit must start from.**
-   *
-   * A full month came back, so **these are the versions the server is holding right now** — and without them the
-   * next edit builds its chain from this device's own copy, sends this device's own version, and **the server
-   * reads the change as "editing what I just saw"** and accepts it, overwriting whatever another device did in
-   * between. That is the owner's tablet taking the phone's 20 back to 40 with nobody asked.
-   *
-   * ⚠️ **Only the bytes matter, not the bookkeeping**: the copy is stored so a later edit can say "the server had
-   * A, I want B". **Storing it is the difference between describing the past truthfully and describing it as this
-   * device wishes it were.**
-   */
-  let cleared = 0;
-
-  for (const [id, mark] of Object.entries(marks)) {
-    if (onServer.has(id)) continue;
-
-    if (mark.deleted !== true && mark.synced === false) {
-      /** Created here and not there yet: that is the green case, and the walk will upload it. */
-      continue;
-    }
-
-    /**
-     * ⚠️ **`mark.synced !== false` here means the server once had it.** An entry the device never created is one
-     * it downloaded, so its absence from the list means it was deleted by somebody — **and the deletion the user
-     * asked for has therefore happened, whichever route it took.**
-     */
-    if (mark.deleted === true || mark.synced !== false) {
-      await setMark(id, null);
-      cleared += 1;
-    }
-  }
-
-  /**
-   * ⚠️ **The screens are republished, because clearing a mark is not visible on its own.**
-   *
-   * `setMark` publishes the marks, but the row is drawn from the ledger snapshot — and a deletion disappears only
-   * when that snapshot is rebuilt. **Without this the mark is gone and the entry is still on screen**, which is
-   * precisely what the owner reported: "我刷新的时候，他会直接把删除印记给去掉，东西是实际上并没删除."
-   */
-  if (cleared > 0) {
-    await logOffline("DIAGNOSTIC:server-list", `服务器确认 ${String(cleared)} 条已完成，印记已清`);
-
-    await republishLedger();
-  }
-}
-
-/**
- * Ask the server what is still in dispute, and put those questions in front of the user.
- *
- * ⚠️ **This is how a conflict raised on one device reaches the others**, since there is no push channel — the
- * owner's own description of the loop: **"任何一台设备触发服务器同步…服务器会立刻跟所有账号的本地记录来一次大核对."**
- *
- * ⚠️ **A conflict that has been settled is simply absent here**, which is what stops a second device asking the
- * same question: **"如果用户已经对这个冲突做了一次确认…此时没必要让用户在别的设备上再肯定一次."**
- *
- * ⚠️ **Conflicts the server no longer lists are cleared locally**, because the answer is already in the entry the
- * device will fetch — **leaving a yellow row up after somebody settled it would be showing a question that has an
- * answer.**
- */
-/**
- * Tell the server the user has settled every open conflict by taking its values.
- *
- * ⚠️ **This is what the owner decided "clear the marks" means**: "清空印记就意味着不选了使用服务器当前的值，在清空
- * 印记时给服务器留一条消息…告诉服务器，这个冲突已经解决了，使用服务器当前的值."
- *
- * ⚠️ **And it has to reach the server, or the question comes straight back.** Clearing only the local marks left
- * the raised rows in place, so the next pull returned them — **which is exactly what he hit**: a row that stayed
- * yellow however many times he cleared it.
- *
- * ⚠️ **A failed send is reported and retried by the next sync**, never swallowed: **an instruction that is dropped
- * is an instruction the user believes they gave.**
- */
 export async function deferConflictsToServer(): Promise<boolean> {
   const answer = await apiFetch<{ readonly resolved: number }>("/conflicts/resolve-with-server", {
     method: "POST",
@@ -570,64 +448,30 @@ export async function deferConflictsToServer(): Promise<boolean> {
 
   return true;
 }
-/**
- * Take the server's current values for one month, and put them where the screens read.
- *
- * ⚠️ **This is what "refresh" is supposed to do, and it was doing everything except this.** The owner:
- * **"刷新的 UI 设计…我在 pad 上在线修改数据，点刷新，它居然没法同步数据，还需要我直接动浏览器的刷新才可以."**
- *
- * **The button delivered what the device had and re-read what the device held** — so a value changed on another
- * device, or on this one and confirmed by the server, **never came back**. Only reloading the page fetched the
- * server's list, which is exactly why a browser reload "fixed" it.
- *
- * ⚠️ **The owner's rule for this moment, in his words**: "理论上在点击它的一瞬间，它里面的数据应该跟服务器的同步
- * （大部分情况下服务器覆盖，小部分情况有冲突）." **The server's values are written into the device, and anything
- * the device holds that the server does not is left for the conflict machinery to raise.**
- *
- * ⚠️ **It overwrites; it never deletes.** An entry the server's list does not contain is **not** removed here —
- * that would destroy work the server has simply not accepted yet, **and it is what the marks and the conflict flow
- * exist to decide.**
- */
+/** Download the complete month, preserving local edits and unresolved conflict candidates. */
 export async function syncMonth(month: string): Promise<number> {
-  const page = await apiFetch<{
-    readonly items: readonly Transaction[];
-    readonly nextCursor: string | null;
-  }>("/transactions", {
-    query: { month, limit: "200" },
-    timeoutMs: 15_000,
-  }).catch(() => null);
-
-  /** ⚠️ A refresh that fails leaves everything as it was — **it must never half-apply a list.** */
-  if (page === null || page.nextCursor !== null) return 0;
-
+  const entries: Transaction[] = [];
+  let cursor: string | undefined;
+  do {
+    const page = await apiFetch<{ readonly items: readonly Transaction[]; readonly nextCursor: string | null }>(
+      "/transactions", { query: { month, limit: "100", cursor }, timeoutMs: 15_000 },
+    ).catch(() => null);
+    if (page === null) return 0;
+    entries.push(...page.items);
+    cursor = page.nextCursor ?? undefined;
+  } while (cursor !== undefined);
+  // Only this complete, unfiltered month can confirm an already absent deletion.
+  const serverIds = new Set(entries.map(entry => entry.id));
   const stored = await readStoredMonths();
-  const existing = stored[month] ?? [];
-  const byId = new Map(existing.map((entry) => [entry.id, entry]));
-
-  let adopted = 0;
-
-  for (const entry of page.items) {
-    const mine = byId.get(entry.id);
-
-    /** ⚠️ Counted only when it actually differs, so the report says something true. */
-    if (mine !== undefined && JSON.stringify(mine) !== JSON.stringify(entry)) adopted += 1;
-
-    /**
-     * ⚠️ **The server's copy wins outright**, which is the owner's rule for this moment: "大部分情况下服务器覆盖."
-     * Anything the device changed and has not sent is covered by the conflict machinery instead — **and an entry the
-     * device changed and *has* sent is already in the server's answer.**
-     */
-    byId.set(entry.id, entry);
+  const marks = await readMarks();
+  for (const entry of stored[month] ?? []) {
+    if (marks[entry.id]?.deleted === true && marks[entry.id]?.pending === true && !serverIds.has(entry.id)) {
+      await setMark(entry.id, { deleted: true, pending: false, synced: true });
+    }
   }
-
-  await storeMonth(month, [...byId.values()]);
-  await recordServerList(page.items.map((entry) => entry.id));
-
-  if (adopted > 0) {
-    await logOffline("DIAGNOSTIC:month-synced", `${month}：采纳服务器 ${String(adopted)} 条的当前值`);
-  }
-
-  return page.items.length;
+  await storeMonth(month, entries);
+  await republishLedger();
+  return entries.length;
 }
 export async function pullConflicts(): Promise<number> {
   const answer = await apiFetch<{
@@ -635,7 +479,7 @@ export async function pullConflicts(): Promise<number> {
       readonly transactionId: string;
       /** ⚠️ The server's own copy, without which there is no second side to choose against. */
       readonly current: Transaction | null;
-      readonly fields: readonly { readonly field: string; readonly serverValue: unknown }[];
+      readonly fields: readonly ConflictFieldRecord[];
     }[];
   }>("/conflicts", { timeoutMs: 10_000 }).catch(() => null);
 
@@ -654,7 +498,14 @@ export async function pullConflicts(): Promise<number> {
 
   /** ⚠️ Questions the server no longer has are answered — drop them so the yellow mark goes. */
   for (const [id, mark] of Object.entries(marks)) {
-    if (mark.conflict !== undefined && !listed.has(id)) await setMark(id, null);
+    if (mark.conflict === undefined || listed.has(id) || mark.settlesConflict === true) continue;
+    const current = await apiFetch<Transaction>(`/transactions/${id}`).catch(() => null);
+    if (current === null) continue;
+    if (JSON.stringify((await readMarks())[id]) !== JSON.stringify(mark)) continue;
+    await upsertEntry(current);
+    await setMark(id, null);
+    await republishLedger();
+    await logOffline("DIAGNOSTIC:conflict-adopted", `${id.slice(0, 8)}：其他设备已处理，金额=${String(current.amountCents)} 分`);
   }
 
   let found = 0;
@@ -691,18 +542,14 @@ export async function pullConflicts(): Promise<number> {
      * value and this device's value. **A field where they differ is one this user has to decide about**, whether or
      * not the server happened to mention it.
      */
-    const fields = [...item.fields];
-
-    for (const field of EDITABLE_FIELD_NAMES) {
-      if (fields.some((named) => named.field === field)) continue;
-
-      const mine = fieldValueOf(entry, field);
-      const theirs = fieldValueOf(item.current, field);
-
-      if (JSON.stringify(mine) === JSON.stringify(theirs)) continue;
-
-      fields.push({ field, serverValue: theirs });
-    }
+    const latest = (await readMarks())[item.transactionId];
+    if (latest?.settlesConflict === true) continue;
+    const fields = item.fields;
+    await logOffline("DIAGNOSTIC:conflict-received", JSON.stringify({ id: item.transactionId.slice(0, 8),
+      localAmountCents: entry.amountCents, serverAmountCents: item.current.amountCents,
+      fields: fields.map(field => ({ field: field.field, candidates: field.claims?.length ?? 0,
+        ...(field.field === "amountCents" ? { server: field.serverValue,
+          devices: field.claims?.map(claim => ({ device: claim.deviceId, chain: claim.chain })) } : {}) })) }));
 
     await setConflict(item.transactionId, {
       /** ⚠️ This device's entry — what the user has here. */

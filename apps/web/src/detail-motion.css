@@ -144,13 +144,13 @@
  */
 .detail-month-row {
   /*
-   * ⚠️ **The month line rises by the same 5px in the list state, at the owner's request**: "给明细态的日期也往上升
+   * ⚠️ **The month line rises by 13px in the list state (8px more in 1.08.54), at the owner's request**: "给明细态的日期也往上升
    * 大约 5 像素吧，和那三个键对齐."
    *
    * The three tool buttons no longer move at all (see `.detail-tools`), so **the month has to come up to their
    * line rather than the other way round** — and they are the two things on that row a reader looks at together.
    */
-  transform: translate3d(0, calc(var(--p-month) * var(--row-one) * -1 - var(--p) * 5px), 0);
+  transform: translate3d(0, calc(var(--p-month) * var(--row-one) * -1 - var(--p) * 13px), 0);
   /*
    * The gap above the month closes as the transition runs. It is the last part
    * of the green area that was still fixed, and without it the list state's

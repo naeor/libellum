@@ -273,7 +273,7 @@ export async function raiseConflict(
  * exists only in a row about to be deleted.
  */
 export async function settleConflicts(
-  prisma: PrismaClient,
+  prisma: PrismaClient | Prisma.TransactionClient,
   args: {
     readonly transactionId: string;
     readonly bookId: string;

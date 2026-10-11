@@ -183,7 +183,7 @@ function judgementFreeFields(body: Record<string, unknown>): readonly string[] {
 function bodyFields(body: Record<string, unknown>): Record<string, unknown> {
   const fields: Record<string, unknown> = {};
 
-  for (const key of ["amountCents", "currency", "categoryId", "paymentMethodId", "occurredAt", "note", "tagIds"]) {
+  for (const key of ["kind", "amountCents", "currency", "categoryId", "paymentMethodId", "occurredAt", "note", "tagIds"]) {
     if (body[key] !== undefined) fields[key] = body[key];
   }
 
@@ -778,20 +778,15 @@ export function registerTransactionRoutes(
      * `settledFields` is empty and passing it would have recorded a decision that chose nothing and closed nothing.**
      * The user's choices are exactly the fields this request moves.
      */
-    if (settling) {
-      await settleConflicts(prisma, {
-        transactionId: id,
-        bookId,
-        deviceId: deviceIdFrom(request),
-        settled: write,
+    const updated = await prisma.$transaction(async (tx) => {
+      const result = await tx.transaction.update({ where: { id }, data, include: TRANSACTION_INCLUDE });
+      if (settling) await settleConflicts(tx, {
+        transactionId: id, bookId, deviceId: deviceIdFrom(request), settled: write,
       });
-    }
-
-    const updated = await prisma.transaction.update({
-      where: { id },
-      data,
-      include: TRANSACTION_INCLUDE,
+      return result;
     });
+    request.log.info({ transactionId: id, deviceId: deviceIdFrom(request), settlesConflict: settling,
+      amountCents: Number(updated.amountCents), writtenFields: Object.keys(write) }, "conflict-write-confirmed");
 
     return toDto(updated);
   });

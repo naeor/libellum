@@ -484,6 +484,10 @@ export async function resolveConflict(
    */
   await syncAll();
   await afterWrite();
+  if ((await readMarks())[id]?.pending === true) {
+    throw new Error("选择已保存在本机，但服务器尚未确认。请保持联网后重试；诊断记录中有请求结果。");
+  }
+
 }
 
 /** The editable fields, in the order the conflict screen lists them. */

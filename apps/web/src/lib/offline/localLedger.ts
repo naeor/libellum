@@ -367,6 +367,19 @@ export const LEDGER_MARKS_KEY = "ledger-marks";
  * | `tagIds` | Carried here because tags are not on the stored entry and a create needs them |
  */
 /** The version both sides started from, when the device still knows it. */
+export interface ConflictClaim {
+  readonly deviceId: string;
+  readonly chain: readonly unknown[];
+  readonly at: string;
+}
+
+export interface ConflictFieldRecord {
+  readonly field: string;
+  readonly serverValue: unknown;
+  readonly claims?: readonly ConflictClaim[];
+  readonly history?: readonly unknown[];
+}
+
 export interface ConflictRecord {
   /** This device's copy — what the user typed. */
   readonly mine: Transaction;
@@ -386,7 +399,7 @@ export interface ConflictRecord {
    * 机制"** — and only the server can tell, because only it knows whether the value the device read has moved.
    * **A field the server accepted is not here**, so the user is never asked about an edit nobody disagreed with.
    */
-  readonly fields?: readonly { readonly field: string; readonly serverValue: unknown }[];
+  readonly fields?: readonly ConflictFieldRecord[];
   /** When it was noticed, so the oldest unanswered conflict can be shown first. */
   readonly at: number;
 }
@@ -558,7 +571,7 @@ export async function setMark(id: string, mark: EntryMark | null): Promise<void>
    * first `writeOwn` will persist it together with the new mark.
    */
   const cached = readSnapshot<LedgerMarks>(LEDGER_MARKS_KEY);
-  const all: LedgerMarks = cached ?? {};
+  const all: LedgerMarks = cached ?? await readMarks();
   const next = { ...all };
 
   if (mark === null || (mark.pending !== true && mark.deleted !== true)) delete next[id];
@@ -672,7 +685,13 @@ export async function readStoredMonths(): Promise<StoredMonths> {
 export async function storeMonth(month: string, entries: readonly Transaction[]): Promise<void> {
   const all = await readStoredMonths();
 
-  await writeOwn(LEDGER_MONTHS_KEY, { ...all, [month]: entries });
+  // A download must not replace edits or conflict candidates awaiting a decision.
+  const marks = await readMarks();
+  const merged = new Map(entries.map(entry => [entry.id, entry]));
+  for (const entry of all[month] ?? []) {
+    if (marks[entry.id]?.pending === true || marks[entry.id]?.deleted === true) merged.set(entry.id, entry);
+  }
+  await writeOwn(LEDGER_MONTHS_KEY, { ...all, [month]: [...merged.values()] });
 }
 
 /**

@@ -30,6 +30,7 @@ import {
   subscribePending,
 } from "../lib/offline/localLedger.js";
 import { logOffline } from "../lib/offline/diagnostics.js";
+import { mergeLedgerEntries } from "../lib/ledgerView.js";
 import { syncMonth } from "../lib/offline/sync.js";
 import { syncNow } from "../lib/offline/syncController.js";
 import { resolveConflict } from "../lib/offline/write.js";
@@ -311,52 +312,13 @@ export function DetailPage(): React.JSX.Element {
     } finally {
       setRefreshing(false);
     }
-  }, [refreshing]);
+  }, [refreshing, month]);
 
   const entries = useMemo(() => {
     const fromQuery = (list.data?.pages ?? []).flatMap((page) => page.items);
 
-    /**
-     * ⚠️ **Merged, not chosen between — and the owner's report is why.**
-     *
-     * The previous version used the query when it had anything and the device only when it was empty. That
-     * is wrong in one specific and expensive case: **an entry recorded offline is on the device and not yet
-     * on the server, so a refetch returns a list without it — and using that list made the entry vanish
-     * until the queue drained.** He described exactly that: entries "都消失了；在我首次在在线状态下新增时，
-     * 他们才出现".
-     *
-     * **The server's copy wins for any entry it knows about** — it is the truth, and the device's copy is a
-     * copy. **Anything only the device has is still shown**, because it is a real entry the user recorded,
-     * and hiding it because a server has not caught up yet is hiding their own work from them.
-     *
-     * ⚠️ **It also means the pending colour is reachable.** With the query's list taking precedence, an
-     * unsynced entry was not on screen at all — so the marker that exists to warn about it had nothing to
-     * mark.
-     */
-    const byId = new Map<string, Transaction>();
-
-    /**
-     * ⚠️ **These two lines are the merge, and I deleted them by accident.**
-     *
-     * A scripted edit replaced the block that filled this map and left the declaration and the read behind, so
-     * `byId` was always empty — **and the ledger screen showed "这个月还没有支出" while the owner's entries sat
-     * untouched on the server and on the device.** Nothing was deleted; nothing was even hidden. **The screen
-     * simply stopped being given anything to draw.**
-     *
-     * **It is the same shape as the two unwired functions from earlier in this round** — a scripted edit that
-     * did not do what I thought, and no check that the result still made sense. **The lesson was already
-     * written; what was missing was the verification step, not the knowledge.**
-     *
-     * ⚠️ **The screen is checked against real data from now on**, not only against the type checker: an empty
-     * merge compiles perfectly.
-     */
-    for (const entry of localEntries) byId.set(entry.id, entry);
-    for (const entry of fromQuery) byId.set(entry.id, entry);
-
-    const rows = [...byId.values()];
-
-    return rows;
-  }, [list.data, localEntries]);
+    return mergeLedgerEntries(localEntries, fromQuery, pending, filters);
+  }, [list.data, localEntries, pending, month, kind, categoryId]);
 
   /**
    * ⚠️ **One explicit sort, applied to whatever the sources produced.**
@@ -428,11 +390,9 @@ export function DetailPage(): React.JSX.Element {
           categories={ledger.data?.categories}
           paymentMethods={ledger.data?.paymentMethods}
           tags={ledger.data?.tags}
-          onResolve={(settled) => {
-            void (async () => {
-              setSettling(null);
-              await resolveConflict(settling.mine.id, settled, settling.theirs);
-            })();
+          onResolve={async (settled) => {
+            await resolveConflict(settling.mine.id, settled, settling.theirs);
+            setSettling(null);
           }}
           onLater={() => {
             setSettling(null);

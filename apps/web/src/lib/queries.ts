@@ -32,6 +32,7 @@ import {
 } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
 
+import { updateTransactionViews } from "./ledgerView.js";
 import { useAuth } from "../auth/AuthProvider.js";
 import { ApiRequestError, apiFetch, apiFetchFile } from "./api.js";
 import { CACHE_KEY } from "./offline/cache.js";
@@ -48,7 +49,7 @@ import {
 } from "./offline/localLedger.js";
 import { readSnapshot } from "./offline/storage.js";
 import { installQueryNotifier, refreshPending } from "./offline/write.js";
-import { recordServerList, syncAll } from "./offline/sync.js";
+import { syncAll } from "./offline/sync.js";
 import { withLocalFallback } from "./offline/fallback.js";
 import { computeStats, monthRange, summaryFor } from "./offline/localStats.js";
 import { uuidV7 } from "./uuid.js";
@@ -310,22 +311,7 @@ export function useTransactions(given: TransactionFilters) {
      * ⚠️ **Only the affected months are touched.** Rewriting every cached month would discard the server's
      * own ordering and paging for months this write has nothing to do with.
      */
-    const months = new Set(changed.map((entry) => entry.occurredLocalDate.slice(0, 7)));
-
-    for (const query of queryClient.getQueryCache().getAll()) {
-      const key = query.queryKey;
-      if (!Array.isArray(key) || key[0] !== "transactions") continue;
-
-      const filters = query.queryKey[1] as { readonly month?: string } | undefined;
-      const month = filters?.month;
-
-      if (month === undefined || !months.has(month)) continue;
-
-      queryClient.setQueryData(key, {
-        pages: [asLocalPage(filterLocally(changed, transactionFilters({ month })))],
-        pageParams: [undefined],
-      });
-    }
+    updateTransactionViews(queryClient, changed);
 
     /**
      * ⚠️ **The summary and single-entry queries are invalidated**, because their answers are computed
@@ -402,30 +388,10 @@ export function useTransactions(given: TransactionFilters) {
           }),
         local: async () => asLocalPage(filterLocally(await readLocalTransactions(), filters)),
       }).then(async (answer) => {
-        /**
-         * ⚠️ **The server has spoken: record what it holds, then let the reconciliation run.**
-         *
-         * This is the step every earlier fix was missing. **The device cannot answer "does this entry still
-         * exist" from local state** — the owner's iPad had no marks and no queue, so nothing there remembered
-         * what he had deleted, while the entries were still on the server and still on his phone. **The
-         * server's list is the record, and this hands it over.**
-         *
-         * ⚠️ **`nextCursor === null` is what makes it safe**: only a month fetched to its end can be compared
-         * against local storage. **Comparing a partial page would queue deletions for everything on the next
-         * page** — the most destructive mistake available here.
-         *
-         * ⚠️ **`refreshPending` is what performs the repair**, because that is the chain already known to run.
-         */
+        // A list may be filtered or only the final page. Its membership cannot
+        // acknowledge writes or clear conflict marks; only write responses can.
         if (answer.nextCursor === null) {
-          /**
-           * ⚠️ **The server's list settles what happened elsewhere, and then the walk runs.**
-           *
-           * `recordServerList` clears marks the server proves are finished — **which is what releases a row that
-           * was stuck red with nothing left to send.** `syncAll` then walks the entries and delivers whatever
-           * remains, so a month that finishes loading also finishes syncing.
-           */
           void (async () => {
-            await recordServerList(answer.items.map((entry) => entry.id));
             await syncAll();
             await refreshPending();
           })();

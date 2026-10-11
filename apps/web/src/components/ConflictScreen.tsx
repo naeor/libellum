@@ -1,9 +1,11 @@
 import type { Transaction } from "@libellum/shared";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "./Button.js";
 import { formatMoney } from "../lib/format.js";
-import { applyAnswers, mergeEntries, type AutomaticPick, type MergeField } from "../lib/offline/merge.js";
+import { mergeEntries, type AutomaticPick, type MergeField } from "../lib/offline/merge.js";
+import { applyConflictChoices, conflictQuestions } from "../lib/offline/conflictChoices.js";
+import { logOffline } from "../lib/offline/diagnostics.js";
 import type { ConflictRecord } from "../lib/offline/localLedger.js";
 
 /**
@@ -26,7 +28,7 @@ import type { ConflictRecord } from "../lib/offline/localLedger.js";
 interface ConflictScreenProps {
   readonly conflict: ConflictRecord;
   /** Called with the settled entry when the user accepts the result. */
-  readonly onResolve: (settled: Transaction) => void;
+  readonly onResolve: (settled: Transaction) => void | Promise<void>;
   /** Called when the user would rather do this later. */
   readonly onLater: () => void;
   /**
@@ -37,7 +39,7 @@ interface ConflictScreenProps {
    */
   readonly categories?: readonly { readonly id: string; readonly name: string }[] | undefined;
   readonly paymentMethods?: readonly { readonly id: string; readonly name: string }[] | undefined;
-  readonly tags?: readonly { readonly id: string; readonly name: string }[] | undefined;
+  readonly tags?: readonly { readonly id: string; readonly name: string; readonly color?: string }[] | undefined;
 }
 
 /** The names a value can be looked up by, when it is an id. */
@@ -102,40 +104,24 @@ export function ConflictScreen({ conflict, onResolve, onLater, categories, payme
    * "mine" would make the common case — tapping through quickly — silently overwrite the other device, which is
    * the exact outcome this screen exists to prevent.
    */
-  const [answers, setAnswers] = useState<ReadonlyMap<MergeField, "mine" | "theirs">>(new Map());
-
-  const settled = useMemo(
-    () => applyAnswers(merged.merged, answers, conflict.mine, conflict.theirs),
-    [merged.merged, answers, conflict.mine, conflict.theirs],
-  );
-
-  /**
-   * ⚠️ **Only the fields the server named are asked about**, and the rest of the merge is applied silently.
-   *
-   * The rule is the owner's — **"只有在服务器的数值是 C，而某台设备上传的请求是把数字从 A 改成 B 时才会触发冲突
-   * 机制"** — and **only the server can apply it**, because only it knows whether the value this device read has
-   * moved. A field the server accepted is already saved there, **so asking about it would be asking the user to
-   * re-decide something that is not in question.**
-   */
-  const questions = useMemo(() => {
-    const named = conflict.fields;
-
-    if (named === undefined || named.length === 0) return merged.conflicts;
-
-    const byField = new Map(merged.conflicts.map((item) => [item.field, item]));
-
-    return named
-      .map((item) => byField.get(item.field as MergeField))
-      .filter((item): item is (typeof merged.conflicts)[number] => item !== undefined);
-  }, [conflict.fields, merged.conflicts]);
-
-  const unanswered = questions.filter((field) => !answers.has(field.field)).length;
+  const [answers, setAnswers] = useState<ReadonlyMap<MergeField, unknown>>(new Map());
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const questions = useMemo(() => conflictQuestions(conflict), [conflict]);
+  const settled = useMemo(() => applyConflictChoices(merged.merged, answers,
+    { categories, paymentMethods, tags }, [conflict.mine, conflict.theirs]),
+    [merged.merged, answers, categories, paymentMethods, tags, conflict.mine, conflict.theirs]);
+  const unanswered = questions.filter(field => !answers.has(field.field)).length;
+  useEffect(() => {
+    void logOffline("DIAGNOSTIC:conflict-screen", JSON.stringify({ id: conflict.mine.id.slice(0, 8),
+      serverFields: conflict.fields?.map(field => field.field),
+      questions: questions.map(question => ({ field: question.field, options: question.options.length })) }));
+  }, [conflict, questions]);
 
   return (
     <div className="flex flex-col gap-5 px-6 py-5">
         <p className="text-sm leading-relaxed text-muted">
-          这台设备上的改动和服务器上的不同。<strong className="text-ink">没冲突的地方已经自动合好了</strong>
-          ，下面列出来给你看一眼；只有两边都改过、而且改得不一样的地方才需要你选。
+          不同设备提交了不同的修改。下面列出服务器保存的候选值，选择后会同步到其他设备。
         </p>
 
         {/*
@@ -179,34 +165,32 @@ export function ConflictScreen({ conflict, onResolve, onLater, categories, payme
 
           {questions.map((field) => {
             const chosen = answers.get(field.field);
-            const options = [
-              { side: "mine" as const, label: "这台设备", value: field.mine },
-              { side: "theirs" as const, label: "服务器", value: field.theirs },
-            ];
+            const options = field.options;
 
             return (
               <div key={field.field} className="rounded-card border border-line bg-surface px-4 py-3">
                 <p className="text-sm text-ink">{field.label}</p>
 
                 <div className="mt-2 flex flex-col gap-2">
-                  {options.map((option) => (
+                  {options.map((option, index) => (
                     <button
-                      key={option.side}
+                      key={index}
                       type="button"
+                      disabled={saving}
                       onClick={() => {
                         const next = new Map(answers);
-                        next.set(field.field, option.side);
+                        next.set(field.field, option.value);
                         setAnswers(next);
                       }}
-                      aria-pressed={chosen === option.side}
+                      aria-pressed={answers.has(field.field) && JSON.stringify(chosen) === JSON.stringify(option.value)}
                       className={`flex items-baseline justify-between gap-3 rounded-field border px-3 py-2 text-left text-sm transition ${
-                        chosen === option.side
+                        answers.has(field.field) && JSON.stringify(chosen) === JSON.stringify(option.value)
                           ? "border-brand bg-brand-soft text-ink"
                           : "border-line bg-canvas text-muted hover:border-brand"
                       }`}
                     >
                       <span className="text-xs">{option.label}</span>
-                      <span className={chosen === option.side ? "text-ink" : ""}>
+                      <span className={answers.has(field.field) && JSON.stringify(chosen) === JSON.stringify(option.value) ? "text-ink" : ""}>
                         {describe(field.field, option.value, { categories, paymentMethods, tags })}
                       </span>
                     </button>
@@ -226,13 +210,19 @@ export function ConflictScreen({ conflict, onResolve, onLater, categories, payme
         </section>
 
         <section className="flex flex-col gap-2">
+          {questions.length === 0 ? <p className="text-sm text-muted">当前没有不同的候选值。保存将采用服务器值并关闭遗留冲突。</p> : null}
+          {error !== null ? <p role="alert" className="text-sm">{error}</p> : null}
           <Button
-            disabled={unanswered > 0}
+            disabled={unanswered > 0 || saving}
             onClick={() => {
-              onResolve(settled);
+              setSaving(true);
+              setError(null);
+              void Promise.resolve().then(() => onResolve(settled)).catch((cause: unknown) => {
+                setError(cause instanceof Error ? cause.message : "保存失败，请重试。");
+              }).finally(() => setSaving(false));
             }}
           >
-            {unanswered > 0 ? `还有 ${String(unanswered)} 处没选` : "用这个结果保存"}
+            {saving ? "正在保存…" : unanswered > 0 ? `还有 ${String(unanswered)} 处没选` : "用这个结果保存"}
           </Button>
 
           <Button
