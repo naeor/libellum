@@ -62,9 +62,32 @@ describe("deciding what to do about one field", () => {
     expect(judge("note", "原备注", "我改的备注", "原备注", 1, 1).kind).toBe("accept");
   });
 
+  it("⚠️ raises a conflict when the versions happen to be equal", () => {
+    /**
+     * ⚠️ **The bug that removed conflict detection entirely**, in the owner's words: "冲突检测彻底没了…他会默认使用其中
+     * 一项，一般来说是断网的修改的数据."
+     *
+     * The first rule was `baseVersion >= serverVersion → accept`, read as "nothing has happened since the device
+     * read it" — **but the version a device sends is its own entry's, which it increments locally and which
+     * frequently lands on the same number as the server's.** So the shortcut fired and the value comparison below
+     * was never reached.
+     *
+     * **Two devices that both edited from 30, reaching 50 and 60, must be a question — whatever the numbers say.**
+     */
+    expect(judge("amountCents", 30, 50, 60, 2, 2, [30, 60])).toEqual({
+      kind: "conflict",
+      serverValue: 60,
+    });
+  });
   it("compares tags as sets rather than as sequences", () => {
-    // Re-ordered tags are the same tags; a conflict about nothing wastes the user's attention.
-    expect(judge("tagIds", ["a", "b"], ["a"], ["b", "a"], 1, 2)).toEqual({ kind: "server-wins" });
+    /**
+     * Re-ordered tags are the same tags, **so the device is editing from exactly what the server holds** — and the
+     * right answer is `accept`, the same *outcome* the old expectation reached by a longer route.
+     *
+     * ⚠️ **The distinction matters because `accept` is also the path that used to swallow conflicts**: it is now
+     * decided by comparing values, not by a version check that fires on a coincidence.
+     */
+    expect(judge("tagIds", ["a", "b"], ["a"], ["b", "a"], 1, 2)).toEqual({ kind: "accept" });
   });
 
   it("treats a null note as a value like any other", () => {

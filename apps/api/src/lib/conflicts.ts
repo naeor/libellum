@@ -146,12 +146,37 @@ export function judge(
   serverValue: unknown,
   baseVersion: number,
   serverVersion: number,
+  /**
+   * Every value the server has held for this field.
+   *
+   * ⚠️ **Consulted only when the server has moved on**, because otherwise it proves nothing — **every value a
+   * device could have read was once the current one.**
+   */
+  history: readonly unknown[] = [],
 ): Verdict {
   /**
-   * ⚠️ **Nothing has happened to this entry since the device read it** — the ordinary case, and the reason an
-   * online device can never conflict. **Accept, whatever it asks for.**
+   * ⚠️ **The version check is only a hint, and treating it as a decision swallowed every conflict.**
+   *
+   * The first version read `baseVersion >= serverVersion` as "nothing has happened to this entry since the device
+   * read it" and returned `accept` immediately — **but the version a device sends is its own entry's, which it
+   * increments locally and which frequently lands on the same number as the server's.** So the shortcut fired and
+   * **the value comparison below — the actual rule — was never reached.**
+   *
+   * The owner's report: **"冲突检测彻底没了…他会默认使用其中一项，一般来说是断网的修改的数据."**
+   *
+   * ⚠️ **The version only proves something when it is *behind* the server**, and even then it decides nothing on its
+   * own — it just says the row moved, so the comparison is the part that matters. **A version equal to the server's
+   * proves nothing at all**, because the same number can mean "I am current" or "I edited this myself".
+   *
+   * ⚠️ **So the values decide, always.**
    */
-  if (baseVersion >= serverVersion) return { kind: "accept" };
+  const serverMoved = baseVersion < serverVersion;
+
+  /**
+   * ⚠️ **The device is editing from the value the server holds** — the ordinary case, and the reason an online device
+   * never conflicts. **It is a statement about the values, which is what makes it safe to trust.**
+   */
+  if (same(field, base, serverValue)) return { kind: "accept" };
 
   /**
    * ⚠️ **The change to that field was already carried out, possibly by another device.** Nothing to change and
@@ -160,16 +185,17 @@ export function judge(
   if (same(field, wanted, serverValue)) return { kind: "server-wins" };
 
   /**
-   * ⚠️ **The server still holds the value the device was editing from**, even though the entry moved on —
-   * another field changed, or a value changed and came back. **The device is behind, not in disagreement**, and
-   * the owner's rule is explicit: **"一律用服务器数据覆盖本地数据."**
+   * ⚠️ **The device's base is a value the server has held before** — it fell behind, and the owner's rule is
+   * explicit: **"一律用服务器数据覆盖本地数据."**
+   *
+   * ⚠️ **Only consulted when the server actually moved on.** Otherwise the base being in the history proves
+   * nothing, because **every value a device could have read was once the current one.**
    */
-  if (same(field, base, serverValue)) return { kind: "server-wins" };
+  if (serverMoved && history.some((value) => same(field, value, base))) return { kind: "server-wins" };
 
   /**
-   * ⚠️ **The value the device read is gone, and it wants something other than what is there now** — so two
-   * decisions came out of one starting point. **This is the only case that reaches the user**, and the only one
-   * where the program genuinely cannot know what was meant.
+   * ⚠️ **Two decisions from one starting point.** The device read something the server no longer holds, and it wants
+   * something other than what is there now — **so only the user can say which was meant.**
    */
   return { kind: "conflict", serverValue };
 }

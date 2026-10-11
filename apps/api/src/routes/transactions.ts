@@ -560,6 +560,12 @@ export function registerTransactionRoutes(
         currentFieldValue(existing, field),
         body.version,
         existing.version,
+        /**
+         * ⚠️ **The history goes in, and without it the "it merely fell behind" rule can never fire** — a value the
+         * server has held before means the device is behind rather than in disagreement, **and covering those
+         * automatically is what keeps the yellow mark meaning "somebody has to decide."**
+         */
+        valuesSeen(asArray(existing.valueHistory), field, currentFieldValue(existing, field)),
       );
 
       if (verdict.kind === "accept") {
