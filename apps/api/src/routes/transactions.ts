@@ -152,6 +152,43 @@ function currentFieldValue(row: TransactionRow, field: ConflictField): unknown {
 
   return (row as unknown as Record<string, unknown>)[field];
 }
+
+/**
+ * Fields that are written without ever being judged.
+ *
+ * ⚠️ **`occurredAt` is the only one, and it is here because the owner took time out of conflict detection**:
+ * "我想了想，干脆直接把时间去掉得了——修改默认不改时间；就算改时间，时间冲突也不会被检测."
+ *
+ * ⚠️ **"Not judged" must not mean "not written".** The judgement loop skips fields outside `CONFLICT_FIELDS`, so
+ * without this list a time change would have been dropped on the floor — **and the owner would have been told his
+ * times were no longer questioned while they had in fact stopped moving at all.**
+ */
+const JUDGEMENT_FREE_FIELDS = ["occurredAt"] as const;
+
+/** The values of the judgement-free fields that the request actually carries. */
+function judgementFreeFields(body: Record<string, unknown>): readonly string[] {
+  return JUDGEMENT_FREE_FIELDS.filter((field) => body[field] !== undefined);
+}
+
+/**
+ * The editable fields of a request, as a field-to-value map.
+ *
+ * ⚠️ **Used only when the request is the user settling a conflict**, where **every field the client sends is a choice
+ * the user just made** rather than an intent to be judged. **`kind` is absent on purpose**: it is not editable on the
+ * conflict screen, so it is never part of a choice.
+ *
+ * ⚠️ **`occurredAt` is included.** A settled conflict never involves the time — it is not in `CONFLICT_FIELDS` — but
+ * a choice that carries one still moves it, **because the field is written and only never questioned.**
+ */
+function bodyFields(body: Record<string, unknown>): Record<string, unknown> {
+  const fields: Record<string, unknown> = {};
+
+  for (const key of ["amountCents", "currency", "categoryId", "paymentMethodId", "occurredAt", "note", "tagIds"]) {
+    if (body[key] !== undefined) fields[key] = body[key];
+  }
+
+  return fields;
+}
 function toDto(row: TransactionRow): TransactionDto {
   return {
     id: row.id,
@@ -548,15 +585,33 @@ export function registerTransactionRoutes(
     const changes = body.changes ?? [];
 
     /**
-     * The fields the verdict says the server should move to the device's value.
+     * ⚠️ **When this request is the user settling a conflict, the judgement does not run at all — and that is why the
+     * save button appeared to do nothing.**
      *
-     * ⚠️ **Only a settled conflict puts anything in here.** There is no longer an "accept" verdict: **every non-conflict
-     * outcome keeps the server's value and asks nothing** — "没有冲突是一律以服务器为准" — so **a plain edit writes
-     * the field it names, and a field the verdict declined to move is not written at all.**
+     * **The bug behind "选完这个之后，它仍然呈现黄色".** The judgement loop sat *above* the `settlesConflict` check, so it
+     * **raised the very same conflict again and answered 409 before anything read the flag** — the request never
+     * reached the code that writes the user's choice. **The flag was checked, and it was checked after the refusal.**
+     *
+     * ⚠️ **And it should not run, on its own terms.** The user has just been shown both values and picked one: **that
+     * choice is not a claim about the past to be judged — it is the answer to the question the judgement asked.**
+     */
+    const settling = body.settlesConflict === true;
+
+    /**
+     * The fields this write moves.
+     *
+     * ⚠️ **Seeded with the fields that are never judged at all.** `occurredAt` is one: the owner removed time from
+     * conflict detection entirely — **"就算改时间，时间冲突也不会被检测"** — and **a field that is not judged still has
+     * to be written.** Skipping that step would have quietly turned "time changes are not questioned" into "time
+     * changes do nothing", which is a different and much worse thing.
      */
     const settledFields: Record<string, unknown> = {};
 
-    for (const change of changes) {
+    for (const field of judgementFreeFields(body)) {
+      if (body[field as keyof typeof body] !== undefined) settledFields[field] = body[field as keyof typeof body];
+    }
+
+    for (const change of settling ? [] : changes) {
       const field = change.field as ConflictField;
 
       if (!CONFLICT_FIELDS.includes(field)) continue;
@@ -611,10 +666,16 @@ export function registerTransactionRoutes(
      * ⚠️ **A conflict is reported with the server's copy and with the conflicts themselves**, so the client can
      * show the user which fields are in question **without a second request that would race** — the row can
      * change again between the refusal and a follow-up read.
+     *
+     * ⚠️ **And it is skipped entirely when the user is settling**, because the open questions at that moment are the
+     * ones **this request is answering** — the loop above deliberately raised nothing, but **the rows from the earlier
+     * refusal are still open, so asking "is anything open" would answer "yes" and refuse the very request that settles
+     * them.** That is the second half of "选完这个之后，它仍然呈现黄色": **the save was refused by the question it was
+     * resolving.**
      */
-    const raised = await openConflicts(prisma, bookId).then((rows) =>
-      rows.filter((row) => row.transactionId === id),
-    );
+    const raised = settling
+      ? []
+      : await openConflicts(prisma, bookId).then((rows) => rows.filter((row) => row.transactionId === id));
 
     if (raised.length > 0) {
       throw conflict("version_conflict", "这笔记账在别处被改过。", {
@@ -640,11 +701,11 @@ export function registerTransactionRoutes(
      * device's edit won while the judgement said it should not, **and the other device's work was lost with the
      * judgement appearing to have approved it.**
      *
-     * ⚠️ **`settledFields` is exactly the fields the judgement accepted**, so it is the whole picture for the fields
-     * the judgement decides. **A settled conflict is the same shape**: the user's choice is the value to write, and
-     * it is the one thing in the request that is not in dispute.
+     * ⚠️ **A settled conflict is the one case where the body *is* the write list.** The user was shown both sides and
+     * chose: **every field in that request is their answer, so none of it is judged and all of it is written.** That
+     * is the difference between "here is what I want" and "here is what I decided".
      */
-    const write: Record<string, unknown> = { ...settledFields };
+    const write: Record<string, unknown> = settling ? bodyFields(body) : { ...settledFields };
 
     if (write["kind"] !== undefined) data["kind"] = write["kind"];
     if (write["amountCents"] !== undefined) data["amountCents"] = BigInt(Number(write["amountCents"]));
@@ -712,13 +773,17 @@ export function registerTransactionRoutes(
      * ⚠️ **If the device settled a conflict with this change, every open question about this entry is closed** —
      * "如果用户已经对这个冲突做了一次确认…此时没必要让用户在别的设备上再肯定一次." The permanent record is
      * written first, so the decision never exists only in a row about to be deleted.
+     *
+     * ⚠️ **`settled` is `write`, not `settledFields`** — when the user is settling, **the judgement never ran, so
+     * `settledFields` is empty and passing it would have recorded a decision that chose nothing and closed nothing.**
+     * The user's choices are exactly the fields this request moves.
      */
-    if (body.settlesConflict === true) {
+    if (settling) {
       await settleConflicts(prisma, {
         transactionId: id,
         bookId,
         deviceId: deviceIdFrom(request),
-        settled: settledFields,
+        settled: write,
       });
     }
 

@@ -1022,6 +1022,119 @@ describe("PATCH and DELETE /api/v1/transactions/:id", () => {
     expect(asked.json()).toMatchObject({ amountCents: 70 });
   });
 
+  it("⚠️ never asks about a time, whatever the two devices did to it", async () => {
+    /**
+     * ⚠️ **The owner removed time from conflict detection**: "我想了想，干脆直接把时间去掉得了——修改默认不改时间；
+     * 就算改时间，时间冲突也不会被检测."
+     *
+     * ⚠️ **And the reasoning is not only a simplification** — a conflict asks the user to choose between two values,
+     * and **"20:00 or 20:05" is a question about the clock, not about whose decision was meant.** Keeping it in the
+     * list produced what he saw: **every edit that touched the time raised a question he had no way to answer.**
+     */
+    const cookie = await signUp("mama");
+    const created = await record(cookie, { amountCents: 100 });
+    const id = (created.json() as { id: string }).id;
+
+    const original = (created.json() as { occurredAt: string }).occurredAt;
+
+    /** ⚠️ Another device moves the time, and this one moves it somewhere else entirely. */
+    await app.inject({
+      method: "PATCH",
+      url: `/api/v1/transactions/${id}`,
+      headers: { cookie },
+      payload: {
+        occurredAt: original,
+        version: 1,
+        changes: [],
+      },
+    });
+
+    const moved = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/transactions/${id}`,
+      headers: { cookie },
+      payload: {
+        occurredAt: "2026-01-02T03:04:00.000Z",
+        occurredLocalDate: "2026-01-02",
+        occurredTz: "Asia/Shanghai",
+        version: 1,
+        /** ⚠️ A time is sent as a change, **and it is not in `CONFLICT_FIELDS`, so it is never judged.** */
+        changes: [
+          {
+            field: "occurredAt",
+            base: original,
+            wanted: "2026-01-02T03:04:00.000Z",
+            chain: [original, "2026-01-02T03:04:00.000Z"],
+          },
+        ],
+      },
+    });
+
+    /** ⚠️ **It is written, not questioned.** A time change is an ordinary edit. */
+    expect(moved.statusCode).toBe(200);
+    expect(moved.json()).toMatchObject({ occurredLocalDate: "2026-01-02" });
+  });
+
+  it("⚠️ closes the question when the user settles a conflict with this change", async () => {
+    /**
+     * ⚠️ **The bug behind "选完这个之后，它仍然呈现黄色".**
+     *
+     * The judgement loop sat **above** the `settlesConflict` check, so it raised the very same conflict and answered
+     * 409 **before anything read the flag** — the request never reached the code that writes the user's choice. **The
+     * flag was checked, and it was checked after the refusal.**
+     */
+    const cookie = await signUp("mama");
+    const created = await record(cookie, { amountCents: 30 });
+    const id = (created.json() as { id: string }).id;
+
+    /** ⚠️ One device takes it to 60. */
+    await app.inject({
+      method: "PATCH",
+      url: `/api/v1/transactions/${id}`,
+      headers: { cookie },
+      payload: {
+        amountCents: 60,
+        version: 1,
+        changes: [{ field: "amountCents", base: 30, wanted: 60, chain: [30, 60] }],
+      },
+    });
+
+    /** ⚠️ Another, still at 30, asks for 50 — two destinations, so it is a question. */
+    const asked = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/transactions/${id}`,
+      headers: { cookie },
+      payload: {
+        amountCents: 50,
+        version: 1,
+        changes: [{ field: "amountCents", base: 30, wanted: 50, chain: [30, 50] }],
+      },
+    });
+
+    expect(asked.statusCode).toBe(409);
+
+    /** ⚠️ **And the user choosing 50 must land**, not be refused a second time by the same judgement. */
+    const settled = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/transactions/${id}`,
+      headers: { cookie },
+      payload: {
+        amountCents: 50,
+        version: 2,
+        settlesConflict: true,
+        changes: [{ field: "amountCents", base: 30, wanted: 50, chain: [30, 50] }],
+      },
+    });
+
+    expect(settled.statusCode).toBe(200);
+    expect(settled.json()).toMatchObject({ amountCents: 50 });
+
+    /** ⚠️ **And the question is gone**, so no device is asked it again. */
+    const listed = await app.inject({ method: "GET", url: "/api/v1/conflicts", headers: { cookie } });
+
+    expect((listed.json() as { conflicts: unknown[] }).conflicts).toHaveLength(0);
+  });
+
   it("⚠️ accepts an edit to a field nobody else touched, even from a stale version", async () => {
     /**
      * ⚠️ **A field decides its own fate.** Another device changed the note; this one changes the amount from the

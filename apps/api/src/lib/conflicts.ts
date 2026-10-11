@@ -38,7 +38,6 @@ export const CONFLICT_FIELDS = [
   "currency",
   "categoryId",
   "paymentMethodId",
-  "occurredAt",
   "note",
   "tagIds",
 ] as const;

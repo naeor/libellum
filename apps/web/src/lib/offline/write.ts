@@ -493,7 +493,6 @@ const EDITABLE_FIELDS: readonly string[] = [
   "currency",
   "categoryId",
   "paymentMethodId",
-  "occurredAt",
   "note",
   "tagIds",
 ];
