@@ -8,6 +8,7 @@ import { useEntryMenu } from "../components/Layouts.js";
 import { MonthPicker } from "../components/MonthPicker.js";
 import { EmptyState, ErrorState, SkeletonRows } from "../components/States.js";
 import { OfflineStatus } from "../components/OfflineStatus.js";
+import { ConflictScreen } from "../components/ConflictScreen.js";
 import { SyncBanner } from "../components/SyncBanner.js";
 import { errorMessage } from "../lib/api.js";
 import { useAccountOffline } from "../lib/offline/connectivity.js";
@@ -22,11 +23,15 @@ import {
   pendingEntriesValue,
   readLocalTransactions,
   subscribeLedger,
+  type ConflictRecord,
+  conflictsValue,
+  subscribeConflicts,
   subscribeDeleted,
   subscribePending,
 } from "../lib/offline/localLedger.js";
 import { logOffline } from "../lib/offline/diagnostics.js";
 import { syncNow } from "../lib/offline/syncController.js";
+import { resolveConflict } from "../lib/offline/write.js";
 import {
   hasLocalTransactions,
   useLedger,
@@ -223,6 +228,25 @@ export function DetailPage(): React.JSX.Element {
   const deleted = useSyncExternalStore(subscribeDeleted, deletedEntriesValue, deletedEntriesValue);
 
   /**
+   * ⚠️ **Conflicts are a state of their own, and the green mark could not say so.**
+   *
+   * The owner's own test showed what that costs: he edited one entry on the tablet and the phone, and the tablet's
+   * row **"是绿色的；点击刷新也没用"** — a green row says "waiting to be sent", which is also what a row says when
+   * it is retrying a request the server keeps refusing. **There was nothing on screen to tell him a decision was
+   * waiting, so there was nothing to tap.**
+   */
+  const conflicts = useSyncExternalStore(subscribeConflicts, conflictsValue, conflictsValue);
+
+  /** Entry ids waiting for a decision, so a row can say so instead of looking merely unsent. */
+  const conflicted = useMemo(
+    () => new Set(conflicts.map((conflict) => conflict.mine.id)),
+    [conflicts],
+  );
+
+  /** The conflict being settled right now, if the user tapped a row. */
+  const [settling, setSettling] = useState<ConflictRecord | null>(null);
+
+  /**
    * ⚠️ **The refresh button: read the device again, and deliver what is waiting.**
    *
    * The owner asked for both halves in one sentence: "点击刷新按钮时，它会重新渲染这个网页。并且与此同时触发一次
@@ -347,6 +371,44 @@ export function DetailPage(): React.JSX.Element {
   const isEmptyMonth = list.isSuccess && entries.length === 0;
   const year = month.slice(0, 4);
   const monthNumber = Number(month.slice(5, 7));
+
+  /**
+   * ⚠️ **The choice is shown in place of the list, and that is deliberate.**
+   *
+   * The user reached it by tapping a specific row, so the question is about *that* entry — **a separate route or a
+   * sheet would lose the connection between the row they touched and the decision they are making**, and this is
+   * the one screen in the app where losing that connection means choosing the wrong version of the wrong entry.
+   */
+  if (settling !== null) {
+    return (
+      <div className="detail-root flex h-dvh flex-col overflow-hidden">
+        <div className="flex items-center px-6 pt-6 pb-2">
+          <button
+            type="button"
+            onClick={() => {
+              setSettling(null);
+            }}
+            className="text-sm text-muted transition hover:text-ink"
+          >
+            ← 返回明细
+          </button>
+        </div>
+
+        <ConflictScreen
+          conflict={settling}
+          onResolve={(settled) => {
+            void (async () => {
+              setSettling(null);
+              await resolveConflict(settling.mine.id, settled);
+            })();
+          }}
+          onLater={() => {
+            setSettling(null);
+          }}
+        />
+      </div>
+    );
+  }
 
   return (
     <div ref={rootRef} className="detail-root flex h-dvh flex-col overflow-hidden">
@@ -671,14 +733,32 @@ export function DetailPage(): React.JSX.Element {
                       className={
                         deleted.has(entry.id)
                           ? "bg-danger-soft line-through decoration-danger/40"
-                          : pending.has(entry.id)
-                            ? "bg-brand-soft"
-                            : undefined
+                          : conflicted.has(entry.id)
+                            ? "bg-warn-soft"
+                            : pending.has(entry.id)
+                              ? "bg-brand-soft"
+                              : undefined
                       }
                     >
                       <button
                         type="button"
-                        onClick={() => void navigate(`/transactions/${entry.id}`)}
+                        onClick={() => {
+                          /**
+                           * ⚠️ **A conflicted row opens the choice, not the editor.**
+                           *
+                           * Opening the editor would let the user make a *third* version of an entry that already
+                           * has two — and the question "which of these two do you want" would never be asked.
+                           */
+                          const waiting = conflicts.find((conflict) => conflict.mine.id === entry.id);
+
+                          if (waiting !== undefined) {
+                            setSettling(waiting);
+
+                            return;
+                          }
+
+                          void navigate(`/transactions/${entry.id}`);
+                        }}
                         className="flex w-full items-center gap-3 border-b border-line px-4 py-2.5 text-left transition last:border-b-0 hover:bg-canvas"
                       >
                         <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-canvas text-xs text-muted">

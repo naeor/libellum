@@ -300,7 +300,22 @@ export async function updateEntry(
    */
   if (current === null) return null;
 
-  const next = apply(current);
+  /**
+   * ⚠️ **The version moves forward with the edit, and forgetting this made every edit conflict with itself.**
+   *
+   * The server's optimistic lock compares the version it is sent against the one it holds, and **a PATCH that
+   * arrives carrying the version the row already had is refused exactly like a stale one** — there is no way for
+   * the server to tell "I am the one who just changed this" from "I am out of date".
+   *
+   * The owner's own test showed the consequence precisely: he edited an entry on the tablet to 48 and on the
+   * phone to 10, and the tablet's row **stayed green with a refresh that changed nothing** — it was retrying a
+   * refused request for ever, because its recorded version was the one from before its own edit.
+   *
+   * ⚠️ **The increment mirrors the server's**, which also advances by one per accepted change. **The two copies
+   * agreeing on a version is what lets the next edit be based on it** — and if they ever drift apart, the
+   * conflict screen is where the user settles it, with both versions in front of them.
+   */
+  const next: Transaction = { ...apply(current), version: current.version + 1 };
 
   await upsertEntry(next);
   /** ⚠️ synced: true because the server already has this entry, so a sync changes it rather than creating it. */
@@ -369,6 +384,29 @@ export async function deleteEntry(id: string): Promise<void> {
   await afterWrite();
 }
 
+
+/**
+ * Settle a conflict with the entry the user chose.
+ *
+ * ⚠️ **The settled entry is written back before it is sent**, so the local copy is what the user just agreed to
+ * rather than the half-state that caused the refusal — **and the mark is rewritten as a plain pending change**,
+ * which is what makes the colour go green again for the right reason instead of staying in limbo.
+ */
+export async function resolveConflict(id: string, settled: Transaction): Promise<void> {
+  await upsertEntry(settled);
+
+  /**
+   * ⚠️ **`synced: true`, because the server already has this entry** — the conflict is about *which version* of
+   * it, not about whether it exists.
+   */
+  await setMark(id, { pending: true, synced: true });
+  await afterWrite();
+
+  await syncAll();
+  await afterWrite();
+
+  await logOffline("DIAGNOSTIC:conflict-settled", `用户选定 ${id.slice(0, 8)}`);
+}
 
 /** One entry from the device's store, or `null`. */
 async function findStoredEntry(id: string): Promise<Transaction | null> {

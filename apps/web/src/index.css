@@ -85,6 +85,21 @@
   --color-danger: #b8574f;
   --color-danger-dark: #9c4740;
   --color-danger-soft: #fbefee;
+  /*
+    ⚠️ **The warning colour the ledger needed, added when a third state appeared.**
+
+    It was promised two rounds ago, when the delete case borrowed the error colour:
+    "如果以后要区分'未同步'和'出错'，加一个琥珀色警告令牌才是诚实的做法."
+
+    A conflict is neither — **nothing failed, and nothing is merely waiting** — so it gets its own colour rather
+    than borrowing either. Red would say "something is wrong" about a situation that needs a decision, and green
+    would say "waiting to be sent" about one that will never be sent until the user answers.
+
+    ⚠️ Status colours do not follow the theme colour (see `COLORS.md`): a warning is amber in every theme.
+  */
+  --color-warn: #b07d2b;
+  --color-warn-dark: #8f6420;
+  --color-warn-soft: #fdf6e7;
 
   /* ---- Shape ---------------------------------------------------------- */
   --radius-card: 1.25rem;
