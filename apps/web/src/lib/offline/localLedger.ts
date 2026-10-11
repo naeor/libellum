@@ -164,54 +164,87 @@ export function transactionsFromCacheCached(raw: string | null): readonly Transa
  */
 export async function readLocalTransactions(): Promise<readonly Transaction[]> {
   /**
-   * A hook the query layer installs, so the live cache can be consulted without this module
-   * importing it — which would be a cycle, and would tie a storage concern to React.
-   */
-  const live = liveSource?.() ?? [];
-
-  const raw = await readValue<string>(CACHE_KEY);
-
-  /**
-   * ⚠️ **Through the memo**, because this runs for every screen and every filter change and the
-   * blob is over a hundred kilobytes. See `transactionsFromCacheCached`.
-   */
-  const fromDisk = transactionsFromCacheCached(raw);
-
-  /**
-   * ⚠️ **Recorded before the read is logged, so the report and the log cannot disagree.**
+   * ⚠️ **A read that is already in flight is joined rather than repeated.**
    *
-   * `readLocalTransactions` is the only place that knows all four numbers at once: what the disk
-   * held, what memory held, what they add up to after merging, and — when there is nothing — a
-   * phrase a person can read.
+   * The owner's diagnostics showed the same read happening four and five times in the same
+   * millisecond — `DIAGNOSTIC:local-read — 磁盘 115644 字节 → 138 条` repeated — because four screens
+   * call this hook and each fired its own read. Every one of them parses a hundred-kilobyte blob and
+   * merges 138 entries, **on the main thread**, and a tablet that is also suspending pages does not
+   * absorb that. **The work was being done several times over and the screen was paying for it.**
    */
-  localRead = {
+  if (inFlight !== null) return inFlight;
+
+  inFlight = (async () => {
+    /**
+     * A hook the query layer installs, so the live cache can be consulted without this module
+     * importing it — which would be a cycle, and would tie a storage concern to React.
+     */
+    const live = liveSource?.() ?? [];
+
+    const raw = await readValue<string>(CACHE_KEY);
+
+    /**
+     * ⚠️ **Through the memo**, because this runs for every screen and every filter change and the
+     * blob is over a hundred kilobytes. See `transactionsFromCacheCached`.
+     */
+    const fromDisk = transactionsFromCacheCached(raw);
+
+    /**
+     * ⚠️ **Recorded before the read is logged, so the report and the log cannot disagree.**
+     *
+     * `readLocalTransactions` is the only place that knows all four numbers at once: what the disk
+     * held, what memory held, what they add up to after merging, and — when there is nothing — a
+     * phrase a person can read.
+     */
+    localRead = {
     at: Date.now(),
     diskBytes: raw === null ? 0 : raw.length,
     diskEntries: fromDisk.length,
     liveEntries: live.length,
     total: mergeLocal(fromDisk, live).length,
     note: raw === null ? "本机没有缓存" : fromDisk.length === 0 ? "缓存里没有账目" : null,
-  };
+    };
 
-  /**
-   * ⚠️ **Both counts, and they are the whole point of this line.**
-   *
-   * "Shows nothing offline" has at least five causes and one symptom: the stored blob absent,
-   * present but unparsable, parsable with no transaction queries under it, full of
-   * transactions the filter then excludes, or a read that threw. Every one looks identical on
-   * screen, and each needs a different fix.
-   *
-   * `readValue` traces the disk half itself — including *why* a read failed — so this line
-   * records the outcome, and the storage trace records the steps that produced it.
-   */
-  await logOffline(
-    "DIAGNOSTIC:local-read",
-    `磁盘 ${raw === null ? "无缓存键" : `${String(raw.length)} 字节`} → ${String(fromDisk.length)} 条；` +
-      `内存 ${String(live.length)} 条；合计 ${String(localRead.total)} 条`,
-  );
+    /**
+     * ⚠️ **Both counts, and they are the whole point of this line.**
+     *
+     * "Shows nothing offline" has at least five causes and one symptom: the stored blob absent,
+     * present but unparsable, parsable with no transaction queries under it, full of
+     * transactions the filter then excludes, or a read that threw. Every one looks identical on
+     * screen, and each needs a different fix.
+     *
+     * `readValue` traces the disk half itself — including *why* a read failed — so this line
+     * records the outcome, and the storage trace records the steps that produced it.
+     */
+    await logOffline(
+      "DIAGNOSTIC:local-read",
+      `磁盘 ${raw === null ? "无缓存键" : `${String(raw.length)} 字节`} → ${String(fromDisk.length)} 条；` +
+        `内存 ${String(live.length)} 条；合计 ${String(localRead.total)} 条`,
+    );
 
-  return mergeLocal(fromDisk, live);
+    return mergeLocal(fromDisk, live);
+  })().finally(() => {
+    /**
+     * ⚠️ **Cleared in `finally`, so a failed read does not poison every later one.**
+     *
+     * The join is an optimisation; if the shared attempt failed, the next caller must be allowed to
+     * try again rather than receive the same rejection for the rest of the session.
+     */
+    inFlight = null;
+  });
+
+  return inFlight;
 }
+
+/**
+ * The read currently in progress, so concurrent callers share it.
+ *
+ * ⚠️ **Not a cache — a join.** The value is not kept: a completed read is forgotten immediately, so
+ * a later caller always sees what the device holds now. Only *overlapping* calls are merged, which is
+ * exactly the case the diagnostics showed — four screens reading the same blob in the same
+ * millisecond.
+ */
+let inFlight: Promise<readonly Transaction[]> | null = null;
 
 /**
  * What the last attempt to read the device's ledger found.
