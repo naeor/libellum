@@ -419,6 +419,15 @@ export function DetailPage(): React.JSX.Element {
 
         <ConflictScreen
           conflict={settling}
+          /**
+           * ⚠️ **The names, so a conflict about a category reads as a category.**
+           *
+           * The owner's report: "在冲突页面，分类并不会显示成文字，而是一串代码" — **the entry carries the category
+           * name, but a conflict value is a bare id from the server.**
+           */
+          categories={ledger.data?.categories}
+          paymentMethods={ledger.data?.paymentMethods}
+          tags={ledger.data?.tags}
           onResolve={(settled) => {
             void (async () => {
               setSettling(null);

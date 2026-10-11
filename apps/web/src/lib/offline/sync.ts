@@ -304,6 +304,24 @@ async function recordConflict(entry: Transaction, refusal: Refusal): Promise<voi
   });
 }
 
+/** The editable fields, in the order the conflict screen lists them. */
+const EDITABLE_FIELD_NAMES: readonly string[] = [
+  "kind",
+  "amountCents",
+  "currency",
+  "categoryId",
+  "paymentMethodId",
+  "occurredAt",
+  "note",
+  "tagIds",
+];
+
+/** One field's value, in the form both sides can be compared in — tags as ids, not as objects. */
+function fieldValueOf(entry: Transaction, field: string): unknown {
+  if (field === "tagIds") return entry.tags.map((tag) => tag.id);
+
+  return (entry as unknown as Record<string, unknown>)[field];
+}
 /** One field the server says is genuinely in dispute. */
 export interface RefusedField {
   readonly field: string;
@@ -660,13 +678,39 @@ export async function pullConflicts(): Promise<number> {
      */
     if (item.current === null) continue;
 
+    /**
+     * ⚠️ **A field this device differs on is part of the question, even when the server did not name it.**
+     *
+     * The owner's report: "pad 上显示冲突点有金额和时间，但手机上显示冲突点只有时间."
+     *
+     * **Why**: the server names the fields that conflicted *in the request that raised it*, and that request came
+     * from one device. **The other device is then shown only those fields, so a difference it holds itself stays
+     * invisible to its own user** — and the two devices ask different questions about one disagreement.
+     *
+     * ⚠️ **The comparison is the same one the server makes, applied to what this device can see**: the server's
+     * value and this device's value. **A field where they differ is one this user has to decide about**, whether or
+     * not the server happened to mention it.
+     */
+    const fields = [...item.fields];
+
+    for (const field of EDITABLE_FIELD_NAMES) {
+      if (fields.some((named) => named.field === field)) continue;
+
+      const mine = fieldValueOf(entry, field);
+      const theirs = fieldValueOf(item.current, field);
+
+      if (JSON.stringify(mine) === JSON.stringify(theirs)) continue;
+
+      fields.push({ field, serverValue: theirs });
+    }
+
     await setConflict(item.transactionId, {
       /** ⚠️ This device's entry — what the user has here. */
       mine: entry,
       /** ⚠️ The server's entry — the side they are choosing against. */
       theirs: item.current,
       base: null,
-      fields: item.fields,
+      fields,
       at: Date.now(),
     });
 

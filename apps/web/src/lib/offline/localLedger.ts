@@ -572,6 +572,16 @@ export async function setMark(id: string, mark: EntryMark | null): Promise<void>
    * ledger's own cache went wrong.
    */
   publishPending(pendingFromMarks(next));
+
+  /**
+   * ⚠️ **The conflict list is republished here too, and leaving it out kept the yellow on screen.**
+   *
+   * `setMark` is how a settled conflict stops being one — **and while the screen keeps drawing from the last
+   * published list, the row stays yellow however correct the storage is.** The owner's report of exactly that:
+   * "再点进去就没有选项了" — **the data was settled and the colour was not.**
+   */
+  publishConflicts(conflictsFromMarks(next));
+
   publishDeleted(
     new Set(
       Object.entries(next)

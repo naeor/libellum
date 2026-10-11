@@ -55,7 +55,21 @@ export function EntryDetailPage(): React.JSX.Element {
   const [currency, setCurrency] = useState<Currency>("CNY");
   const [note, setNote] = useState("");
   const [tagIds, setTagIds] = useState<string[]>([]);
-  const [occurredAt, setOccurredAt] = useState(() => new Date());
+  /**
+   * ⚠️ **The entry's own time, or `null` until it has loaded — and the `null` is the fix.**
+   *
+   * The owner's report: "在明细页面修改订单时，什么都不要变，也就是说不要把时间改成系统当时的时间——修改订单时时间应当
+   * 默认是订单修改之前记录的时间."
+   *
+   * **Why it happened**: this started as `new Date()`, and the effect below replaces it with the entry's own time
+   * **once the entry arrives**. The 编辑 button was live before that — **so opening the editor early, or saving
+   * quickly, used "now" as the entry's time and wrote it back.** The row then moved to the top of the ledger for no
+   * reason the user could see.
+   *
+   * ⚠️ **`null` means "not known yet", and the editor is not offered until it is known.** A default is only a
+   * convenience when it is the right one; **a default that silently overwrites the user's data is a defect.**
+   */
+  const [occurredAt, setOccurredAt] = useState<Date | null>(null);
 
   useEffect(() => {
     if (!entry.data) return;
@@ -96,6 +110,11 @@ export function EntryDetailPage(): React.JSX.Element {
   const ownPaymentMethods = (ledger.data?.paymentMethods ?? []).filter((method) => !method.isArchived);
 
   async function save(): Promise<void> {
+    /**
+     * ⚠️ **The entry's time is required, and the guard is the point.** See the note on `occurredAt`: writing "now"
+     * because the entry had not loaded is how an edit silently moved a row to the top of the ledger.
+     */
+    if (occurredAt === null) return;
     setError(null);
 
     let amountCents: number;
@@ -347,7 +366,7 @@ export function EntryDetailPage(): React.JSX.Element {
             <input
               type="datetime-local"
               step="1"
-              value={toDateTimeLocalValue(occurredAt)}
+              value={occurredAt === null ? "" : toDateTimeLocalValue(occurredAt)}
               onChange={(event) => {
                 const parsed = fromDateTimeLocalValue(event.target.value);
                 if (parsed) setOccurredAt(parsed);

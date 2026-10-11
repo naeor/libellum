@@ -29,10 +29,27 @@ interface ConflictScreenProps {
   readonly onResolve: (settled: Transaction) => void;
   /** Called when the user would rather do this later. */
   readonly onLater: () => void;
+  /**
+   * ⚠️ **Names for the ids, because a conflict about `01a128…` is a conflict nobody can answer.**
+   *
+   * The owner's report: "在冲突页面，分类并不会显示成文字，而是一串代码." **The entry carries the category name, but a
+   * conflict value is a bare id from the server** — so the screen has to be told what the ids are called.
+   */
+  readonly categories?: readonly { readonly id: string; readonly name: string }[] | undefined;
+  readonly paymentMethods?: readonly { readonly id: string; readonly name: string }[] | undefined;
+  readonly tags?: readonly { readonly id: string; readonly name: string }[] | undefined;
 }
 
-/** How a value is shown. Amounts are money, tags are names, everything else prints itself. */
-function describe(field: MergeField, value: unknown): string {
+/** The names a value can be looked up by, when it is an id. */
+interface Names {
+  /** ⚠️ `| undefined` is explicit because `exactOptionalPropertyTypes` is on, and the props are optional. */
+  readonly categories?: readonly { readonly id: string; readonly name: string }[] | undefined;
+  readonly paymentMethods?: readonly { readonly id: string; readonly name: string }[] | undefined;
+  readonly tags?: readonly { readonly id: string; readonly name: string }[] | undefined;
+}
+
+/** How a value is shown. Amounts are money, ids become names, everything else prints itself. */
+function describe(field: MergeField, value: unknown, names: Names = {}): string {
   if (field === "amountCents") return formatMoney(Number(value), "CNY");
 
   if (field === "kind") return value === "income" ? "收入" : "支出";
@@ -41,10 +58,29 @@ function describe(field: MergeField, value: unknown): string {
 
   if (field === "currency") return String(value);
 
+  /**
+   * ⚠️ **An id is shown as its name, and as the id only when the name is unknown.**
+   *
+   * The owner's report: "在冲突页面，分类并不会显示成文字，而是一串代码." **A conflict about `01a128…` is a conflict
+   * nobody can answer.** Falling back to the raw string keeps the screen honest about something the ledger does not
+   * list, **rather than showing an empty choice or inventing a label.**
+   */
+  if (field === "categoryId") {
+    return names.categories?.find((item) => item.id === value)?.name ?? String(value);
+  }
+
+  if (field === "paymentMethodId") {
+    if (value === null) return "（无）";
+
+    return names.paymentMethods?.find((item) => item.id === value)?.name ?? String(value);
+  }
+
   if (field === "tags") {
     const ids = Array.isArray(value) ? (value as string[]) : [];
 
-    return ids.length === 0 ? "（无标签）" : ids.join("、");
+    if (ids.length === 0) return "（无标签）";
+
+    return ids.map((id) => names.tags?.find((item) => item.id === id)?.name ?? id).join("、");
   }
 
   return value === null || value === undefined ? "（空）" : String(value);
@@ -55,7 +91,7 @@ function sideLabel(from: "mine" | "theirs"): string {
   return from === "mine" ? "用你的" : "用服务器上的";
 }
 
-export function ConflictScreen({ conflict, onResolve, onLater }: ConflictScreenProps): React.JSX.Element {
+export function ConflictScreen({ conflict, onResolve, onLater, categories, paymentMethods, tags }: ConflictScreenProps): React.JSX.Element {
   const merged = useMemo(
     () => mergeEntries(conflict.base, conflict.mine, conflict.theirs),
     [conflict.base, conflict.mine, conflict.theirs],
@@ -122,7 +158,7 @@ export function ConflictScreen({ conflict, onResolve, onLater }: ConflictScreenP
                 >
                   <span className="text-muted">{pick.label}</span>
                   <span className="text-right">
-                    <span className="text-ink">{describe(pick.field, pick.value)}</span>
+                    <span className="text-ink">{describe(pick.field, pick.value, { categories, paymentMethods, tags })}</span>
                     {/*
                       ⚠️ **Which side it came from is the point.** "金额 → ¥25.00" without "用你的" leaves the user
                       unable to tell whether their edit survived — **and that question is the whole reason this
@@ -171,7 +207,7 @@ export function ConflictScreen({ conflict, onResolve, onLater }: ConflictScreenP
                     >
                       <span className="text-xs">{option.label}</span>
                       <span className={chosen === option.side ? "text-ink" : ""}>
-                        {describe(field.field, option.value)}
+                        {describe(field.field, option.value, { categories, paymentMethods, tags })}
                       </span>
                     </button>
                   ))}

@@ -453,23 +453,37 @@ export async function resolveConflict(
   await upsertEntry(next);
 
   /**
-   * ⚠️ **`synced: true`, because the server already has this entry** — the conflict is about *which version* of
-   * it, not about whether it exists.
+   * ⚠️ **The entry stops being a conflict here, before anything is sent, and that is the owner's instruction.**
+   *
+   * His words: "在提交冲突时本地记录选了什么；只要提交了冲突，就先在本地把账单从黄色变成正常的颜色并把所有值改为冲突
+   * 中本地选择的值；然后再给服务器发信息说明…然后同步给所有设备用这个值覆盖其他设备的值."
+   *
+   * ⚠️ **The order matters, and it is the difference between a button that works and one that does not.** The first
+   * version sent the answer and left the colour to be cleared by whatever came back — **so a refused or unanswered
+   * request left the row yellow, and the user's decision looked like it had not been heard.** Clearing the question
+   * first means **the screen shows the user's choice immediately, and the message is the part that can fail.**
+   *
+   * ⚠️ **The mark is set without the conflict, and `settlesConflict` still tells the server to close its copy** —
+   * "服务器那边收到之后把冲突结束，并把值改成信息附带的值."
    */
   await setMark(id, {
     pending: true,
     synced: true,
-    /** ⚠️ **Tells the server to close the question**, so it is not handed back on the next pull. */
     settlesConflict: true,
-
     ...(Object.keys(chain).length === 0 ? {} : { chain }),
   });
   await afterWrite();
 
+  await logOffline("DIAGNOSTIC:conflict-settled", `用户选定 ${id.slice(0, 8)}（本地已生效）`);
+
+  /**
+   * ⚠️ **Then the server is told, and a failure is reported rather than swallowed.**
+   *
+   * The local decision stands either way — **the next sync retries the message**, and the row is no longer yellow
+   * meanwhile, which is what the user was promised when they pressed the button.
+   */
   await syncAll();
   await afterWrite();
-
-  await logOffline("DIAGNOSTIC:conflict-settled", `用户选定 ${id.slice(0, 8)}`);
 }
 
 /** The editable fields, in the order the conflict screen lists them. */
