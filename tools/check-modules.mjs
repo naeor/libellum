@@ -56,6 +56,7 @@ const MODULES = [
   "/src/lib/offline/syncController.ts",
   "/src/lib/offline/sync.ts",
   "/src/lib/offline/merge.ts",
+  "/src/components/ConflictScreen.tsx",
   "/src/lib/clipboard.ts",
   "/src/lib/version.ts",
   "/src/components/CopyButton.tsx",

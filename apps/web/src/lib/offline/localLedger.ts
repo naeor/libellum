@@ -366,6 +366,23 @@ export const LEDGER_MARKS_KEY = "ledger-marks";
  * | `synced` | `false` means **the server has never had it**, so a sync must `POST`; otherwise it must `PATCH` |
  * | `tagIds` | Carried here because tags are not on the stored entry and a create needs them |
  */
+/** The version both sides started from, when the device still knows it. */
+export interface ConflictRecord {
+  /** This device's copy — what the user typed. */
+  readonly mine: Transaction;
+  /** The server's copy — what everybody else has. */
+  readonly theirs: Transaction;
+  /**
+   * The version both sides started from, or `null` when it is not known.
+   *
+   * ⚠️ **Without it every difference becomes a question**, which is the version of this feature that makes the
+   * user do work the program could have done — see `merge.ts`.
+   */
+  readonly base: Transaction | null;
+  /** When it was noticed, so the oldest unanswered conflict can be shown first. */
+  readonly at: number;
+}
+
 export interface EntryMark {
   readonly pending?: boolean;
   readonly deleted?: boolean;
@@ -373,6 +390,15 @@ export interface EntryMark {
   readonly synced?: boolean;
   /** The tags to create it with, kept because `Transaction` does not carry their ids. */
   readonly tagIds?: readonly string[];
+  /**
+   * Both versions of an entry that could not be sent because somebody else changed it.
+   *
+   * ⚠️ **The two copies are stored here rather than fetched again when the screen opens.** The server's copy
+   * arrives with the refusal, mine is what the device holds right now, and **the very next refresh would
+   * replace mine with theirs** — so a conflict that is not captured at the moment it is detected has already
+   * lost the thing the user typed.
+   */
+  readonly conflict?: ConflictRecord;
 }
 
 /** Marks by entry id. */
@@ -416,7 +442,60 @@ export async function clearAllMarks(): Promise<void> {
   await logOffline("DIAGNOSTIC:marks-cleared", "用户清空了全部待同步印记");
 }
 
-/** Set or clear one entry's mark. */
+/**
+ * Remember that this entry could not be sent, and keep both versions.
+ *
+ * ⚠️ **A conflict is a question, not an error.** The entry stays exactly as the user left it on screen — **their
+ * edit is not discarded to make the conflict go away** — and the row carries a mark until they answer.
+ */
+/**
+ * Conflicts waiting for an answer — held outside React, like everything else the screens read.
+ *
+ * ⚠️ **The same external store as the ledger and the marks, for the same reason.** This is a list the conflict
+ * screen draws from, and **a list that travels through a React state update is the thing that silently fails on
+ * the device this feature exists for** — see the note on `ledgerSnapshot`.
+ */
+let conflictsSnapshot: readonly ConflictRecord[] = [];
+const conflictListeners = new Set<() => void>();
+
+/** Every conflict waiting for an answer, oldest first. */
+export function conflictsValue(): readonly ConflictRecord[] {
+  return conflictsSnapshot;
+}
+
+/** Subscribe to changes, for `useSyncExternalStore`. */
+export function subscribeConflicts(listener: () => void): () => void {
+  conflictListeners.add(listener);
+
+  return () => {
+    conflictListeners.delete(listener);
+  };
+}
+
+/** Replace the conflict list and tell React. */
+export function publishConflicts(next: readonly ConflictRecord[]): void {
+  conflictsSnapshot = next;
+
+  for (const listener of conflictListeners) listener();
+}
+
+export async function setConflict(id: string, conflict: ConflictRecord): Promise<void> {
+  const all = await readMarks();
+
+  await writeOwn(LEDGER_MARKS_KEY, { ...all, [id]: { ...all[id], pending: true, conflict } });
+
+  publishConflicts(conflictsFromMarks({ ...all, [id]: { ...all[id], pending: true, conflict } }));
+}
+
+/** Every entry waiting for an answer about a conflict. */
+export function conflictsFromMarks(marks: LedgerMarks): readonly ConflictRecord[] {
+  return Object.values(marks)
+    .map((mark) => mark.conflict)
+    .filter((conflict): conflict is ConflictRecord => conflict !== undefined)
+    .sort((left, right) => left.at - right.at);
+}
+
+/** Set or clear one entry''s mark. */
 export async function setMark(id: string, mark: EntryMark | null): Promise<void> {
   /**
    * ⚠️ **Read from the synchronous snapshot, not from the disk.**

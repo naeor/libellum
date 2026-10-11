@@ -1,7 +1,7 @@
 import type { CreateTransactionInput, Transaction } from "@libellum/shared";
 
 import { ApiRequestError, apiFetch } from "../api.js";
-import { readMarks, readStoredMonths, readStoredEntries, setMark, type EntryMark } from "./localLedger.js";
+import { readMarks, readStoredMonths, setConflict, setMark, type EntryMark } from "./localLedger.js";
 import { logOffline } from "./diagnostics.js";
 import { republishLedger } from "./write.js";
 
@@ -233,20 +233,91 @@ async function deliver(intent: Intent): Promise<boolean> {
       `${op} ${short} — ${status === 0 ? "无响应" : String(status)} ${message}`,
     );
 
+    /**
+     * ⚠️ **A conflict is not a failure, and it is not retried either — it is a question waiting to be asked.**
+     *
+     * The server refused because somebody else changed this entry after this device last saw it. **Retrying
+     * would ask the same question again and get the same refusal**, so the two versions are kept and the row
+     * moves to a state of its own until the user answers.
+     *
+     * ⚠️ **Both versions are stored, and that is the whole point of catching it here.** The server's copy comes
+     * with the refusal, and **my copy is about to be overwritten by the next full refresh** — so if it is not
+     * captured now, the thing the user actually typed is gone before anybody can show it to them.
+     */
+    if (status === 409) {
+      const theirs = readConflict(error);
+
+      if (theirs !== null) {
+        await recordConflict(entry, theirs);
+
+        failures.delete(entry.id);
+
+        await logOffline("DIAGNOSTIC:sync-conflict", `${op} ${short} — 两份都留住了，等用户决定`);
+
+        return false;
+      }
+
+      /**
+       * ⚠️ **A 409 without the server's copy is the old protocol**, and it must not be swallowed: the entry is
+       * left marked, so it stays visible and the next run tries again rather than the edit disappearing.
+       */
+      await logOffline("DIAGNOSTIC:sync-conflict", `${op} ${short} — 冲突但没收到对方那一版`);
+
+      return false;
+    }
+
     const previous = failures.get(entry.id);
 
     failures.set(entry.id, {
       attempts: (previous?.attempts ?? 0) + 1,
       message,
-      /**
-       * ⚠️ **A conflict is not a refusal.** The entry changed elsewhere; the user has to be asked, which is
-       * round 3 — so it is retried rather than written off.
-       */
-      permanent: status >= 400 && status < 500 && status !== 409,
+      permanent: status >= 400 && status < 500,
     });
 
     return false;
   }
+}
+
+/**
+ * Keep both versions of an entry the server refused to accept.
+ *
+ * ⚠️ **Captured at the moment of refusal, not when the screen opens.**
+ *
+ * The server's copy arrives with the 409 and mine is what the device holds right now — **and the very next full
+ * refresh replaces mine with theirs.** So a conflict that is not written down here has already lost the thing
+ * the user typed, and no screen could offer them the choice.
+ *
+ * ⚠️ **The version both sides started from is `null`, and that is an honest answer rather than a shortcut.**
+ *
+ * The stored copy *is* this device's edit — that is what a pending mark means — so it cannot serve as the
+ * starting point. **Using it would make every field look "changed by me"**, the merge would take my values
+ * everywhere, and **the other device's work would be overwritten without anybody being asked.** With no base,
+ * every difference becomes a question: more questions than strictly needed, and **never a silent overwrite.**
+ */
+async function recordConflict(entry: Transaction, theirs: Transaction): Promise<void> {
+  await setConflict(entry.id, { mine: entry, theirs, base: null, at: Date.now() });
+}
+
+/**
+ * The server's copy of an entry, out of a 409 response.
+ *
+ * ⚠️ **Validated rather than trusted.** The shape comes over the wire, and a malformed one would put a
+ * half-built entry in front of the user — **which is worse than showing no conflict at all**, because they would
+ * be choosing between their real edit and a nonsense one.
+ */
+function readConflict(error: unknown): Transaction | null {
+  if (!(error instanceof ApiRequestError)) return null;
+
+  const details = error.details as { readonly current?: unknown } | null | undefined;
+  const current = details?.current;
+
+  if (typeof current !== "object" || current === null) return null;
+
+  const candidate = current as { readonly id?: unknown; readonly version?: unknown };
+
+  if (typeof candidate.id !== "string" || typeof candidate.version !== "number") return null;
+
+  return current as Transaction;
 }
 
 /**
