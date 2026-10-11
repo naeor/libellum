@@ -500,7 +500,27 @@ export function registerTransactionRoutes(
     // Optimistic lock: if somebody else changed this entry since the client
     // loaded it, refuse rather than silently overwrite their edit.
     if (body.version !== existing.version) {
-      throw conflict("version_conflict", "这笔记账已被修改，请刷新后重试。");
+      /**
+       * ⚠️ **The current row goes back with the refusal, and that is what makes the merge possible.**
+       *
+       * The client has to know *which fields* the two sides disagree about, and it cannot work that out without
+       * the server's copy. **A second request would race** — the row can change again between the refusal and the
+       * follow-up read, so the merge would be computed against a version that never caused the conflict.
+       *
+       * ⚠️ **Merging on the server instead was rejected**: the automatic decisions would then happen where the
+       * user cannot see them, and the owner's rule is **"自动合了哪些必须显示出来."** A merge is only reviewable
+       * if the client can show what it did.
+       */
+      const current = await prisma.transaction.findFirst({
+        where: { id, bookId },
+        include: TRANSACTION_INCLUDE,
+      });
+
+      throw conflict(
+        "version_conflict",
+        "这笔记账在别处被改过。",
+        current === null ? undefined : { current: toDto(current) },
+      );
     }
 
     const kind = body.kind ?? existing.kind;

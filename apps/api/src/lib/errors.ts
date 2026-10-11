@@ -32,8 +32,20 @@ export function forbidden(code: string, message: string): AppError {
   return new AppError(403, code, message);
 }
 
-export function conflict(code: string, message: string): AppError {
-  return new AppError(409, code, message);
+/**
+ * A conflict, optionally carrying what the server currently holds.
+ *
+ * ⚠️ **`details` is what makes merging possible at all.** The client cannot decide "which fields do we disagree
+ * about" without the server's copy, and **asking for it with a second request would race**: the row can change
+ * again between the refusal and the follow-up read, so the merge would be computed against a version that was
+ * never the one that caused the conflict.
+ *
+ * ⚠️ **The alternative — sending the user's whole entry and letting the server merge — was rejected**, because
+ * the automatic decisions would then happen where the user cannot see them, and the owner's rule is
+ * **"自动合了哪些必须显示出来"**. A merge is only reviewable if the client can show what it did.
+ */
+export function conflict(code: string, message: string, details?: unknown): AppError {
+  return new AppError(409, code, message, details);
 }
 
 export function notFound(code: string, message: string): AppError {
