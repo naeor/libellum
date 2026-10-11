@@ -441,97 +441,34 @@ const STATS_COMPUTE_DELAY_MS = 1_000;
 
 export function useStats(query: StatsQuery) {
   /**
-   * ⚠️ **The same external store the ledger uses, and for the same reason.**
+   * ⚠️ **The ledger store, not a second store of our own.**
    *
-   * The owner confirmed the mechanism works: with the store in place "明细界面大成功，所有的都能看了，
-   * 而且甚至不需要等待时间" — the ledger renders with no wait at all. **The analysis screen was still on
-   * its loading state**, and his diagnosis of why was right: "是不是因为明细界面只用调用，不用计算，
-   * 而分析界面还得仔细计算一遍呢？" — the ledger only has to *find* the entries, while this has to
-   * **compute** a result before there is anything to show.
+   * The ledger's channel is the one that has been confirmed on the device that breaks everything else —
+   * the owner's words: "明细界面大成功，所有的都能看了，而且甚至不需要等待时间". A second store
+   * `analysisStore` was built for this screen and **never worked**, through two rounds of fixes.
    *
-   * **So the computed result is published, not returned.** Kicking the calculation off and letting the
-   * screen read the answer synchronously from a store means the analysis screen is no longer waiting on
-   * a state update to arrive — which is the step that was being dropped.
+   * **So this stops inventing a mechanism and reuses the proven one.** One subscription to the ledger,
+   * shared by every caller — including the three on the analysis screen — with the arithmetic done
+   * **during render**, which is what makes it immune to the dropped-update problem: there is no update
+   * to drop, only a value read synchronously from a store that is already filled.
    *
-   * ⚠️ **Both callbacks are memoised on the key, and that is not an optimisation.**
-   * `useSyncExternalStore` re-subscribes whenever the subscribe function changes identity, so an inline
-   * arrow would unsubscribe and resubscribe on **every render** — with the extra renders that causes,
-   * on the device where extra renders are the problem.
+   * ⚠️ **Computing during render is safe here.** `computeStats` is pure and its input is 138
+   * entries — a fraction of a millisecond, on a device whose chip the owner rightly pointed out is not
+   * the problem.
    */
-  const key = keyOfStats(query);
-  const subscribe = useCallback(() => subscribeAnalysis(key), [key]);
-  const read = useCallback(() => analysisSnapshot(key), [key]);
-
-  const storeValue = useSyncExternalStore(subscribe, read, read);
+  const all = useSyncExternalStore(subscribeLedger, ledgerSnapshotValue, ledgerSnapshotValue);
 
   /**
-   * ⚠️ **The computation starts on its own, without waiting for the query.**
-   *
-   * The owner asked the question that exposed the gap: "既然数据跑通了，为什么之前的那个卡住一秒自动开始
-   * 计算的逻辑没有生效呢？" **It did not exist.** The store was only ever published from inside `queryFn` — so if
-   * the query never runs, nothing is ever computed, and an empty store is exactly what the screen sees
-   * while it waits. **I had built "publish when the query runs", not "compute after a moment".**
-   *
-   * So this fires by itself: a moment after mount, if the store has nothing for this request and the
-   * device holds entries, it reads them, computes, and publishes. **The screen then has an answer whether
-   * or not the query layer ever does anything.**
-   *
-   * ⚠️ **The query is still made, and a server answer still wins** — the `useMemo` below prefers the
-   * query's data whenever it exists, so online behaviour is unchanged.
-   *
-   * ⚠️ **Nothing here is awaited by a render.** The result arrives through the store, which is the one
-   * path the tablet has been shown to accept.
+   * ⚠️ **Started here, not by the query.** See `useTransactions`: a store that is only written from
+   * inside a `queryFn` is a store that stays empty whenever the query does not run.
    */
   useEffect(() => {
-    if (analysisSnapshot(key) !== null) return;
-
-    let cancelled = false;
-
-    const timer = window.setTimeout(() => {
-      void (async () => {
-        try {
-          const entries = await readLocalTransactions();
-          if (cancelled || entries.length === 0) return;
-
-          publishAnalysis(
-            key,
-            computeStats(entries, {
-              from: query.from,
-              to: query.to,
-              bucket: query.bucket,
-              currency: query.currency,
-              compareFrom: query.compareFrom,
-              compareTo: query.compareTo,
-            }),
-          );
-        } catch {
-          /**
-           * A computation that fails leaves the store empty and the screen shows its waiting state, which
-           * is honest. Nothing is published that was not computed.
-           */
-        }
-      })();
-    }, STATS_COMPUTE_DELAY_MS);
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, [key, query.from, query.to, query.bucket, query.currency, query.compareFrom, query.compareTo]);
+    void readLocalTransactions();
+  }, []);
 
   const result = useQuery({
     queryKey: queryKeys.stats(query),
     queryFn: () =>
-      /**
-       * ⚠️ **Computed on the device when the network does not answer.**
-       *
-       * This is what makes the analysis screen work offline, and it works because the
-       * entries are already here — every kind, amount, currency, category and date the
-       * endpoint sums. `computeStats` mirrors the server's rules *and* reuses the server's
-       * own `fillSeriesGaps`, so an offline total equals the online one. It has to: two
-       * different answers with no way to tell which is right would be worse than no
-       * offline analysis at all.
-       */
       withLocalFallback({
         label: `stats ${query.from}..${query.to}`,
         network: (timeoutMs) =>
@@ -546,130 +483,47 @@ export function useStats(query: StatsQuery) {
             },
             timeoutMs,
           }),
-        local: async () => {
-          const computed = computeStats(await readLocalTransactions(), {
+        local: async () =>
+          computeStats(await readLocalTransactions(), {
             from: query.from,
             to: query.to,
             bucket: query.bucket,
             currency: query.currency,
             compareFrom: query.compareFrom,
             compareTo: query.compareTo,
-          });
-
-          /**
-           * ⚠️ **Published as well as returned**, so the screen has it whether or not the query's
-           * update arrives. See the note at the top of this hook.
-           */
-          publishAnalysis(keyOfStats(query), computed);
-
-          return computed;
-        },
-      }).then((value) => {
-        /**
-         * ⚠️ **Published whether it came from the server or from the device.**
-         *
-         * Either answer is a real answer; publishing both means the next render has something to draw
-         * whichever path produced it.
-         */
-        publishAnalysis(key, value);
-
-        return value;
+          }),
       }),
     // A statistic is derived from entries; when none change, it cannot change.
     staleTime: 60_000,
   });
 
   /**
-   * ⚠️ **The computed answer, or the query's — whichever exists.**
+   * ⚠️ **The server's answer if there is one, the device's arithmetic otherwise.**
    *
-   * The store is consulted first because it is the one that arrives without waiting; the query's data
-   * wins when it has anything, because a server answer is the truth and a local computation is a
-   * reproduction of it. Returning the query unchanged when neither exists keeps `isPending` and
-   * `isError` meaningful for the screen, which reads all three.
+   * A server answer is the truth; `computeStats` reproduces it from the same entries and the same rules.
+   * Falling back to the computation when the query is pending, empty or failed is what makes the screen
+   * show something instead of waiting for a state that may never arrive.
    */
   return useMemo(() => {
     if (result.data !== undefined) return result;
-    if (storeValue === null) return result;
+    if (all.length === 0) return result;
 
     return {
       ...result,
-      data: storeValue,
+      data: computeStats(all, {
+        from: query.from,
+        to: query.to,
+        bucket: query.bucket,
+        currency: query.currency,
+        compareFrom: query.compareFrom,
+        compareTo: query.compareTo,
+      }),
       isPending: false,
       isError: false,
       error: null,
       status: "success" as const,
     };
-  }, [result, storeValue]);
-}
-
-/**
- * A stable string for one analysis request.
- *
- * ⚠️ **String-keyed, because the store is compared by value.** An object key would have to be
- * stringified on every read anyway, and `useSyncExternalStore` needs the same key to produce the same
- * answer every time or it reports a change that never happened.
- *
- * The fields are written in a fixed order so that two requests differing only in field order are
- * recognised as the same request.
- */
-function keyOfStats(query: StatsQuery): string {
-  return [
-    query.from,
-    query.to,
-    query.bucket,
-    query.currency ?? "",
-    query.compareFrom ?? "",
-    query.compareTo ?? "",
-  ].join("|");
-}
-
-/** Computed analysis results, by request. */
-const analysisStore = new Map<string, StatsResponse>();
-
-/** Subscribers, by request key. */
-const analysisListeners = new Map<string, Set<() => void>>();
-
-/** The computed result for a request, synchronously. */
-export function analysisSnapshot(key: string): StatsResponse | null {
-  return analysisStore.get(key) ?? null;
-}
-
-/** Subscribe to one request's result. */
-export function subscribeAnalysis(key: string): () => void {
-  const listeners = analysisListeners.get(key) ?? new Set<() => void>();
-  analysisListeners.set(key, listeners);
-
-  const listener = (): void => {
-    for (const notify of listeners) notify();
-  };
-
-  listeners.add(listener);
-
-  return () => {
-    listeners.delete(listener);
-  };
-}
-
-/** Store a computed result and tell that request's subscribers. */
-function publishAnalysis(key: string, value: StatsResponse): void {
-  analysisStore.set(key, value);
-
-  for (const listener of analysisListeners.get(key) ?? []) listener();
-}
-
-/**
- * Forget every computed result, and the ledger snapshot with it.
- *
- * ⚠️ **Called when the signed-in account changes**, because these stores hold one person's spending —
- * and a store that outlives a sign-out would show the next person the last person's ledger, which is
- * the exact reason the query cache is wiped on sign-out in the first place.
- */
-export function clearLocalSnapshots(): void {
-  analysisStore.clear();
-
-  for (const listeners of analysisListeners.values()) {
-    for (const listener of listeners) listener();
-  }
+  }, [result, all, query.from, query.to, query.bucket, query.currency, query.compareFrom, query.compareTo]);
 }
 
 /** Amounts offered as one-tap shortcuts. */
