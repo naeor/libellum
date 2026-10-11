@@ -361,7 +361,7 @@ export type LedgerMarks = Record<string, EntryMark>;
 
 /** Which entries are unsynced or deleted-locally. Never throws. */
 export async function readMarks(): Promise<LedgerMarks> {
-  const stored = await readValue<LedgerMarks>(LEDGER_MARKS_KEY);
+  const stored = await readOwn<LedgerMarks>(LEDGER_MARKS_KEY);
 
   return stored === null || typeof stored !== "object" ? {} : stored;
 }
@@ -374,7 +374,7 @@ export async function setMark(id: string, mark: EntryMark | null): Promise<void>
   if (mark === null || (mark.pending !== true && mark.deleted !== true)) delete next[id];
   else next[id] = mark;
 
-  await writeValue(LEDGER_MARKS_KEY, next);
+  await writeOwn(LEDGER_MARKS_KEY, next);
 
   /**
    * ⚠️ **The stored marks and the in-memory set are updated together**, so the row colouring on
@@ -400,9 +400,57 @@ export function pendingFromMarks(marks: LedgerMarks): ReadonlySet<string> {
 /** Every month's entries, keyed by `YYYY-MM`. */
 export type StoredMonths = Record<string, readonly Transaction[]>;
 
+/**
+ * In-memory authority for the two stores this file owns.
+ *
+ * The owner's account of the symptom was exact, and it named the cause:
+ *
+ * | What he did | What he saw |
+ * |---|---|
+ * | wrote `test02` offline | it did not appear; it appeared after reconnecting |
+ * | wrote `test03` offline | `test02` and `test03` turned red together |
+ * | wrote `test04` offline | `test04` did not appear; `test03` and `test02` turned red |
+ *
+ * **Every write showed up one write late.** That pattern has one cause: a read issued after a write
+ * returned the state from before it. The read was `await readValue(...)` against IndexedDB and the write
+ * was `void writeValue(...)` fired without being awaited, so the read ran first and the screen was shown
+ * the previous version. **The data was never wrong; the view was always one step behind** — which is why
+ * it looked like a timing ghost rather than a bug.
+ *
+ * IndexedDB is where this data is *kept*; it is not where the current truth is while the app runs.
+ * **Memory is.** These maps are loaded once and are what every read uses; every write updates memory first
+ * and persists second, so **a read cannot be answered by an older value because it does not go to the
+ * disk at all.**
+ *
+ * This is the same shape as the mistake that cost four hours (see the lessons document): a store's
+ * persisted contents are a report about the past, and the ledger being edited is the present.
+ */
+const memory = new Map<string, unknown>();
+
+/** Read one of our stores from memory, loading it once per session. */
+async function readOwn<T>(key: string): Promise<T | null> {
+  if (memory.has(key)) return (memory.get(key) ?? null) as T | null;
+
+  const stored = await readValue<T>(key);
+
+  /** Re-checked after the await: two callers can both miss, and the second must not undo the first. */
+  if (memory.has(key)) return (memory.get(key) ?? null) as T | null;
+
+  memory.set(key, stored);
+
+  return stored;
+}
+
+/** Write one of our stores: memory first, then the disk. */
+async function writeOwn(key: string, value: unknown): Promise<void> {
+  memory.set(key, value);
+
+  await writeValue(key, value);
+}
+
 /** Read the stored months. Never throws: an unreadable store is an empty one. */
 export async function readStoredMonths(): Promise<StoredMonths> {
-  const stored = await readValue<StoredMonths>(LEDGER_MONTHS_KEY);
+  const stored = await readOwn<StoredMonths>(LEDGER_MONTHS_KEY);
 
   return stored === null || typeof stored !== "object" ? {} : stored;
 }
@@ -417,7 +465,7 @@ export async function readStoredMonths(): Promise<StoredMonths> {
 export async function storeMonth(month: string, entries: readonly Transaction[]): Promise<void> {
   const all = await readStoredMonths();
 
-  await writeValue(LEDGER_MONTHS_KEY, { ...all, [month]: entries });
+  await writeOwn(LEDGER_MONTHS_KEY, { ...all, [month]: entries });
 }
 
 /**
@@ -433,7 +481,7 @@ export async function upsertEntry(entry: Transaction): Promise<void> {
 
   const without = existing.filter((candidate) => candidate.id !== entry.id);
 
-  await writeValue(LEDGER_MONTHS_KEY, { ...all, [month]: [...without, entry] });
+  await writeOwn(LEDGER_MONTHS_KEY, { ...all, [month]: [...without, entry] });
 }
 
 /**

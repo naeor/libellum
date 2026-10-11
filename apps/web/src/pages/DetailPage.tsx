@@ -220,33 +220,20 @@ export function DetailPage(): React.JSX.Element {
   }, [list.data, localEntries]);
 
   /**
-   * ⚠️ **Sorted here, once, so the order never depends on where an entry came from.**
+   * ⚠️ **One explicit sort, applied to whatever the sources produced.**
    *
-   * The owner reported two symptoms that are one cause: an entry recorded offline "会在网络恢复之后出现在
-   * '今天'的最下面一笔", and "离线状态跟恢复网络之后的明细顺序好像还被打乱了".
+   * See `sortByTime`. The owner asked for a separate sorting function called when the screen opens and on
+   * every change: "每次打开明细页面时或者明细页面有任何修改（新增账单，修改账单等等）都会单独调用一个排序
+   * 函数，排序函数会根据时间把所有的账单排序."
    *
-   * **Both come from the order being whatever the source happened to produce.** A downloaded month arrives
-   * in the server's order; `upsertEntry` appends a newly created entry to the end of the month's array; and
-   * after a sync the query takes over with the server's order again — **so the same entry moves from the
-   * bottom to the top for no reason the user can see, and the list appears to shuffle itself.**
+   * **The reason it matters is that every previous attempt sorted as a side effect of something else** — of
+   * where the data came from, of which layer happened to answer, of whether a refetch had landed. **That is
+   * why the order kept looking shuffled: it was never a decision, it was a leftover.**
    *
-   * **Sorting by the entry's own instant removes the question.** Newest first, oldest last, whatever the
-   * source and whatever the timing. The date the user sees is the order they see, and nothing about how
-   * the data travelled can change it.
-   *
-   * ⚠️ **An entry with the same instant keeps a stable relative order** — the comparison falls back to the
-   * id, so two entries recorded in the same second do not swap places between renders. **A list that
-   * reshuffles while being read is worse than one that is slightly wrong.**
+   * It runs whenever the entries change, which covers both halves of what he asked for: opening the screen
+   * sorts what the device holds, and any write changes the entries so the sort runs again.
    */
-  const ordered = useMemo(
-    () =>
-      [...entries].sort((left, right) => {
-        if (left.occurredAt !== right.occurredAt) return left.occurredAt < right.occurredAt ? 1 : -1;
-
-        return left.id < right.id ? 1 : -1;
-      }),
-    [entries],
-  );
+  const ordered = useMemo(() => sortByTime(entries), [entries]);
 
   const grouped = useMemo(() => {
     const groups = new Map<string, Transaction[]>();
@@ -991,6 +978,34 @@ function shiftMonth(month: string, delta: number): string {
   const nextYear = year + Math.floor(index / 12);
   const nextIndex = ((index % 12) + 12) % 12;
   return `${String(nextYear)}-${String(nextIndex + 1).padStart(2, "0")}`;
+}
+
+/**
+ * Put the ledger in the order it is always shown in: newest first, oldest last.
+ *
+ * ⚠️ **A named function, called from one place, because the order must not depend on anything else.**
+ *
+ * The owner asked for exactly this: "每次打开明细页面时或者明细页面有任何修改（新增账单，修改账单等等）
+ * 都会单独调用一个排序函数，排序函数会根据时间把所有的账单排序."
+ *
+ * **Every previous attempt sorted as a side effect of something else** — of where the data came from, of
+ * which layer happened to answer, of whether a refetch had landed. That is why the order kept looking
+ * shuffled: **it was never a decision, it was a leftover.** A single explicit sort, applied to whatever the
+ * sources produced, makes the order a decision.
+ *
+ * It runs whenever the entries change, which covers both halves of his request: opening the screen sorts
+ * what the device holds, and any write changes the entries, so the sort runs again.
+ *
+ * ⚠️ **Ties fall back to the id.** Two entries recorded in the same second must keep a stable relative
+ * order, or they swap places between renders — **and a list that reshuffles while being read is worse than
+ * one that is slightly wrong.**
+ */
+export function sortByTime(entries: readonly Transaction[]): readonly Transaction[] {
+  return [...entries].sort((left, right) => {
+    if (left.occurredAt !== right.occurredAt) return left.occurredAt < right.occurredAt ? 1 : -1;
+
+    return left.id < right.id ? 1 : -1;
+  });
 }
 
 /**

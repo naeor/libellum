@@ -135,6 +135,13 @@ async function refreshView(): Promise<void> {
   publishLedger(await readLocalTransactions());
 }
 
+/** Every entry the device holds, including ones the current filter excludes. */
+async function readAllEntries(): Promise<readonly Transaction[]> {
+  clearInFlight();
+
+  return readLocalTransactions();
+}
+
 /**
  * Register the function that tells the *query layer* about a local write.
  *
@@ -150,10 +157,23 @@ async function refreshView(): Promise<void> {
  * importing it back would be a cycle. **The write path does not need to know that queries exist; it needs to
  * be able to say "the data changed".**
  */
-let notifyQueryLayer: (() => Promise<void>) | null = null;
+let notifyQueryLayer: ((changed: readonly Transaction[]) => Promise<void>) | null = null;
 
-/** Called once by the query layer. */
-export function installQueryNotifier(notify: () => Promise<void>): void {
+/**
+ * Called once by the query layer.
+ *
+ * ⚠️ **It is given the entries that changed, not just told that something did.**
+ *
+ * "Something changed, go and look again" is what the first version said, and it failed for the same reason
+ * everything else did: **looking again read the old value.** The screen was left one step behind the
+ * storage, which is precisely the pattern the owner described — he wrote an entry and saw the *previous*
+ * one turn up.
+ *
+ * **Writing the new list into the query cache removes the question.** There is no re-read to be overtaken,
+ * no in-flight promise to be joined, and no interval during which the screen can show the state the user
+ * just changed away from.
+ */
+export function installQueryNotifier(notify: (changed: readonly Transaction[]) => Promise<void>): void {
   notifyQueryLayer = notify;
 }
 
@@ -166,12 +186,17 @@ export function installQueryNotifier(notify: () => Promise<void>): void {
  * still holds the old list — the screen flickers back to the state the user just changed.**
  */
 async function afterWrite(): Promise<void> {
-  await refreshView();
+  const entries = await readLocalTransactions();
+
+  publishLedger(entries);
 
   if (notifyQueryLayer === null) return;
 
   try {
-    await notifyQueryLayer();
+    /**
+     * ⚠️ **The whole list is handed over, not a notification.** See `installQueryNotifier`.
+     */
+    await notifyQueryLayer(await readAllEntries());
   } catch {
     /**
      * ⚠️ **A refetch that fails is expected while offline**, and it must not undo the local write. The

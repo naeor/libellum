@@ -293,9 +293,44 @@ export function useTransactions(given: TransactionFilters) {
    * Invalidating is what makes the trusted layer let go of an answer that is no longer true. **A refetch
    * that fails while offline does not undo anything** — the store already holds the change.
    */
-  installQueryNotifier(async () => {
+  installQueryNotifier(async (changed) => {
+    /**
+     * ⚠️ **The affected months are written into the query cache directly, not invalidated.**
+     *
+     * Invalidating says "go and look again", and looking again is what read the previous value — the
+     * screen was left one write behind, which is exactly what the owner described: he wrote an entry and
+     * saw the *previous* one appear.
+     *
+     * **Writing the new list in removes the question.** Every transaction query whose month contains a
+     * changed entry gets a fresh page built from the device, so the cache holds the truth immediately and
+     * nothing has to be re-read to discover it.
+     *
+     * ⚠️ **Only the affected months are touched.** Rewriting every cached month would discard the server's
+     * own ordering and paging for months this write has nothing to do with.
+     */
+    const months = new Set(changed.map((entry) => entry.occurredLocalDate.slice(0, 7)));
+
+    for (const query of queryClient.getQueryCache().getAll()) {
+      const key = query.queryKey;
+      if (!Array.isArray(key) || key[0] !== "transactions") continue;
+
+      const filters = query.queryKey[1] as { readonly month?: string } | undefined;
+      const month = filters?.month;
+
+      if (month === undefined || !months.has(month)) continue;
+
+      queryClient.setQueryData(key, {
+        pages: [asLocalPage(filterLocally(changed, transactionFilters({ month })))],
+        pageParams: [undefined],
+      });
+    }
+
+    /**
+     * ⚠️ **The summary and single-entry queries are invalidated**, because their answers are computed
+     * rather than listed — there is no local page to hand them, so asking again is the honest move, and a
+     * refetch that fails offline changes nothing.
+     */
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ["transactions"] }),
       queryClient.invalidateQueries({ queryKey: ["summary"] }),
       queryClient.invalidateQueries({ queryKey: ["transaction"] }),
     ]);
