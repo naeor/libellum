@@ -42,6 +42,7 @@ import {
   installLiveSource,
   ledgerSnapshotValue,
   readLocalTransactions,
+  reconcileMarks,
   subscribeLedger,
   transactionsFromCacheCached,
 } from "./offline/localLedger.js";

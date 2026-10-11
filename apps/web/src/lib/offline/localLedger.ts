@@ -514,6 +514,48 @@ export async function hasStoredMonth(month: string): Promise<boolean> {
   return (all[month]?.length ?? 0) > 0;
 }
 /**
+ * Stop calling entries pending once the server has confirmed it has them.
+ *
+ * Written because a stale mark outlived its reason, and the result was a real contradiction on screen. The
+ * owner reported entries that disappeared after a refresh and, at the same time, stayed red: gone from the
+ * list while still wearing the marker that says "not saved yet".
+ *
+ * The mark was written when the entry was created and cleared only along the one path that delivers it.
+ * Any other path that makes the server's copy authoritative - a refetch, a reinstall, a version whose queue
+ * had already drained - left the mark behind for ever. A warning that cannot be cleared is worse than no
+ * warning: it teaches the user to ignore the colour, which is the only thing standing between "I recorded
+ * it" and "I think I recorded it".
+ *
+ * Only entries the server has actually returned are cleared, so an entry still waiting to be sent is not
+ * silently marked as saved. And `deleted` is left alone: an entry deleted on this device and not yet deleted
+ * on the server is still mid-journey, and must stay hidden.
+ */
+export async function reconcileMarks(serverIds: ReadonlySet<string>): Promise<void> {
+  const all = await readMarks();
+  const next: LedgerMarks = {};
+
+  let cleared = 0;
+
+  for (const [id, mark] of Object.entries(all)) {
+    const confirmed = serverIds.has(id);
+
+    if (mark.pending === true && confirmed && mark.deleted !== true) {
+      cleared += 1;
+      continue;
+    }
+
+    next[id] = mark;
+  }
+
+  if (cleared === 0) return;
+
+  await writeOwn(LEDGER_MARKS_KEY, next);
+  publishPending(pendingFromMarks(next));
+
+  await logOffline("DIAGNOSTIC:marks-reconciled", `清除 ${String(cleared)} 个已同步的标记`);
+}
+
+/**
  * The ledger as the screens read it, held outside React.
  *
  * ⚠️ **This exists because a React state update was called and did not render.**

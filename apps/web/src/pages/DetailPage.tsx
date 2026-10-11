@@ -11,7 +11,7 @@ import { OfflineStatus } from "../components/OfflineStatus.js";
 import { SyncBanner } from "../components/SyncBanner.js";
 import { errorMessage } from "../lib/api.js";
 import { useAccountOffline } from "../lib/offline/connectivity.js";
-import { currentMonth, formatDayLabel, formatTimeInZone } from "../lib/datetime.js";
+import { currentMonth, formatDayLabel, formatTimeWithZone } from "../lib/datetime.js";
 import { readSession, useDetailTransition, writeSession } from "../lib/detailTransition.js";
 import { currencyName, formatMoney } from "../lib/format.js";
 import {
@@ -212,11 +212,28 @@ export function DetailPage(): React.JSX.Element {
     const fromQuery = (list.data?.pages ?? []).flatMap((page) => page.items);
 
     /**
-     * ⚠️ **The query wins when it has anything**, because its answer is from the server and this one
-     * is from the device. Falling back only when it is empty keeps the online behaviour identical and
-     * the offline behaviour possible.
+     * ⚠️ **Merged, not chosen between — and the owner's report is why.**
+     *
+     * The previous version used the query when it had anything and the device only when it was empty. That
+     * is wrong in one specific and expensive case: **an entry recorded offline is on the device and not yet
+     * on the server, so a refetch returns a list without it — and using that list made the entry vanish
+     * until the queue drained.** He described exactly that: entries "都消失了；在我首次在在线状态下新增时，
+     * 他们才出现".
+     *
+     * **The server's copy wins for any entry it knows about** — it is the truth, and the device's copy is a
+     * copy. **Anything only the device has is still shown**, because it is a real entry the user recorded,
+     * and hiding it because a server has not caught up yet is hiding their own work from them.
+     *
+     * ⚠️ **It also means the pending colour is reachable.** With the query's list taking precedence, an
+     * unsynced entry was not on screen at all — so the marker that exists to warn about it had nothing to
+     * mark.
      */
-    return fromQuery.length > 0 ? fromQuery : localEntries;
+    const byId = new Map<string, Transaction>();
+
+    for (const entry of localEntries) byId.set(entry.id, entry);
+    for (const entry of fromQuery) byId.set(entry.id, entry);
+
+    return [...byId.values()];
   }, [list.data, localEntries]);
 
   /**
@@ -568,7 +585,7 @@ export function DetailPage(): React.JSX.Element {
                             {entry.note ? <span className="text-muted"> · {entry.note}</span> : null}
                           </span>
                           <span className="truncate text-xs text-muted">
-                            {formatTimeInZone(entry.occurredAt, entry.occurredTz)}
+                            {formatTimeWithZone(entry.occurredAt, entry.occurredTz)}
                             {entry.paymentMethodName ? ` · ${entry.paymentMethodName}` : ""}
                           </span>
                         </span>

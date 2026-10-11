@@ -88,6 +88,62 @@ export function fromDateTimeLocalValue(value: string): Date | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+/**
+ * A time zone as an offset, in the form a person recognises: `UTC+8`, `UTC-7`.
+ *
+ * ⚠️ **The owner asked for this because the alternative is a lie of omission**:
+ * "把那个时区从 asia shanghai 之类的改成具体的时区（UTC+8 这样的）标准名称."
+ *
+ * A ledger that says `19:34` without saying *where* that clock is loses the one piece of information a
+ * traveller needs. **He is in California (UTC-7) and his entries are recorded in UTC+8** — so the times on
+ * screen are correct and the *order* looked wrong, because two entries hours apart look identical without
+ * their zones. Nothing was broken; something was missing.
+ *
+ * ⚠️ **An offset rather than a name, because a name is ambiguous and an offset is not.** `Asia/Shanghai`
+ * tells the reader nothing they can check; `UTC+8` can be compared against the device's own clock at a
+ * glance. It also survives the zone database changing its mind about a region's abbreviation.
+ *
+ * Returns an empty string when the zone is unusable, so a caller can simply show nothing rather than
+ * `Invalid/Zone`.
+ */
+export function zoneOffsetLabel(iso: string, timeZone: string): string {
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      timeZoneName: "longOffset",
+    }).formatToParts(new Date(iso));
+
+    const name = parts.find((part) => part.type === "timeZoneName")?.value ?? "";
+
+    /**
+     * `longOffset` gives `GMT+08:00`. Trimmed to `UTC+8`: the minutes are dropped when they are zero
+     * because most zones are whole hours and the trailing `:00` is noise — **and when they are not zero,
+     * they matter and are kept.**
+     */
+    const match = /GMT([+-])(\d{1,2})(?::(\d{2}))?/.exec(name);
+
+    if (match === null) return name === "GMT" ? "UTC" : "";
+
+    const [, sign, hours, minutes] = match;
+
+    /**
+     * ⚠️ **The hours are parsed, not passed through.** `longOffset` renders `GMT+08:00`, and `UTC+08`
+     * reads like a padded identifier rather than a clock offset — **the form people write is `UTC+8`.**
+     */
+    const wholeHours = String(Number(hours));
+
+    /**
+     * ⚠️ **Zero is `UTC`, not `UTC+0`.** Someone in London reading their own entries should not see a
+     * signed offset — **it implies they are somewhere else.** The bare name is what a zero offset is called.
+     */
+    if (wholeHours === "0" && (minutes === undefined || minutes === "00")) return "UTC";
+
+    return `UTC${sign}${wholeHours}${minutes === undefined || minutes === "00" ? "" : `:${minutes}`}`;
+  } catch {
+    return "";
+  }
+}
+
 /** `HH:mm` in the zone the entry was recorded in. */
 export function formatTimeInZone(iso: string, timeZone: string): string {
   try {
@@ -100,6 +156,26 @@ export function formatTimeInZone(iso: string, timeZone: string): string {
   } catch {
     return "";
   }
+}
+
+/**
+ * `HH:mm UTC+8`, with the zone shown only when it differs from the reader's.
+ *
+ * ⚠️ **Shown only when it differs, because otherwise it is noise on every row** — and noise on every row
+ * is how a label stops being read. **When it does differ it is the most important thing on the line**,
+ * because an entry recorded in another time zone is exactly when a bare clock reading misleads.
+ */
+export function formatTimeWithZone(iso: string, timeZone: string): string {
+  const time = formatTimeInZone(iso, timeZone);
+  if (time === "") return "";
+
+  const own = localTimeZone();
+
+  if (own === timeZone) return time;
+
+  const label = zoneOffsetLabel(iso, timeZone);
+
+  return label === "" ? time : `${time} ${label}`;
 }
 
 export function formatDateTimeInZone(iso: string, timeZone: string): string {
