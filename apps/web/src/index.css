@@ -101,6 +101,26 @@
   --color-warn-dark: #8f6420;
   --color-warn-soft: #fdf6e7;
 
+  /*
+    ⚠️ **The refresh icon turns one whole circle, then stops where it started.**
+
+    The owner asked for exactly this: "刷新的 UI 设计改成点下之后箭头转一整圈再回到原来的位置." A continuous spin says
+    "busy" and never says "done"; **a single turn that ends at the beginning is an event with a completion**, which is
+    what a refresh actually is.
+  */
+  @keyframes libellum-refresh-turn {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  .refresh-turn {
+    animation: libellum-refresh-turn 700ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
   /* ---- Shape ---------------------------------------------------------- */
   --radius-card: 1.25rem;
   --radius-field: 0.875rem;

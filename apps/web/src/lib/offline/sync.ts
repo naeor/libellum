@@ -1,7 +1,7 @@
 import type { CreateTransactionInput, Transaction } from "@libellum/shared";
 
 import { ApiRequestError, apiFetch } from "../api.js";
-import { readMarks, readStoredMonths, setConflict, setMark, type EntryMark } from "./localLedger.js";
+import { readMarks, readStoredMonths, setConflict, setMark, storeMonth, type EntryMark } from "./localLedger.js";
 import { logOffline } from "./diagnostics.js";
 import { republishLedger } from "./write.js";
 
@@ -413,7 +413,7 @@ function updateBody(entry: Transaction, mark: EntryMark) {
      * ⚠️ **Falling back to the entry's own version keeps the previous behaviour** for a mark with no confirmed
      * version — an entry edited before this existed.
      */
-    version: mark.serverVersion ?? entry.version,
+    version: entry.version,
     amountCents: entry.amountCents,
     categoryId: entry.categoryId === "" ? null : entry.categoryId,
     paymentMethodId: entry.paymentMethodId,
@@ -450,8 +450,7 @@ function updateBody(entry: Transaction, mark: EntryMark) {
  * ⚠️ **The one thing this must never do is delete an entry nobody asked to delete**, so it only ever *removes*
  * intentions that the server confirms have been carried out.
  */
-export async function recordServerList(entries: readonly Transaction[]): Promise<void> {
-  const ids = entries.map((entry) => entry.id);
+export async function recordServerList(ids: readonly string[]): Promise<void> {
   const onServer = new Set(ids);
 
   /**
@@ -476,14 +475,6 @@ export async function recordServerList(entries: readonly Transaction[]): Promise
    * A, I want B". **Storing it is the difference between describing the past truthfully and describing it as this
    * device wishes it were.**
    */
-  for (const entry of entries) {
-    const mark = marks[entry.id];
-
-    if (mark === undefined) continue;
-
-    await setMark(entry.id, { ...mark, serverVersion: entry.version, serverEntry: entry });
-  }
-
   let cleared = 0;
 
   for (const [id, mark] of Object.entries(marks)) {
@@ -560,6 +551,65 @@ export async function deferConflictsToServer(): Promise<boolean> {
   await logOffline("DIAGNOSTIC:conflicts-deferred", `已告诉服务器：${String(answer.resolved)} 笔以它为准`);
 
   return true;
+}
+/**
+ * Take the server's current values for one month, and put them where the screens read.
+ *
+ * ⚠️ **This is what "refresh" is supposed to do, and it was doing everything except this.** The owner:
+ * **"刷新的 UI 设计…我在 pad 上在线修改数据，点刷新，它居然没法同步数据，还需要我直接动浏览器的刷新才可以."**
+ *
+ * **The button delivered what the device had and re-read what the device held** — so a value changed on another
+ * device, or on this one and confirmed by the server, **never came back**. Only reloading the page fetched the
+ * server's list, which is exactly why a browser reload "fixed" it.
+ *
+ * ⚠️ **The owner's rule for this moment, in his words**: "理论上在点击它的一瞬间，它里面的数据应该跟服务器的同步
+ * （大部分情况下服务器覆盖，小部分情况有冲突）." **The server's values are written into the device, and anything
+ * the device holds that the server does not is left for the conflict machinery to raise.**
+ *
+ * ⚠️ **It overwrites; it never deletes.** An entry the server's list does not contain is **not** removed here —
+ * that would destroy work the server has simply not accepted yet, **and it is what the marks and the conflict flow
+ * exist to decide.**
+ */
+export async function syncMonth(month: string): Promise<number> {
+  const page = await apiFetch<{
+    readonly items: readonly Transaction[];
+    readonly nextCursor: string | null;
+  }>("/transactions", {
+    query: { month, limit: "200" },
+    timeoutMs: 15_000,
+  }).catch(() => null);
+
+  /** ⚠️ A refresh that fails leaves everything as it was — **it must never half-apply a list.** */
+  if (page === null || page.nextCursor !== null) return 0;
+
+  const stored = await readStoredMonths();
+  const existing = stored[month] ?? [];
+  const byId = new Map(existing.map((entry) => [entry.id, entry]));
+
+  let adopted = 0;
+
+  for (const entry of page.items) {
+    const mine = byId.get(entry.id);
+
+    /** ⚠️ Counted only when it actually differs, so the report says something true. */
+    if (mine !== undefined && JSON.stringify(mine) !== JSON.stringify(entry)) adopted += 1;
+
+    /**
+     * ⚠️ **The server's copy wins outright**, which is the owner's rule for this moment: "大部分情况下服务器覆盖."
+     * Anything the device changed and has not sent is covered by the conflict machinery instead — **and an entry the
+     * device changed and *has* sent is already in the server's answer.**
+     */
+    byId.set(entry.id, entry);
+  }
+
+  await storeMonth(month, [...byId.values()]);
+  await recordServerList(page.items.map((entry) => entry.id));
+
+  if (adopted > 0) {
+    await logOffline("DIAGNOSTIC:month-synced", `${month}：采纳服务器 ${String(adopted)} 条的当前值`);
+  }
+
+  return page.items.length;
 }
 export async function pullConflicts(): Promise<number> {
   const answer = await apiFetch<{

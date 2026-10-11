@@ -339,8 +339,7 @@ export async function updateEntry(
    * then be older than the server's, the server compares properly, and **a genuine disagreement becomes a conflict
    * instead of a silent overwrite.** The alternative — sending a version that looks current — is the bug.
    */
-  const base = previousMark?.serverEntry ?? current;
-  const chain = extendChain(previousMark?.chain, base, apply(current));
+  const chain = extendChain(previousMark?.chain, current, apply(current));
 
   const next: Transaction = { ...apply(current), version: current.version + 1 };
 
@@ -462,14 +461,7 @@ export async function resolveConflict(
     synced: true,
     /** ⚠️ **Tells the server to close the question**, so it is not handed back on the next pull. */
     settlesConflict: true,
-    /**
-     * ⚠️ **The version the server is about to hold, and the value it is about to hold it at.**
-     *
-     * A settled conflict is a fresh agreed state, **and leaving the old base behind would make the very next edit
-     * describe a past the server was never in** — which is the silent overwrite this whole change repairs.
-     */
-    serverVersion: next.version,
-    serverEntry: next,
+
     ...(Object.keys(chain).length === 0 ? {} : { chain }),
   });
   await afterWrite();

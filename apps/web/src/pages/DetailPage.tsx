@@ -30,6 +30,7 @@ import {
   subscribePending,
 } from "../lib/offline/localLedger.js";
 import { logOffline } from "../lib/offline/diagnostics.js";
+import { syncMonth } from "../lib/offline/sync.js";
 import { syncNow } from "../lib/offline/syncController.js";
 import { resolveConflict } from "../lib/offline/write.js";
 import {
@@ -263,14 +264,36 @@ export function DetailPage(): React.JSX.Element {
    */
   const [refreshing, setRefreshing] = useState(false);
 
+  /**
+   * ⚠️ **A counter, because a CSS animation runs when the class is *added*.** Toggling the same class off and on
+   * again can be coalesced into no change at all, **so a second press would turn nothing** — and the whole point of
+   * the one-turn animation is that it reports an event.
+   */
+  const [turnKey, setTurnKey] = useState(0);
+
   const refresh = useCallback(async () => {
     if (refreshing) return;
 
     setRefreshing(true);
+    setTurnKey((count) => count + 1);
 
     try {
-      /** ⚠️ Delivery first, so the re-read below reflects anything that just landed. */
+      /** ⚠️ Delivery first, so the pull below sees everything this device had to send. */
       const delivered = await syncNow();
+
+      /**
+       * ⚠️ **And then the server's current values are taken, which is what was missing.**
+       *
+       * The owner's report: "我在 pad 上在线修改数据，点刷新，它居然没法同步数据，还需要我直接动浏览器的刷新才可以."
+       *
+       * **The button delivered and re-read the device, but never fetched the server** — so a value changed elsewhere,
+       * or changed here and confirmed there, never came back. **Only reloading the page fetched the server's list**,
+       * which is exactly why a browser reload appeared to fix it.
+       *
+       * ⚠️ **His own description of what this moment should be**: "理论上在点击它的一瞬间，它里面的数据应该跟服务器的
+       * 同步（大部分情况下服务器覆盖，小部分情况有冲突）."
+       */
+      await syncMonth(month);
 
       /**
        * ⚠️ **Both layers are refreshed, not just the store.**
@@ -450,7 +473,7 @@ export function DetailPage(): React.JSX.Element {
                    * project's own lessons: **"没有反馈"和"没有生效"在用户看来没有区别.** The spin continues for at
                    * least as long as the work does, so the button is never silent.
                    */
-                  icon={<RefreshIcon spinning={refreshing} />}
+                  icon={<RefreshIcon key={turnKey} spinning={refreshing} />}
                   label="刷新"
                   hint="重新读取并同步账目"
                   busy={refreshing}
@@ -1015,7 +1038,7 @@ function RefreshIcon({ spinning = false }: { readonly spinning?: boolean }): Rea
        * second and shows nothing looks like a button that does not work — **and the user then presses it
        * again**, which is why the handler also ignores a second press while one is running.
        */
-      className={`size-[18px] ${spinning ? "animate-spin" : ""}`}
+      className={`size-[18px] ${spinning ? "refresh-turn" : ""}`}
       aria-hidden="true"
     >
       <path d="M20 12a8 8 0 1 1-2.6-5.9" strokeLinecap="round" />

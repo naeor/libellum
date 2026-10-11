@@ -425,7 +425,7 @@ export function useTransactions(given: TransactionFilters) {
            * remains, so a month that finishes loading also finishes syncing.
            */
           void (async () => {
-            await recordServerList(answer.items);
+            await recordServerList(answer.items.map((entry) => entry.id));
             await syncAll();
             await refreshPending();
           })();
