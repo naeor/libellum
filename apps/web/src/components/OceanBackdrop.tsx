@@ -1,4 +1,4 @@
-/**
+﻿/**
  * **The green ocean behind the ledger space's presentation state.**
  *
  * ⚠️ **Every position in here is a function of `--p`**, the single progress the whole page shares —
@@ -97,7 +97,7 @@ export function OceanBackdrop(): React.JSX.Element {
            * the right failure — **a sea with a gap at the bottom is a bug, a sea that is compressed is
            * still a sea.**
            */
-          className="absolute inset-x-0 bottom-0"
+          className="tide absolute inset-x-0 bottom-0"
           style={{
             top: `${String(layer.top)}%`,
             height: "62%",
@@ -122,7 +122,9 @@ export function OceanBackdrop(): React.JSX.Element {
              * read as one sheet of water rather than as depth.
              */
             ["--tide-amp" as string]: `${String(layer.tide)}`,
-            animation: `libellum-tide ${String(layer.period)}s ease-in-out ${String(index * -1.7)}s infinite alternate`,
+            ["--tide-period" as string]: `${String(layer.period)}s`,
+            /** ⚠️ A negative delay starts each layer at a different point in its cycle, so four layers never line up. */
+            animationDelay: `${String(index * -1.7)}s`,
             /**
              * ⚠️ **The opacity stays 1.** The sea's recession is a *movement*, and the owner ruled
              * out the alternative in one sentence: *"不能只是绿色画面渐隐、白色页面渐显."* What fades

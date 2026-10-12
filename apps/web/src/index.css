@@ -210,6 +210,34 @@
   }
 }
 
+/*
+  ⚠️ **The tide's rule, and it has to live out here for a reason that cost a build to learn.**
+
+  `@keyframes libellum-tide` sits inside `@theme` (that is where Tailwind wants it), and **Tailwind
+  removes keyframes nothing uses.** The first version drove the animation entirely from an inline
+  `style` on each layer — which Tailwind cannot see — so **the keyframes were dropped from the bundle
+  and the sea would have been perfectly still.** The check that caught it was reading the built CSS
+  for the animation's name; the check that missed it was the page compiling and looking fine.
+
+  ⚠️ **So the animation is named in a class, where the scanner can see it**, and only the *numbers*
+  stay inline: each layer sets `--tide-amp` (its own drift) and `--tide-period` (**its own speed, which
+  is the "轻微的速度差" the owner asked for**).
+*/
+.tide {
+  animation: libellum-tide var(--tide-period, 15s) ease-in-out infinite alternate;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /*
+    ⚠️ **The sea still exists, it simply stops moving.** The owner asked for a calm tide, and a reader
+    who has asked their system for less motion is asking for exactly that — **removing the water along
+    with the movement would be answering a different request.**
+  */
+  .tide {
+    animation: none;
+  }
+}
+
 html,
 body,
 #root {

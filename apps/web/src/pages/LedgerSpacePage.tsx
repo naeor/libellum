@@ -1,13 +1,14 @@
-﻿import { useState } from "react";
+﻿import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 
 import { useAuth } from "../auth/AuthProvider.js";
 import { Button } from "../components/Button.js";
 import { ChoiceDialog } from "../components/ChoiceDialog.js";
-import { InnerPage } from "../components/Layouts.js";
+import { OceanBackdrop } from "../components/OceanBackdrop.js";
 import { QrCodeView } from "../components/QrCodeView.js";
 import { SkeletonRows } from "../components/States.js";
 import { errorMessage } from "../lib/api.js";
+import { markPresentationSeen, readSeenPresentation } from "../lib/spaceTransition.js";
 import {
   useActivateBook,
   useBooks,
@@ -42,6 +43,33 @@ import {
 export function LedgerSpacePage(): React.JSX.Element {
   const navigate = useNavigate();
   const { user } = useAuth();
+
+  /**
+   * ⚠️ **`0` is the presentation state — the sea. `1` is the ordinary one — this list.**
+   *
+   * ⚠️ **The progress is a React state *here*, and a ref everywhere else in the project, and the
+   * difference is deliberate.** The ledger screen animates on every frame of a finger's movement, so
+   * it cannot afford a re-render. **This page moves between two places in response to a gesture that
+   * has already ended** — so it is two renders, and React is the right place for it.
+   *
+   * ⚠️ **The timing lives in CSS (`transition`) and not in the spring**, which is the second
+   * departure. The owner gave a duration for this specific move — *"整体时长大致是 600–850 毫秒"* —
+   * and **a spring's duration is a consequence of its constants, not something you can set.** The
+   * tested spring is still what the ledger screen uses; borrowing it here would mean tuning two
+   * numbers until the result happened to land in the owner's range.
+   */
+  const [progress, setProgress] = useState(() =>
+    readSeenPresentation(user?.id) ? 1 : 0,
+  );
+
+  /**
+   * ⚠️ **The ordinary state is remembered as soon as it is reached**, not on unmount: the reader may
+   * close the tab from the list, and **a welcome that returns because the tab was closed is the
+   * "startup advertisement" the owner ruled out.**
+   */
+  useEffect(() => {
+    if (progress >= 1) markPresentationSeen(user?.id);
+  }, [progress, user?.id]);
   const books = useBooks();
   const current = useLedger();
 
@@ -101,7 +129,75 @@ export function LedgerSpacePage(): React.JSX.Element {
   }
 
   return (
-    <InnerPage title="我的账本" subtitle={user?.displayName ?? ""} backTo="/start">
+    /**
+     * ⚠️ **The page builds its own frame rather than using `InnerPage`, and it has to.**
+     *
+     * `InnerPage` is the white, `max-w-md`, back-arrow frame for screens *reached from* somewhere —
+     * **and this page's second state is a full-bleed sea that must reach every edge.** It was also
+     * already wrong in a smaller way: its `backTo` was `/start`, **so the back arrow pointed at the
+     * page it was on.**
+     *
+     * ⚠️ **`fixed inset-0` for the sea and `overflow-y-auto` for the list**, because the two states
+     * do not share a scroll: the sea is a fixed picture that recedes, and the ledger list scrolls
+     * under it. **One scroller cannot be both.**
+     */
+    <div
+      className="relative min-h-dvh overflow-hidden bg-canvas"
+      style={{ ["--p" as string]: String(progress) }}
+    >
+      {/**
+        * ⚠️ **The sea, and the whole of the retreat is this one transform.**
+        *
+        * `translateY(calc(var(--p) * -100%))` — **the picture leaves upward, it does not fade.**
+        * The owner ruled out the alternative twice: *"不能只是绿色画面渐隐、白色页面渐显，更不要简单把一个
+        * 完整的新页面从下面推上来覆盖旧页面."* So there is no opacity on this element at all:
+        * **what the reader sees is water moving off the top of the screen, uncovering what is under
+        * it** — and the layers inside it travel at their own speeds, which is where the depth comes
+        * from.
+        */}
+      <div
+        className="fixed inset-0 transition-transform ease-out"
+        style={{
+          transform: "translateY(calc(var(--p, 0) * -100%))",
+          /**
+           * ⚠️ **850ms with a long ease-out.** The owner's range is 600–850; the top of it is right
+           * because **the retreat is the moment he said he cares about most**, and an ease-out means
+           * it is *fast at the start and slow as it settles* — the water leaves quickly and the last
+           * of it lingers, which is how a tide actually behaves.
+           */
+          transitionDuration: "850ms",
+        }}
+      >
+        <OceanBackdrop />
+
+        {/**
+          * ⚠️ **The brand text is part of the water, so it leaves with it.** Putting it in the layer
+          * rather than above it is what makes the retreat read as one movement — **the title sinks
+          * with the surface it is written on.**
+          */}
+        <div className="absolute inset-0 flex flex-col items-center justify-center px-8 text-center">
+          <p className="text-4xl font-semibold tracking-[0.18em] text-white/95">Libellum</p>
+          <p className="mt-4 text-sm leading-relaxed text-white/75">记一本账，安静而长久。</p>
+        </div>
+      </div>
+
+      {/**
+        * ⚠️ **The ordinary state arrives from slightly below and fades in**, so the two movements are
+        * opposites rather than one replacing the other: **water up, list up-behind-it.** A list that
+        * simply appeared would be the "new page" the owner ruled out, even with the sea receding.
+        */}
+      <div
+        className="relative mx-auto w-full max-w-md px-6 pt-10 pb-16 transition-all ease-out"
+        style={{
+          opacity: progress,
+          transform: `translateY(calc((1 - var(--p, 0)) * 24px))`,
+          transitionDuration: "850ms",
+        }}
+      >
+        <h1 className="text-2xl font-semibold tracking-tight text-ink">我的账本</h1>
+        <p className="mt-1.5 text-sm leading-relaxed text-muted">
+          {user?.displayName ?? ""}
+        </p>
       {books.isPending ? <SkeletonRows rows={2} /> : null}
 
       {error !== null ? (
@@ -263,7 +359,8 @@ export function LedgerSpacePage(): React.JSX.Element {
           });
         }}
       />
-    </InnerPage>
+      </div>
+    </div>
   );
 }
 
