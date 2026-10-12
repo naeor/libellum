@@ -1,4 +1,4 @@
-import { QueryClient } from "@tanstack/react-query";
+﻿import { QueryClient } from "@tanstack/react-query";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { Suspense, lazy, useEffect } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router";
@@ -31,6 +31,7 @@ import { MePage } from "./pages/MePage.js";
 import { CollaboratorsPage } from "./pages/CollaboratorsPage.js";
 import { JoinPage } from "./pages/JoinPage.js";
 import { LedgerHistoryPage } from "./pages/LedgerHistoryPage.js";
+import { LedgerInfoPage, LedgerInvitePage, LedgerMembersPage } from "./pages/LedgerSubPages.js";
 import { LedgerPage } from "./pages/LedgerPage.js";
 import { ProfilePage } from "./pages/ProfilePage.js";
 import { StartPage } from "./pages/StartPage.js";
@@ -243,6 +244,9 @@ function AppRoutes(): React.JSX.Element {
       {/* ⚠️ 账本 / 协作：底部第四项。名称由成员数决定，但**只有一个路由**。 */}
       <Route path="/ledger" element={<RequireAuth><LedgerPage /></RequireAuth>} />
       <Route path="/ledger/history" element={<RequireAuth><LedgerHistoryPage /></RequireAuth>} />
+      <Route path="/ledger/info" element={<RequireAuth><LedgerInfoPage /></RequireAuth>} />
+      <Route path="/ledger/members" element={<RequireAuth><LedgerMembersPage /></RequireAuth>} />
+      <Route path="/ledger/invite" element={<RequireAuth><LedgerInvitePage /></RequireAuth>} />
       {/**
         * ⚠️ **A share link must be reachable while signed out**, and must come back to itself after
         * signing in — that is why it uses the variant that keeps the path.

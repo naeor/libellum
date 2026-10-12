@@ -22,7 +22,7 @@ import {
  * nothing it cannot do — hiding is how somebody concludes the app is broken — but every action here
  * is refused server-side too, because **the interface is a courtesy and the guard is the control.**
  */
-export function MemberList(): React.JSX.Element {
+export function MemberList({ compact = false }: { readonly compact?: boolean } = {}): React.JSX.Element {
   const members = useBookMembers();
   const changeRole = useChangeMemberRole();
   const removeMember = useRemoveMember();
@@ -35,7 +35,18 @@ export function MemberList(): React.JSX.Element {
   if (members.isError) return <p className="text-sm text-muted">成员读取失败。</p>;
 
   const { members: list, myRole } = members.data;
-  const canManage = myRole === "editor" || myRole === "owner";
+  /**
+   * ⚠️ **`compact` is the main tab's preview: names, roles, and no controls.**
+   *
+   * The owner's fourth layer: *"详细成员权限等内容，可在适当的位置简洁预览，再通过点击进入二级页面查看"*
+   * — and the same instruction says *"不要为了展示所有数据而破坏主页面的简洁程度."* So the tab shows
+   * **who is here**, and the manage link beside the section title opens the page that changes things.
+   *
+   * ⚠️ **`canManage` is still false in compact mode**, so the row renders no buttons at all — **not
+   * buttons that are hidden by CSS**, which is how a control comes back the day somebody changes the
+   * styling.
+   */
+  const canManage = !compact && (myRole === "editor" || myRole === "owner");
 
   function run(userId: string, action: () => Promise<unknown>): void {
     setError(null);

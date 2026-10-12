@@ -1,23 +1,198 @@
-﻿import { Link } from "react-router";
+﻿import { Link, useNavigate } from "react-router";
 
 import { HistoryList } from "../components/HistoryList.js";
-import { InnerPage } from "../components/Layouts.js";
 import { MemberList } from "../components/MemberList.js";
+import { Section } from "../components/Section.js";
 import { MessageBoard } from "../components/MessageBoard.js";
+import { TabPage } from "../components/Layouts.js";
 import { SkeletonRows } from "../components/States.js";
 import { useBooks, useLedger } from "../lib/queries.js";
+
+/**
+ * **账本 / 协作 —— 第四个主 Tab，和明细、分析、账户同级。**
+ *
+ * ⚠️ **This page used to be built on `InnerPage`, and that was the whole bug.** `InnerPage` is the
+ * frame for screens *reached from* a tab — it has a back arrow, no bottom bar, and a white
+ * background. Using it here made a **top-level destination look like a detail page somebody had
+ * navigated into**, which is exactly what the owner reported:
+ *
+ * > *"你把一级 Tab 页面做成了二级详情页……它看上去更像「账目详情」「设置详情」「拍照上传」一类从其他
+ * >  页面进入的子页面。这是我希望纠正的重点。"*
+ *
+ * ⚠️ **So the frame is `TabPage`**, which is what `StatsPage` and `MePage` use: dynamic viewport
+ * height, the middle region scrolls, and **the bottom navigation is a flex sibling of the content
+ * rather than something pinned over it.** There is no back arrow here, and there must not be —
+ * **a main tab is a place you switch to, not a place you come back from.**
+ *
+ * ⚠️ **The green header, the `px-6` rhythm, the `rounded-card` cards and the `Section` shape are
+ * copied from `StatsPage` rather than invented**, because the owner asked for one design system:
+ * *"不要只简单地给新页面加一个绿色标题条，而是让它整体看上去确实与另外三个主 Tab 属于同一套
+ * 设计系统."* The pieces below are the same pieces.
+ *
+ * ⚠️ **The page answers three questions in order** — *"这是什么账本？谁在使用它？这本账最近发生了什么？"*
+ * — so the sections run: which ledger → who is in it → what happened. **The order is the answer, not
+ * a layout preference.**
+ */
+export function LedgerPage(): React.JSX.Element {
+  const navigate = useNavigate();
+  const ledger = useLedger();
+  const books = useBooks();
+
+  const members = ledger.data?.book.memberCount ?? 1;
+  const shared = members >= 2;
+  const stats = ledger.data?.stats;
+
+  return (
+    <TabPage active="/ledger" onNavigate={(to) => { navigate(to); }}>
+      {/**
+        * ⚠️ **The brand header, identical in shape to 分析's.** Title, one line of explanation, and
+        * the colour doing the work of saying "you are at the top of a section" — **the thing the old
+        * white page with a back arrow could not say.**
+        *
+        * ⚠️ **The title is the tab's own name**, so the screen and the bar agree: 账本 alone, 协作
+        * with others. The owner's rule is that these are **the same page with a different emphasis**,
+        * and the header saying the same word as the bar is the cheapest way to keep that true.
+        */}
+      <header className="bg-brand px-6 pt-8 pb-6 text-white">
+        <h1 className="text-xl font-semibold tracking-tight">{shared ? "协作" : "账本"}</h1>
+        <p className="mt-1.5 text-sm leading-relaxed text-white/80">
+          {shared ? "这本账由几个人一起记。" : "这本账目前只有你一个人在用。"}
+        </p>
+      </header>
+
+      {ledger.isPending ? (
+        <section className="px-6 pt-6">
+          <SkeletonRows rows={3} />
+        </section>
+      ) : null}
+
+      {ledger.isSuccess ? (
+        <>
+          {/**
+            * ⚠️ **Second layer: which ledger, and the way out to the ledger space.** The owner was
+            * specific that the switcher must not be buried: *"「前往账本空间／切换账本」必须是清楚、
+            * 容易找到的正式入口，而不能藏在一堆设置选项里."* So it is **its own tinted card at the
+            * top of the content**, not a row in a settings list.
+            *
+            * ⚠️ **The card carries a brand tint** rather than the plain surface colour, which is how
+            * it reads as a way *between* ledgers instead of another item *in* this one.
+            */}
+          <section className="px-6 pt-6">
+            <Link
+              to="/start"
+              className="flex items-center justify-between gap-4 rounded-card border border-brand/30 bg-brand-soft/50 px-5 py-4 transition hover:bg-brand-soft"
+            >
+              <span className="flex min-w-0 flex-col gap-0.5">
+                <span className="truncate text-base font-medium text-brand-dark">
+                  {ledger.data.book.name}
+                </span>
+                <span className="font-mono text-xs text-muted">
+                  {ledger.data.book.bookNumber ?? "（未分配编号）"}
+                  {books.isSuccess ? ` · 共 ${String(books.data.books.length)} 本账` : ""}
+                </span>
+              </span>
+
+              <span className="flex shrink-0 items-center gap-1 text-xs text-brand-dark">
+                切换账本
+                <span aria-hidden="true" className="text-base leading-none">
+                  ›
+                </span>
+              </span>
+            </Link>
+          </section>
+
+          {/**
+            * ⚠️ **Third layer: the main functional content, and what it emphasises depends on the
+            * member count** — *"个人账本重点展示最近编辑历史、账本信息及邀请协作者入口。共享账本
+            * 重点展示成员信息、管理与邀请入口、留言或群聊入口，以及最近编辑历史."*
+            *
+            * ⚠️ **Members come first when shared and are absent when alone** — the same components,
+            * ordered by what the reader came for. **That reordering is the "两种侧重" the owner asked
+            * for**; making a second page for the shared case is what he explicitly ruled out.
+            */}
+          {shared ? (
+            <Section title="成员" action={{ to: "/ledger/members", label: "管理" }}>
+              <MemberList compact />
+            </Section>
+          ) : null}
+
+          <Section title="编辑历史" action={{ to: "/ledger/history", label: "查看全部" }}>
+            <HistoryList
+              limit={5}
+              emptyHint="这本账还没有改动记录。改动记录从这个功能上线之后开始，之前的操作不会补记。"
+            />
+          </Section>
+
+          {shared ? (
+            <Section title="留言">
+              <MessageBoard />
+            </Section>
+          ) : null}
+
+          <Section title={shared ? "邀请" : "邀请协作者"}>
+            {shared ? null : (
+              <p className="mb-3 text-sm leading-relaxed text-muted">
+                这本账现在只有你一个人。邀请别人加入之后，它就成为共享账本。
+              </p>
+            )}
+            <Link
+              to="/ledger/invite"
+              className="inline-flex rounded-field bg-brand px-4 py-2.5 text-sm text-white transition hover:bg-brand-dark"
+            >
+              邀请新成员
+            </Link>
+          </Section>
+
+          {/**
+            * ⚠️ **Fourth layer: the details, previewed and one tap away.** The owner asked for exactly
+            * this split: *"诸如完整账本编号、创建时间、空间占用、全部编辑历史、详细成员权限等内容，
+            * 可在适当的位置简洁预览，再通过点击进入二级页面查看。不要为了展示所有数据而破坏主页面
+            * 的简洁程度."*
+            *
+            * ⚠️ **So the preview is four short facts and everything else is behind the link.** The old
+            * page printed all of them as a six-row definition list, which **is** a settings screen —
+            * the diagnosis the owner gave.
+            */}
+          {stats === undefined ? null : (
+            <Section title="账本信息" action={{ to: "/ledger/info", label: "详情" }}>
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+                <Fact label="创建于" value={stats.createdAt.slice(0, 10)} />
+                <Fact label="账目" value={`${String(stats.transactionCount)} 笔`} />
+                <Fact label="成员" value={`${String(members)} 人`} />
+                <Fact
+                  label="占用空间"
+                  /**
+                   * ⚠️ **"约" stays.** An estimate shown beside three exact figures is read as exact,
+                   * and somebody will eventually reconcile against it — see `estimateBytes`.
+                   */
+                  value={`约 ${formatBytes(estimateBytes(stats.transactionCount, stats.eventCount))}`}
+                />
+              </dl>
+            </Section>
+          )}
+        </>
+      ) : null}
+    </TabPage>
+  );
+}
+
+
+/** One label/value pair in the info preview. */
+function Fact({ label, value }: { readonly label: string; readonly value: string }): React.JSX.Element {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <dt className="text-xs text-muted">{label}</dt>
+      <dd className="text-ink">{value}</dd>
+    </div>
+  );
+}
 
 /**
  * A rough size for one ledger's rows.
  *
  * ⚠️ **Deliberately an estimate, and the constants are deliberately round.** PostgreSQL keeps table
  * bytes per table, not per owning ledger, so an exact answer means measuring each row's payload —
- * **real work for a figure nobody makes a decision with.** What the row is for is *"is this ledger
- * small or is it growing"*, and 1 KB per entry / 0.5 KB per history event answers that honestly.
- *
- * ⚠️ **The uncertainty is disclosed in the UI, not hidden here** (see the 约 in the label). A number
- * shown beside exact counts will be read as exact, **and somebody will eventually reconcile against
- * it.**
+ * **real work for a figure nobody makes a decision with.**
  */
 function estimateBytes(transactionCount: number, eventCount: number): number {
   return transactionCount * 1024 + eventCount * 512;
@@ -28,205 +203,4 @@ function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${String(bytes)} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-/**
- * **账本 / 协作 —— 当前账本的信息中心。**
- *
- * ⚠️ **One page with two emphases, not two pages.** The owner's rule:
- *
- * > *"只有自己一位成员时，显示「账本」。有两位或以上成员时，显示「协作」。……
- * >  这两个名称对应的实际上是**同一个功能空间**，页面的整体设计语言保持一致，
- * >  但**展示重点和内容布局根据成员数量自动变化**。"*
- *
- * ⚠️ **And it must answer three questions** — *"这是什么账本？谁在使用它？这本账最近发生了什么？"* —
- * which is why the page is ordered: **which ledger** (info), **who is in it** (members), **what
- * happened** (history). The order is the answer, not a layout preference.
- *
- * ⚠️ **This is P4: the skeleton.** The sections below are real but shallow — the account space entry
- * and the ledger info are done; **member management (P7) and the history list (P6) are stubs that
- * say so**. Building them here would mean building them before the data underneath exists.
- */
-export function LedgerPage(): React.JSX.Element {
-  const ledger = useLedger();
-  const books = useBooks();
-
-  const members = ledger.data?.book.memberCount ?? 1;
-  const shared = members >= 2;
-  const stats = ledger.data?.stats;
-  const current = books.data?.books.find((book) => book.id === ledger.data?.book.id) ?? null;
-
-  return (
-    <InnerPage
-      title={shared ? "协作" : "账本"}
-      subtitle={ledger.data?.book.name ?? "正在读取当前账本……"}
-      backTo="/"
-    >
-      <div className="flex flex-col gap-6">
-        {ledger.isPending ? <SkeletonRows rows={2} /> : null}
-
-        {ledger.isSuccess ? (
-          <section className="flex flex-col gap-3">
-            <h2 className="text-sm text-muted">这本账</h2>
-
-            <dl className="grid grid-cols-[auto_1fr] items-baseline gap-x-6 gap-y-3 rounded-card border border-line bg-surface p-5 text-sm">
-              <dt className="text-muted">账本名称</dt>
-              <dd className="text-right text-ink">{ledger.data.book.name}</dd>
-
-              <dt className="text-muted">账本编号</dt>
-              <dd className="text-right font-mono text-ink">
-                {ledger.data.book.bookNumber ?? "（未分配）"}
-              </dd>
-
-              {stats === undefined ? null : (
-                <>
-                  <dt className="text-muted">创建时间</dt>
-                  <dd className="text-right text-ink">{stats.createdAt.slice(0, 10)}</dd>
-
-                  <dt className="text-muted">账目数量</dt>
-                  <dd className="text-right text-ink">{String(stats.transactionCount)} 笔</dd>
-
-                  <dt className="text-muted">编辑记录</dt>
-                  <dd className="text-right text-ink">{String(stats.eventCount)} 条</dd>
-                </>
-              )}
-
-              <dt className="text-muted">成员数量</dt>
-              <dd className="text-right text-ink">{String(members)} 人</dd>
-            </dl>
-
-            {/**
-              * ⚠️ **"占用空间" is an estimate, and it says so.**
-              *
-              * PostgreSQL does not attribute table bytes to a row's owning ledger, so an exact figure
-              * would mean measuring per-ledger row payloads — **real work for a number nobody acts
-              * on.** What a person actually wants from this row is *"is this ledger tiny or is it
-              * getting big"*, and an approximation answers that.
-              *
-              * ⚠️ **A bare "1.2 MB" beside four exact figures would read as exact**, which is why
-              * the word 约 is there. **An estimate presented as a measurement is worse than no
-              * number**, because somebody will eventually reconcile against it.
-              */}
-            {stats === undefined ? null : (
-              <p className="text-xs leading-relaxed text-muted">
-                占用空间：约 {formatBytes(estimateBytes(stats.transactionCount, stats.eventCount))}。
-                这里只显示用来认出「这是哪本账」的信息，收支统计在「分析」页面。
-              </p>
-            )}
-          </section>
-        ) : null}
-
-        {/**
-          * ⚠️ **The ledger-space entry, and it must not be buried.** The owner:
-          * *"我希望这是一个正式、明显而且容易理解的入口，而不是隐藏在很多层设置里"* and
-          * *"它在个人账本和共享账本中都应始终存在."*
-          */}
-        <section className="flex flex-col gap-3">
-          <h2 className="text-sm text-muted">账本空间</h2>
-
-          <Link
-            to="/start"
-            className="flex items-center justify-between gap-4 rounded-card border border-line bg-surface px-5 py-4 transition hover:bg-canvas"
-          >
-            <span className="flex flex-col gap-0.5">
-              <span className="text-sm text-ink">查看全部账本、切换或新建</span>
-              <span className="text-xs text-muted">
-                当前：{ledger.data?.book.name ?? "……"}
-                {books.isSuccess ? ` · 共 ${String(books.data.books.length)} 本` : ""}
-              </span>
-            </span>
-            <span aria-hidden="true" className="text-muted">
-              ›
-            </span>
-          </Link>
-        </section>
-
-        <section className="flex flex-col gap-3">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-sm text-muted">编辑历史</h2>
-            {/**
-              * ⚠️ **The entry the owner asked for**: *"主页面可以预览最近几条历史，并提供入口查看更
-              * 完整的记录."* A preview with no way to the rest is a dead end.
-              */}
-            <Link to="/ledger/history" className="text-xs text-brand transition hover:text-brand-dark">
-              查看全部 ›
-            </Link>
-          </div>
-
-          {/**
-            * ⚠️ **The preview the owner asked for**: *"主页面可以预览最近几条，并提供入口查看更完整的
-            * 记录."* Six is enough to see that something happened; the full view is P6's next step.
-            *
-            * ⚠️ **And `emptyHint` says why it can be empty**, because the events only start when the
-            * feature did — **"this ledger has never changed" and "the record starts here" are
-            * different statements, and a blank area cannot tell them apart.**
-            */}
-          <HistoryList
-            limit={6}
-            emptyHint="这本账还没有改动记录。改动记录从这个功能上线之后开始，之前的操作不会补记。"
-          />
-        </section>
-
-        {/**
-          * ⚠️ **The member area, and what it shows depends on the count** — this is the "两种侧重"
-          * the owner asked for, in its first and simplest form.
-          */}
-        <section className="flex flex-col gap-3">
-          <h2 className="text-sm text-muted">{shared ? "成员" : "邀请"}</h2>
-
-          {/**
-            * ⚠️ **The member list is the same component in both states** — one member or five. The
-            * owner's rule is that the two labels are *"同一个功能空间"* with a different emphasis, so
-            * showing the list always (rather than only when shared) keeps that true; **what changes is
-            * how much room it gets, not whether it exists.**
-            *
-            * ⚠️ **And the invitation entry stays visible on a one-person ledger**, which the owner
-            * asked for: *"即使当前只有自己一位成员，也应当保留「邀请协作者」入口."*
-            */}
-          {!shared ? (
-            <p className="text-xs leading-relaxed text-muted">
-              这本账现在只有你一个人。邀请别人加入之后，它就成为共享账本。
-            </p>
-          ) : null}
-
-          <MemberList />
-
-          <Link to="/collaborators" className="text-xs text-brand transition hover:text-brand-dark">
-            邀请新成员 ›
-          </Link>
-        </section>
-
-        {/**
-          * ⚠️ **The message board appears only on a shared ledger, and that follows the owner's
-          * structure rather than hiding a feature.** His design gives the page **two emphases**: with
-          * one member it is *"相对安静，强调账本信息与历史"*, and the shared one is where
-          * *"成员、留言和协作动态"* live.
-          *
-          * ⚠️ **A board on a one-person ledger would be a room with one chair** — and he is explicit
-          * that the shared state is not a different product but **the same page, emphasised
-          * differently** (*"随着使用人数自然改变自己的侧重点"*).
-          */}
-        {shared ? (
-          <section className="flex flex-col gap-3">
-            <h2 className="text-sm text-muted">留言</h2>
-            <MessageBoard />
-          </section>
-        ) : null}
-
-        {/**
-          * ⚠️ **The account-level invitation code is NOT here, and that is deliberate.**
-          *
-          * My first version of this page rendered `ReferralCodeSection` at the bottom — it looked
-          * helpful, and it directly contradicts what the owner said when he moved it:
-          * *"前者属于账号级功能，适合放在「账户」的相关设置中，**不需要占据当前账本的协作页面**."*
-          *
-          * ⚠️ **"It is convenient here too" is not a reason to overrule a placement decision** —
-          * and this is the second time in one stage that the same instruction nearly got undone by a
-          * helpful-looking addition (`教训.md` §8.13).
-          *
-          * It lives on 账户. This page links to the people who are already in the ledger.
-          */}
-      </div>
-    </InnerPage>
-  );
 }
