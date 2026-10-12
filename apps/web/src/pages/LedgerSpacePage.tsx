@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { useNavigate } from "react-router";
 
 import { useAuth } from "../auth/AuthProvider.js";
@@ -39,7 +39,7 @@ import {
  * same numbers as an editor; the difference is that the server will refuse their writes, and the
  * badge is how they find that out before trying.
  */
-export function BooksPage(): React.JSX.Element {
+export function LedgerSpacePage(): React.JSX.Element {
   const navigate = useNavigate();
   const { user } = useAuth();
   const books = useBooks();

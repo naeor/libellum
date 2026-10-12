@@ -14,7 +14,6 @@ import { deviceId } from "./lib/offline/device.js";
 import { startSyncTriggers } from "./lib/offline/syncController.js";
 import { AboutPage } from "./pages/AboutPage.js";
 import { AddEntryPage } from "./pages/AddEntryPage.js";
-import { BooksPage } from "./pages/BooksPage.js";
 import { ChangePasswordPage } from "./pages/ChangePasswordPage.js";
 import { DetailPage } from "./pages/DetailPage.js";
 import { DownloadManagerPage } from "./pages/DownloadManagerPage.js";
@@ -34,7 +33,7 @@ import { LedgerHistoryPage } from "./pages/LedgerHistoryPage.js";
 import { LedgerInfoPage, LedgerInvitePage, LedgerMembersPage } from "./pages/LedgerSubPages.js";
 import { LedgerPage } from "./pages/LedgerPage.js";
 import { ProfilePage } from "./pages/ProfilePage.js";
-import { StartPage } from "./pages/StartPage.js";
+import { LedgerSpacePage } from "./pages/LedgerSpacePage.js";
 import { StatsPage } from "./pages/StatsPage.js";
 import { RecoverPage } from "./pages/RecoverPage.js";
 import { RegisterPage } from "./pages/RegisterPage.js";
@@ -238,9 +237,11 @@ function AppRoutes(): React.JSX.Element {
       <Route path="/categories" element={<RequireAuth><CategoriesPage /></RequireAuth>} />
       <Route path="/payment-methods" element={<RequireAuth><PaymentMethodsPage /></RequireAuth>} />
       <Route path="/tags" element={<RequireAuth><TagsPage /></RequireAuth>} />
-      <Route path="/books" element={<RequireAuth><BooksPage /></RequireAuth>} />
+            {/* ⚠️ 账本空间现在只有一个地址。`/books` 保留为重定向，因为旧链接与书签里还有它。 */}
+      <Route path="/books" element={<Navigate to="/start" replace />} />
       {/* ⚠️ 账本空间：目前是占位页，见 `档案/账本与协作页-设计决定.md` §2.4 与 §8。 */}
-      <Route path="/start" element={<RequireAuth><StartPage /></RequireAuth>} />
+      {/* ⚠️ 账本空间：展示态与常规态是**同一个页面的两个状态**，不是两个路由。 */}
+      <Route path="/start" element={<RequireAuth><LedgerSpacePage /></RequireAuth>} />
       {/* ⚠️ 账本 / 协作：底部第四项。名称由成员数决定，但**只有一个路由**。 */}
       <Route path="/ledger" element={<RequireAuth><LedgerPage /></RequireAuth>} />
       <Route path="/ledger/history" element={<RequireAuth><LedgerHistoryPage /></RequireAuth>} />

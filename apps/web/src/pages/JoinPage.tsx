@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { useNavigate, useParams } from "react-router";
 
 import { Button } from "../components/Button.js";
@@ -65,7 +65,7 @@ export function JoinPage(): React.JSX.Element {
           <div className="mt-4">
             <Button
               onClick={() => {
-                navigate("/books");
+                navigate("/start");
               }}
             >
               去我的账本
@@ -116,7 +116,7 @@ export function JoinPage(): React.JSX.Element {
               void join
                 .mutateAsync(token)
                 .then(() => {
-                  navigate("/books");
+                  navigate("/start");
                 })
                 .catch((caught: unknown) => {
                   setError(errorMessage(caught));

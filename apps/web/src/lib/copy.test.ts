@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+﻿import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
@@ -73,7 +73,7 @@ describe("register", () => {
       "../pages/ProfilePage.tsx",
       "../pages/SettingsPage.tsx",
       "../pages/CollaboratorsPage.tsx",
-      "../pages/BooksPage.tsx",
+      "../pages/LedgerSpacePage.tsx",
     ];
 
     for (const file of screened) {

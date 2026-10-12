@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { useNavigate } from "react-router";
 
 import { useAuth } from "../auth/AuthProvider.js";
@@ -37,7 +37,7 @@ export function MePage(): React.JSX.Element {
     { to: "/categories", label: "分类管理", hint: "新增、改名、排序、归档" },
     { to: "/payment-methods", label: "支付方式", hint: "微信、支付宝、银行卡、现金等" },
     { to: "/tags", label: "标签", hint: "出差、可报销等跨分类标记" },
-    { to: "/books", label: "我的账本", hint: user.username },
+    { to: "/start", label: "我的账本", hint: user.username },
     { to: "/downloads", label: "下载管理", hint: "离线能看哪些月份，以及占用多少空间" },
     /**
      * ⚠️ **The version, where somebody looks when something is wrong.**
