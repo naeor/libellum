@@ -1319,7 +1319,10 @@ http 下 `navigator.mediaDevices` 就是 `undefined`。
 **修法（两处，因为是两个错）**：
 
 - **地址改成 https**：`pnpm dev:cert` 生成自签证书（覆盖 localhost 与本机所有局域网 IP，
-  **IP 必须进 SAN**，否则手机信任了也拒绝）；`pnpm dev:lan` 用它启动。
+  **IP 必须进 SAN**，否则手机信任了也拒绝）；**仓库根目录的 `start-dev-lan.cmd`** 用它启动。
+  **⚠️ 2026-10-11 更正**：这里原先写的是 `pnpm dev:lan`——**那条脚本不存在**
+  （根 `package.json` 里只有 `dev` / `dev:web` / `dev:api` / `dev:cert` / `docs:build` 等）；
+  局域网 https 启动的真实入口是 `start-dev-lan.cmd`，它设置 `LIBELLUM_LAN=1` 再调 `pnpm dev`。
 - **提示改成说地址不说浏览器**：`detectBlocker` **先问上下文再问 API**——
   这两者从"API 存不存在"看**一模一样**，这正是当初诊断错的原因。
 

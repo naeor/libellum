@@ -4,6 +4,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { ApiRequestError, apiFetch } from "../lib/api.js";
 import { clearQueryCache } from "../lib/offline/cache.js";
 import { forgetUser, readRememberedUser, rememberUser } from "../lib/offline/storage.js";
+import { forgetCurrentBook } from "../lib/currentBook.js";
+import { setOfflineAccount } from "../lib/offline/scope.js";
 
 interface RegisterInput {
   readonly inviteCode: string;
@@ -101,6 +103,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
     void reload();
   }, [reload]);
 
+  /**
+   * ⚠️ **The account half of the offline scope follows the session, from one place.**
+   *
+   * `user` is set in six different paths — restored from storage, refreshed, signed in, registered,
+   * recovered, signed out — and **an effect is the only way to be sure all six are covered.** The
+   * version of this that set the scope inside each path would have missed one, and the failure
+   * mode of a missing account is a device that reads **the previous person's ledger** out of
+   * IndexedDB.
+   *
+   * ⚠️ Setting `null` is as important as setting an id: on sign-out the scope must collapse, so
+   * the next account cannot inherit it.
+   */
+  useEffect(() => {
+    setOfflineAccount(user?.id ?? null);
+  }, [user]);
+
   // While a user is signed in, revalidate periodically and whenever the tab
   // regains focus — returning to the window is exactly when someone would
   // notice that they were signed out elsewhere.
@@ -174,7 +192,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
      * a network is not a logout.
      */
     await forgetUser();
+    /**
+     * ⚠️ **The remembered ledger goes with the account.**
+     *
+     * The next person to sign in on this device is a different person, and inheriting the last
+     * one's ledger would aim their requests at somebody else's book. The server would refuse —
+     * permission comes from membership, never from a header — but the client should not ask,
+     * and it should not show the wrong ledger's cached data on the way there either.
+     */
+    forgetCurrentBook();
+    /**
+     * ⚠️ **The query cache is cleared *before* the scope, and the order is load-bearing.**
+     *
+     * The cache lives under a scoped key, so clearing it after the scope had been emptied would
+     * delete the *unscoped* key — **leaving this account's cached responses on the device under
+     * the scoped one**, which is the opposite of what signing out is for. Clear first, then let
+     * the scope collapse.
+     */
     await clearQueryCache();
+
+    /**
+     * ⚠️ **And the offline scope goes with the account.**
+     *
+     * The scope is what the stored ledger copy is keyed by. Leaving it set after signing out would
+     * let the next person to sign in on this device read the previous person's ledger out of
+     * IndexedDB — **with no server involved to refuse it**, because the data never leaves the
+     * device. The owner named this risk when he asked for the account half of the key:
+     * *"退出登录和身份失效时仍可能出现数据暴露或混用风险."*
+     */
+    /**
+     * ⚠️ **Cleared here as well as in the effect above, and the duplication is on purpose.**
+     *
+     * The effect runs after the state change; this runs *before* anything else in the sign-out
+     * path, so no read can slip through in between. The effect is what covers the other five
+     * paths that set `user`; this one covers the path where being late is a disclosure.
+     */
+    setOfflineAccount(null);
 
     try {
       await apiFetch<unknown>("/auth/logout", { method: "POST" });

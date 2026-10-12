@@ -12,7 +12,6 @@ import {
 import type { FastifyInstance, FastifyRequest } from "fastify";
 
 import type { PrismaClient } from "../generated/prisma/client.js";
-import { currentBookId } from "../ledger/access.js";
 
 interface StatsRouteOptions {
   readonly prisma: PrismaClient;
@@ -36,8 +35,7 @@ export function registerStatsRoutes(app: FastifyInstance, options: StatsRouteOpt
   const { prisma, requireAuth } = options;
 
   app.get("/api/v1/stats", { preHandler: requireAuth }, async (request) => {
-    const userId = request.currentUser!.id;
-    const bookId = await currentBookId(prisma, userId);
+    const bookId = request.book!.bookId;
 
     const query = statsQuerySchema.parse(request.query);
     const range: DateRange = { from: query.from, to: query.to };

@@ -59,6 +59,23 @@ model User {
   /// administrators nobody chose.
   isAdmin      Boolean  @default(false) @map("is_admin")
 
+  /// The ledger this account looked at last, so signing in returns to it.
+  ///
+  /// ⚠️ **This is a preference about the account, not about a device**, which is
+  /// why it lives here: the owner asked to come back to the ledger he was
+  /// working in, and that should hold on a new phone too, not only on the one
+  /// that happened to store it locally.
+  ///
+  /// ⚠️ **Nullable, and nothing backfills it.** Empty means "has not chosen
+  /// yet", and the application falls back to the oldest membership — the same
+  /// answer the old code gave, so nothing changes for the two accounts that
+  /// exist today. Filling it in the migration would have meant writing somebody's
+  /// UUID into a SQL file.
+  ///
+  /// `ON DELETE SET NULL` (see the migration): deleting a ledger should leave
+  /// "last used" empty rather than block the delete.
+  lastBookId String? @map("last_book_id") @db.Uuid
+
   /// The currency this account treats as primary. It sorts first in every
   /// currency list, and once exchange rates exist it is what other currencies
   /// will be converted into. Stored per account rather than per book because it
@@ -83,29 +100,156 @@ model User {
   exportLogs      ExportLog[]
   importLogs      ImportLog[]
 
+  /// The book named by `lastBookId`. Named separately from `createdBooks`
+  /// because it is a different relationship: one is "books I made", this is
+  /// "the one I was last in", and a person can be in a book they did not create.
+  lastBook Book? @relation("UserLastBook", fields: [lastBookId], references: [id], onDelete: SetNull)
+
+  collaboratorsAsA Collaborator[] @relation("CollaboratorA")
+  collaboratorsAsB Collaborator[] @relation("CollaboratorB")
+  notificationsReceived Notification[] @relation("NotificationRecipient")
+  notificationsSent     Notification[] @relation("NotificationSender")
+  notificationQuotas    NotificationQuota[]
+  createdShareLinks     BookShareLink[]   @relation("ShareLinkCreator")
+  revokedShareLinks     BookShareLink[]   @relation("ShareLinkRevoker")
+  /// Referral codes this account minted. `SetNull` on delete — see the migration: the codes are
+  /// how other accounts came to exist, so they outlive the person who handed them out.
+  referralCodes         RegistrationInvite[] @relation("ReferralGenerator")
+  /// ⚠️ Actions this account took, as recorded in the ledger history. `SetNull` on delete — a
+  /// closed account does not un-happen what it did.
+  transactionEvents     TransactionEvent[]
+  /// ⚠️ 他在这本账里说过的话。`SetNull` 不适用——留言带 `senderName` 快照，
+  /// 所以账号注销时用 `Cascade` 删掉是安全的：署名早已存在每一条留言上。
+  bookMessages          BookMessage[]
+
+  /// **Who invited me here**, when I registered with their referral code. Null for everybody else.
+  ///
+  /// ⚠️ **It lives on the user rather than only on the code**, because the seven-day reminder is
+  /// *about me and addressed to me*: every visit to the collaborator screen asks "is there an
+  /// unhandled referral reminder?", and deriving that by searching `registration_invites` for
+  /// `used_by_user_id = me` would store **a fact about me in a table about codes**.
+  ///
+  /// ⚠️ **`SetNull` on delete**: the inviter closing their account must not take the invited
+  /// account with it. The relationship ends — the reminder stops meaning anything — but "I was
+  /// invited by somebody" stays as a fact, corroborated independently by
+  /// `RegistrationInvite.usedByUserId`.
+  referredByUserId String? @map("referred_by_user_id") @db.Uuid
+  referredBy       User?   @relation("ReferralInvitee", fields: [referredByUserId], references: [id], onDelete: SetNull)
+  /// The other side: accounts that arrived through one of my referral codes.
+  invitedUsers     User[]  @relation("ReferralInvitee")
+
   @@map("users")
+}
+
+/// **A collaborator relationship between two accounts — not a membership of any ledger.**
+///
+/// ⚠️ **The owner's correction is what this table encodes**: *"好友指的就是一个账号所有协作者的集合"* —
+/// A sharing ledger 1 with B and ledger 2 with C has **{B, C}** as collaborators, and both appear on
+/// one list. So the relationship is between **accounts**, while the ledgers they share are separate
+/// rows in `book_members`.
+///
+/// ⚠️ **It grants nothing.** Ledger permission still comes from `book_members` alone. What this
+/// adds is *"who can I invite"* and *"who am I keeping books with"*.
+///
+/// ⚠️ **One row per relationship, not one per invitation.** The primary key orders the two ids
+/// (`userA < userB`, enforced by a CHECK), so "A added B" and "B added A" are the same row. A
+/// directed pair would allow half-relationships — his screen says friends, mine does not.
+///
+/// ⚠️ **Both sides must agree** (*"加为协作者需要对方同意"*), so a row exists only after the
+/// recipient accepted. **There is no pending row**: the undecided state lives in the notification,
+/// and storing it in both places is how the two come to disagree.
+model Collaborator {
+  userA     String   @map("user_a") @db.Uuid
+  userB     String   @map("user_b") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  a User @relation("CollaboratorA", fields: [userA], references: [id], onDelete: Cascade)
+  b User @relation("CollaboratorB", fields: [userB], references: [id], onDelete: Cascade)
+
+  @@id([userA, userB])
+  @@index([userB])
+  @@map("collaborators")
+}
+
+/// **One message waiting for one person to decide.**
+///
+/// Three kinds, from the owner's design: a request to become collaborators, an invitation into a
+/// ledger, and the seven-day reminder that follows using somebody's referral code.
+///
+/// ⚠️ **`bookId` is nullable and that is meaningful**: a collaborator request and a referral
+/// reminder belong to **no ledger**. Borrowing a fake one would make "which ledger is this about"
+/// a lie that has to be explained.
+///
+/// ⚠️ **There is no `expired` status.** Expiry is computed from `expiresAt`, never stored: a status
+/// that needs a scheduled job to become true is wrong on any day the job does not run.
+///
+/// ⚠️ **`message` is bounded** because it is free text shown to somebody else — unbounded text is a
+/// channel that the quota exists to keep small.
+model Notification {
+  id          String   @id @default(uuid()) @db.Uuid
+  recipientId String   @map("recipient_id") @db.Uuid
+  senderId    String   @map("sender_id") @db.Uuid
+  bookId      String?  @map("book_id") @db.Uuid
+  kind        String   @db.VarChar(32)
+  message     String?  @db.VarChar(200)
+  /// ⚠️ **What accepting this notification will do** — currently `{ "role": "editor" | "viewer" }`
+  /// for a ledger invitation. It has to travel *with* the invitation, because at the moment the
+  /// recipient accepts there is nowhere else the server could learn the intended role from, and
+  /// guessing would silently widen the permission somebody asked for. Nullable, and a null is read
+  /// as the historical default — so old rows stay decidable.
+  payload     Json?
+  status      String   @default("pending") @db.VarChar(16)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  expiresAt   DateTime @map("expires_at") @db.Timestamptz(6)
+  readAt      DateTime? @map("read_at") @db.Timestamptz(6)
+  decidedAt   DateTime? @map("decided_at") @db.Timestamptz(6)
+
+  recipient User  @relation("NotificationRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  sender    User  @relation("NotificationSender", fields: [senderId], references: [id], onDelete: Cascade)
+  /// Deleting a ledger removes its invitations; **disposing of one does not** — disposing is not
+  /// deleting, so the notification stays.
+  book      Book? @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  @@index([recipientId, status, createdAt])
+  @@index([senderId, recipientId, bookId])
+  @@map("notifications")
+}
+
+/// **How many notifications one account may send in a day.**
+///
+/// Two ceilings, both the owner's: **five per day to any one account**, and **twenty per day in
+/// total**. Share links are deliberately **not** counted — *"分享链接不算"* — because a link is
+/// opened by the invited person rather than pushed at them, and counting it would eat the quota
+/// that exists to stop harassment.
+///
+/// ⚠️ **Aggregated per (sender, subject, day) rather than one row per notification**, so that
+/// "check and increment" is a single `UPDATE ... WHERE used < limit`: zero rows affected means the
+/// ceiling was reached. Counting rows first and inserting second leaves a window — and that window
+/// is exactly when two people send their fifth message.
+model NotificationQuota {
+  userId    String   @map("user_id") @db.Uuid
+  /// ⚠️ An all-zero UUID means "the total across everybody", not NULL — see the migration: a NULL
+  /// would not be constrained by the primary key, so concurrent writers could create two totals.
+  subjectId String   @map("subject_id") @db.Uuid
+  day       DateTime @db.Date
+  used      Int      @default(0)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, subjectId, day])
+  @@map("notification_quota")
 }
 
 /// A login session.
 ///
-/// `user_id` is unique on purpose: the project allows exactly one active
-/// session per account, so signing in on a new device replaces the previous
-/// one. That makes "one device at a time" enforceable and removes the hardest
-/// offline-merge case.
+/// ⚠️ **One row per signed-in device.** `user_id` is deliberately **not** unique:
+/// it used to be, and that made signing in on one device replace every other
+/// device's session. Two devices on one account is the ordinary case, and it is
+/// the case the offline conflict handling was built for.
 ///
 /// Only the hash of the session token is stored, so a database leak cannot be
 /// replayed as a valid session.
-/// One row per signed-in device.
-///
-/// ⚠️ **`userId` is deliberately not unique.** It used to be, which made signing in on
-/// one device overwrite every other device's session — the "one device at a time" rule.
-/// **Two devices on one account is the ordinary case**, and it is the case the offline
-/// design is built on: a phone and a tablet each keep their own copy of the ledger,
-/// and conflict detection exists because the two can diverge.
-///
-/// A session is identified by the hash of its own token, which is unique on its own;
-/// the constraint only limited how many could exist. Revocation stays per-token, and a
-/// password change still clears every session for the account.
 model Session {
   id         String   @id @default(uuid()) @db.Uuid
   userId     String   @map("user_id") @db.Uuid
@@ -179,7 +323,193 @@ model RegistrationInvite {
 
   usedBy User? @relation(fields: [usedByUserId], references: [id], onDelete: SetNull)
 
+  /// Whether the **new account may add the code's generator as a collaborator directly**.
+  ///
+  /// ⚠️ **This is the generator's choice, and it belongs on the code rather than on the person.**
+  /// The owner's rule: a referral code is *"不与任何账本绑定"* and *"只产生'协作者关系'的入口"*,
+  /// and the generator decides *at the moment of minting* whether the newcomer may add them
+  /// straight away. One account can mint several codes with different answers, which is only
+  /// expressible per-code.
+  ///
+  /// ⚠️ **Defaults to `false`, the more conservative answer.** A code somebody forgot to configure
+  /// must not become a one-click door to their collaborator list; opening it up is a deliberate
+  /// tick. **A default that grants is a default that will be granted by accident.**
+  allowsDirectCollaborator Boolean @default(false) @map("allows_direct_collaborator")
+
+  /// **Who minted this code**, when it is a *referral* code rather than a plain invitation.
+  ///
+  /// ⚠️ **Registration codes used to be anonymous, and that was correct**: a batch-minted code is
+  /// just a ticket, and who made it does not matter. **A referral code is different — it is the
+  /// carrier of an invitation relationship**, so its generator is part of what it *is*:
+  ///
+  /// 1. after registration there would otherwise be nothing to remind the newcomer about;
+  /// 2. the collaborator relationship could not be created;
+  /// 3. "who can they add?" would have no answer.
+  ///
+  /// ⚠️ **Null for every existing code**, and a null is read as "not a referral code" — so this
+  /// change has **no effect on any code that already exists**.
+  createdByUserId String? @map("created_by_user_id") @db.Uuid
+
+  createdBy User? @relation("ReferralGenerator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
   @@map("registration_invites")
+}
+
+/// **A share link into one ledger — stored as a hash, and revocable.**
+///
+/// ⚠️ **Only the hash is kept.** The plaintext token is returned once, when it is generated, and
+/// the server cannot recover it afterwards — so a complete copy of the database still cannot be
+/// used to open somebody's ledger. The same rule as recovery codes and session tokens.
+///
+/// ⚠️ **No salt and no slow hash, deliberately.** The token is a server-generated 256-bit random
+/// value, not a chosen password: there is no dictionary to guess, so a slow hash would only make
+/// opening a link slower. This is the opposite of `passwordHash`, which must be slow — the two
+/// look alike and must not be swapped.
+///
+/// ⚠️ **One row per link, not per ledger.** "Revoke it" and "regenerate it, the old one stops
+/// working" both require **several links for one ledger to coexist** — the revoked one and the live
+/// one — which a one-row-per-ledger shape cannot express without a second history table.
+model BookShareLink {
+  id        String   @id @default(uuid()) @db.Uuid
+  /// ⚠️ A hash. The column is named so that nobody later puts a plaintext token in it.
+  tokenHash String   @unique @map("token_hash") @db.VarChar(64)
+  bookId    String   @map("book_id") @db.Uuid
+  createdBy String   @map("created_by") @db.Uuid
+  /// What joining through this link grants: the owner's "viewer 或 editor".
+  role      String   @default("viewer") @db.VarChar(16)
+
+  /// ⚠️ **How long the link lasts, in days: `1–7`, chosen when it is generated.**
+  ///
+  /// ⚠️ **The chosen *number of days* is stored, not an absolute expiry.** `createdAt + days` gives
+  /// the deadline, and the list can still say "this was a 3-day link" — which an absolute timestamp
+  /// would only allow somebody to back-calculate.
+  ///
+  /// ⚠️ **`7` is the default so that existing rows get the *permissive* end of the range.** A
+  /// migration that turned live links into `0`-day links would break something people are holding.
+  days      Int      @default(7)
+
+  /// ⚠️ **How many people may join through it: `1–10`.** Once `useCount` reaches this, joining is
+  /// refused — **that is the owner's S9 acceptance criterion *"分享链接过期/撤销/满员后无法再加入"*,
+  /// and the "满员" half had been missing entirely.**
+  ///
+  /// ⚠️ **A cap defends against something "revoke" cannot**: revocation is what you do *after*
+  /// noticing a link went somewhere you did not intend. **A limit is what stops the eleventh person
+  /// from walking in while you are still asleep.**
+  maxUses   Int      @default(10) @map("max_uses")
+
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// Null means still live; a timestamp means revoked **and says when**.
+  revokedAt   DateTime? @map("revoked_at") @db.Timestamptz(6)
+  revokedBy   String?   @map("revoked_by") @db.Uuid
+  useCount    Int       @default(0) @map("use_count")
+  lastUsedAt  DateTime? @map("last_used_at") @db.Timestamptz(6)
+
+  book    Book  @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  creator User  @relation("ShareLinkCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+  revoker User? @relation("ShareLinkRevoker", fields: [revokedBy], references: [id], onDelete: SetNull)
+
+  /// ⚠️ Every open asks "which ledger is this hash for, and is it still live" — so the lookup is
+  /// `tokenHash` (unique, above) and the listing is by book.
+  @@index([bookId, revokedAt])
+  @@map("book_share_links")
+}
+
+/// **编辑历史：谁在什么时候，对哪一笔账目做了什么修改。**
+///
+/// ⚠️ **The owner's framing decides the whole design**: *"编辑历史的主要目的**不是复杂的版本管理**，
+/// 而是让用户能够明确知道：谁在什么时候，对哪一笔账目做了什么修改."* So this is an audit trail
+/// written to be **read by a person**, not a version store to roll back to.
+///
+/// ⚠️ **A separate table from `Transaction.valueHistory`, deliberately.** `valueHistory` already
+/// exists and is **for conflict judgement** — raw material whose reader is an algorithm. This one's
+/// reader is a human and its requirement is *"简洁、易读"*; putting both in one field would force a
+/// machine-comparison format and a human sentence to share a structure, and **they would eventually
+/// constrain each other** (`教训.md` §8.12).
+///
+/// ⚠️ **`transactionId` is nullable and `ON DELETE SET NULL` — the point of the table.**
+/// One of the three example lines the owner wants to see is *"naeor 删除了 #000103 出租车记录"*:
+/// **deleting an entry must not delete the record that it was deleted.** Note that
+/// `TransactionConflict` uses `CASCADE` — the two look alike and mean opposite things.
+model TransactionEvent {
+  id     String @id @default(uuid()) @db.Uuid
+  /// Which ledger. Required: history always belongs to a ledger.
+  bookId String @map("book_id") @db.Uuid
+
+  /// The entry, **null once it has been deleted** — see the note above.
+  transactionId String? @map("transaction_id") @db.Uuid
+
+  /// ⚠️ **A snapshot of the entry's number.** After a delete `transactionId` is null, and
+  /// `#000103` must still be readable — otherwise the record cannot be pointed at. The number is
+  /// immutable (1.09.20), so the snapshot cannot drift from the truth.
+  transactionSeq Int? @map("transaction_seq")
+
+  /// Who did it. Nullable so the record survives the account being closed; `actorName` is the
+  /// snapshot that keeps it readable.
+  actorId   String? @map("actor_id") @db.Uuid
+  actorName String? @map("actor_name") @db.VarChar(64)
+
+  /// `created` / `updated` / `deleted` / `restored` / `member_changed`.
+  kind String @db.VarChar(24)
+
+  /// ⚠️ **Which fields changed, and what they were before and after**:
+  /// `{ "amountCents": { "from": 3500, "to": 3800 } }`. JSONB because the set of tracked fields
+  /// will grow, and a column per field would need a migration each time.
+  changes Json?
+
+  /// When it happened. **One ordering field and no more** — a second would make "which came first"
+  /// unanswerable.
+  occurredAt DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+
+  book        Book         @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  transaction Transaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+  actor       User?        @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  /// ⚠️ The main query is *"what happened in this ledger recently"* — by ledger, newest first.
+  @@index([bookId, occurredAt(sort: Desc)])
+  /// ⚠️ The second is *"what has this entry been through"*, reached from the entry's detail screen.
+  @@index([transactionId])
+  @@map("transaction_events")
+}
+
+/// **账本内的公共留言 —— 围绕这本账的讨论，不是聊天。**
+///
+/// ⚠️ **The owner drew the boundary and it is narrow**: *"它只属于当前账本，类似一个**小型群聊或留言板**：
+/// 同一本账的成员可以看到公共留言；成员可以发送文字；显示**发送者和发送时间**；**不提供私人聊天**；
+/// 不需要复杂的**好友聊天体系**."*
+///
+/// ⚠️ **One table is the design, not a shortcut.** No private messages, no friend graph, and no
+/// receipts — so **"ledger + sender + body + time" expresses everything inside that boundary.** A
+/// conversations table or a participants table would be **building the skeleton of a chat system he
+/// explicitly said he does not want** (`教训.md` §8.13).
+///
+/// ⚠️ **There is no `read_at` and no `deleted_at`.** Those are not "not yet" — the owner listed
+/// *已读回执* and *消息撤回* as **not needed**. **A column added "in case it is useful later" is how
+/// a rejected idea survives as a field** (`教训.md` §8.11).
+model BookMessage {
+  id     String @id @default(uuid()) @db.Uuid
+  /// ⚠️ The message belongs to **a ledger**, not to a conversation between two people.
+  bookId String @map("book_id") @db.Uuid
+  senderId String @map("sender_id") @db.Uuid
+
+  /// ⚠️ **A snapshot of the sender's name.** Renaming yourself must not rewrite the signature on
+  /// messages you already sent, and closing an account must not turn them into anonymous text —
+  /// the same reason `TransactionEvent.actorName` exists.
+  senderName String @map("sender_name") @db.VarChar(64)
+
+  /// ⚠️ **Bounded**, because it is free text shown to other people: **unbounded text is a channel
+  /// for flooding**, and this exists to discuss entries, not to shout.
+  body String @db.VarChar(500)
+
+  /// ⚠️ **One timestamp and no `updatedAt`.** Messages cannot be edited — the owner asked for no such
+  /// thing, and both *撤回* and *已读回执* are listed as unnecessary. **A field that can never change
+  /// does not need two timestamps beside it.**
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  book   Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  sender User @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([bookId, createdAt(sort: Desc)])
+  @@map("book_messages")
 }
 
 /// Server-owned counters for things that are handed out in order.
@@ -234,6 +564,39 @@ model Book {
   /// number and a ledger number are never mistaken for one another at a glance.
   bookNumber String? @unique @map("book_number") @db.VarChar(8)
 
+  /// **The next entry number to hand out in this ledger** — `#000001` is `1`.
+  ///
+  /// ⚠️ **A counter rather than `MAX(seq) + 1`, and the difference is real**: a deleted entry keeps
+  /// its number, so "how many have been handed out" is not "how many exist" — **the next number is a
+  /// fact of its own** (`教训.md` §8.12).
+  ///
+  /// ⚠️ **Per ledger, on the book row, rather than in the global `counters` table.** The owner's rule
+  /// is *"每一笔帐本都从 #000001 开始"* — each ledger has its own series — and a global counter can
+  /// only produce one continuous run of numbers, not one per book.
+  ///
+  /// ⚠️ **Allocation is `UPDATE … RETURNING`, which locks this row until the transaction commits.**
+  /// That is what makes two simultaneous entries for one ledger queue instead of colliding, while
+  /// two different ledgers never wait for each other.
+  nextTransactionSeq Int @default(1) @map("next_transaction_seq")
+
+  /// When this ledger was **disposed of** — the owner's word, chosen deliberately
+  /// over "archived" — and the meaning is specific:
+  ///
+  /// * **the server keeps every row** (nothing is soft-deleted, no transaction is
+  ///   touched): the data is intact and an administrator can still recover it;
+  /// * **the client deletes its local copy** and stops showing the ledger;
+  /// * **ordinary users can no longer see it at all.**
+  ///
+  /// ⚠️ **Not `deleted_at`, and that is not a naming preference.** "Is this ledger
+  /// still around" and "was this row deleted" are two different questions, and
+  /// folding them into one column makes every later query answer the wrong one.
+  ///
+  /// ⚠️ **A separate thing from "I no longer want to see this book"**, which is
+  /// `BookMember.leftAt`: that one hides the ledger from one person and leaves
+  /// everybody else untouched. The owner asked for the two meanings to be kept
+  /// apart, and they are kept apart here.
+  disposedAt DateTime? @map("disposed_at") @db.Timestamptz(6)
+
   creator        User            @relation("BookCreator", fields: [createdBy], references: [id], onDelete: Cascade)
   members        BookMember[]
   categories     Category[]
@@ -243,9 +606,38 @@ model Book {
   exportLogs     ExportLog[]
   importLogs     ImportLog[]
 
+  /// Accounts that name this book as their last-used one. The other side of
+  /// `User.lastBook`.
+  lastUsedBy User[] @relation("UserLastBook")
+
+  /// Invitations into this ledger. Deleting the ledger removes them; **disposing of it does not**,
+  /// because a disposed ledger still exists and can be brought back.
+  invitations Notification[]
+
+  /// Share links into this ledger, live and revoked alike. Deleting the ledger removes them,
+  /// because a link into a ledger that no longer exists is a link to nothing.
+  shareLinks BookShareLink[]
+
+  /// ⚠️ The ledger's own history: who changed what, and when.
+  events TransactionEvent[]
+
+  /// ⚠️ 这本账的公共留言 —— 属于账本，不属于任何两个人之间的会话。
+  messages BookMessage[]
+
   @@map("books")
 }
 
+/// ⚠️ **`owner` is no longer produced or read.** The owner decided to keep two
+/// roles only — `editor` and `viewer` — so existing `owner` rows are converted to
+/// `editor` by the collaboration migration.
+///
+/// The value itself stays in the enum because removing it means altering a
+/// PostgreSQL type for no gain, and a migration that changes a type is a bigger
+/// risk than an unused label. **No code may write it.**
+///
+/// ⚠️ **The distinction that matters**: `owner` of a *ledger* is gone, but
+/// `Book.createdBy` still records who made it, and that is now only a fact about
+/// history rather than a permission.
 enum BookRole {
   owner
   editor
@@ -257,14 +649,42 @@ enum BookRole {
 model BookMember {
   bookId   String   @map("book_id") @db.Uuid
   userId   String   @map("user_id") @db.Uuid
-  role     BookRole @default(owner)
+
+  /// ⚠️ **The default is `viewer`, and it used to be `owner`.**
+  ///
+  /// A default of `owner` meant any insert that forgot to pass a role handed out
+  /// ownership; getting it wrong now hands out read-only access instead, which is
+  /// the direction a mistake should fail in.
+  ///
+  /// ⚠️ **But the owner's instruction was not only "change the default"**:
+  /// **creating a ledger must grant `editor` explicitly**, never by relying on
+  /// this. A default is what happens when somebody forgets; it is not a design.
+  role     BookRole @default(viewer)
+
   joinedAt DateTime @default(now()) @map("joined_at") @db.Timestamptz(6)
+
+  /// When this person left the ledger — **which affects nobody else**.
+  ///
+  /// Leaving means "I no longer want to see this book": my client drops it and
+  /// forgets it, while the ledger carries on exactly as before for everyone else.
+  ///
+  /// ⚠️ **The row is kept rather than deleted**, so it now carries two meanings
+  /// that readers must tell apart:
+  ///
+  /// * the row exists ⟶ this account has *ever* had a relationship with the book;
+  /// * `leftAt IS NULL` ⟶ they are a member **now**, and that is the only thing
+  ///   permission checks may look at.
+  ///
+  /// Same shape as a transaction's tombstone: keep the row, let one timestamp
+  /// change what it means. Joining again clears this rather than adding a row.
+  leftAt DateTime? @map("left_at") @db.Timestamptz(6)
 
   book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@id([bookId, userId])
   @@index([userId])
+  @@index([bookId, leftAt])
   @@map("book_members")
 }
 
@@ -368,6 +788,28 @@ model Transaction {
   bookId String @map("book_id") @db.Uuid
   /// Who recorded it.
   userId String @map("user_id") @db.Uuid
+
+  /// **The number a person reads: `#000001`.** Per ledger, from 1, assigned by the server.
+  ///
+  /// ⚠️ **Not the id, and the owner drew the line himself**: *"编号跟之前的账目内部 ID 是不一样的……
+  /// 编号更多是给用户看的。**程序所有的操作仍然用内部 ID**."* Every route, relation and offline mark
+  /// still addresses this row by `id`; this column is a label that happens to be unique.
+  ///
+  /// ⚠️ **Assigned when the entry reaches the server, never on the client**: *"离线期间新增的账目
+  /// 不直接生成编号；所有的编号都由服务器统一分配."* An entry typed offline carries no number until
+  /// it syncs — the field is simply absent on that copy.
+  ///
+  /// ⚠️ **Never editable.** No request schema has a `seq` field, so a client cannot send one, and
+  /// the DTO returns the stored value rather than deriving it — **a number the user has already read
+  /// must not move** (`教训.md` §8.12).
+  ///
+  /// Unique **within its ledger**, by the constraint on `(bookId, seq)` in the migration: two
+  /// ledgers each have a `#000001`, which is what "每一笔帐本都从 #000001 开始" means.
+  seq Int
+
+  /// ⚠️ **This entry's own history.** Null entries stay behind when the row is deleted —
+  /// see `TransactionEvent.transactionId`.
+  events TransactionEvent[]
 
   /// The unique value this row carried in the file it was imported from.
   ///

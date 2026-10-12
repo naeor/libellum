@@ -64,6 +64,17 @@ export const uuidSchema = z.string().regex(UUID_PATTERN, "标识格式不正确"
 // Classification
 // ---------------------------------------------------------------------------
 
+/**
+ * What a person may do in one ledger.
+ *
+ * ⚠️ **`owner` is a legacy value that no code writes or honours any more.** The owner decided on
+ * two roles — `editor` and `viewer` — and the collaboration migration converted the rows that
+ * still said `owner`. It stays in the schema because the database enum still contains it, and a
+ * response that contained a value the client's schema rejected would be a validation failure on
+ * real data. **`editor` is the only value that may write.**
+ */
+export const bookRoleSchema = z.enum(["owner", "editor", "viewer"]);
+
 /** Name of the system category that collects entries saved without one. */
 export const UNCATEGORISED_NAME = "暂无分类";
 
@@ -111,7 +122,28 @@ export const ledgerMetaResponseSchema = z.object({
      * two people can confirm out loud that they are looking at the same ledger.
      */
     bookNumber: z.string().nullable(),
+    /// ⚠️ **How many people are in this ledger right now** — only active memberships, so somebody
+    /// who left is not counted. **The bottom navigation renames itself on this number**: one member
+    /// is 账本, two or more is 协作 (the owner's rule), and **the two labels are the same page.**
+    memberCount: z.number().int().nonnegative().optional(),
   }),
+  /**
+   * **Enough to recognise the ledger, and no more.**
+   *
+   * ⚠️ **The owner drew this boundary himself**: *"这里的账本信息主要用于帮助用户识别自己当前打开的
+   * 是哪本账，而不是**重复「分析」页面已有的收支统计功能**."* So there is **no income, no expense,
+   * no balance** here — those belong to 分析, and a total on this screen would make two pages look
+   * like they were answering the same question.
+   */
+  stats: z
+    .object({
+      /// ⚠️ When the ledger itself was created — the ledger's age, not the entries'.
+      createdAt: z.string(),
+      transactionCount: z.number().int().nonnegative(),
+      /// ⚠️ Counted with the same rule the list uses: a tombstone is not an entry.
+      eventCount: z.number().int().nonnegative(),
+    })
+    .optional(),
   categories: z.array(categorySchema),
   paymentMethods: z.array(paymentMethodSchema),
   tags: z.array(tagSchema),
@@ -312,6 +344,18 @@ export type UpdateTransactionInput = z.infer<typeof updateTransactionSchema>;
 
 export const transactionSchema = z.object({
   id: z.string(),
+  /**
+   * **The number a person reads: `#000001`.** Per ledger, from 1, assigned by the server.
+   *
+   * ⚠️ **Optional, and that is honest rather than convenient.** Rows cached on a device before this
+   * existed do not carry it, and a required field would make every one of those entries fail to
+   * parse — **turning "this entry has no number yet" into "this entry cannot be shown at all."**
+   * New responses always include it; a missing one means the copy predates the feature.
+   *
+   * ⚠️ **It is not the id.** The owner drew the line himself: every operation still addresses the
+   * entry by `id`. This is a label, and it is **never** accepted from a client.
+   */
+  seq: z.number().int().positive().optional(),
   kind: transactionKindSchema,
   amountCents: z.number(),
   /** Always one of the supported currencies — entries are validated on write. */
@@ -329,6 +373,24 @@ export const transactionSchema = z.object({
   version: z.number(),
 });
 export type Transaction = z.infer<typeof transactionSchema>;
+
+/**
+ * The number as a person sees it: `#000001`.
+ *
+ * ⚠️ **Rendered, never stored.** The database holds `1`; the `#` and the zero padding are
+ * presentation, and **storing `"#000001"` would put a formatting decision into the data** — the
+ * first time somebody wanted seven digits, every stored string would have to be rewritten.
+ *
+ * ⚠️ **It lives in `shared` because both sides need the same string.** The detail screen shows it
+ * and the offline copy may render it too; two formatters would eventually disagree about padding.
+ *
+ * ⚠️ **Past a million it simply gets longer** (`#1000000`) rather than wrapping or truncating:
+ * a household ledger will not reach it, and a busier one would rather have a longer number than a
+ * repeated one.
+ */
+export function formatTransactionNumber(seq: number): string {
+  return `#${String(seq).padStart(6, "0")}`;
+}
 
 export const transactionListResponseSchema = z.object({
   items: z.array(transactionSchema),

@@ -32,8 +32,10 @@ describe("analysis screen copy", () => {
 
 describe("collaborators copy", () => {
   it("invites rather than describes togetherness", () => {
-    expect(source("../pages/PlaceholderPages.tsx")).toContain("邀请他人一同管理账目。");
-    expect(source("../pages/PlaceholderPages.tsx")).not.toContain("和他人一起维护同一本账");
+    // The screen used to be a placeholder; the sentence moved with it when the
+    // real page replaced it, and this test is what noticed.
+    expect(source("../pages/CollaboratorsPage.tsx")).toContain("邀请他人一同管理账目。");
+    expect(source("../pages/CollaboratorsPage.tsx")).not.toContain("和他人一起维护同一本账");
   });
 });
 
@@ -70,7 +72,7 @@ describe("register", () => {
       "../pages/MePage.tsx",
       "../pages/ProfilePage.tsx",
       "../pages/SettingsPage.tsx",
-      "../pages/PlaceholderPages.tsx",
+      "../pages/CollaboratorsPage.tsx",
       "../pages/BooksPage.tsx",
     ];
 

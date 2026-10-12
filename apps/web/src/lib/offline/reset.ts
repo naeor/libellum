@@ -1,3 +1,4 @@
+import { forgetCurrentBook } from "../currentBook.js";
 import { clearDatabase, hasIndexedDb } from "./storage.js";
 
 /**
@@ -41,6 +42,16 @@ export async function resetEverything(): Promise<{ readonly cachesCleared: numbe
   }
 
   const databaseCleared = hasIndexedDb() ? await clearDatabase() : false;
+
+  /**
+   * ⚠️ **The in-memory copy of "which ledger" goes too.**
+   *
+   * Clearing the database removes the stored value, but the module keeps the answer in memory
+   * for the request header to read, and a stale ledger id would keep being sent until the next
+   * reload. The caller reloads straight after this — but relying on that would be relying on
+   * the order of somebody else's code.
+   */
+  forgetCurrentBook();
 
   try {
     const registrations = (await navigator.serviceWorker?.getRegistrations()) ?? [];

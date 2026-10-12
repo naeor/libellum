@@ -17,6 +17,34 @@ export function primeDeviceId(id: string): void {
 function deviceHeader(): string {
   return deviceIdHeader;
 }
+
+/**
+ * Which ledger the requests are about.
+ *
+ * ⚠️ **Every request that touches ledger data says which ledger, explicitly** — the owner's
+ * decision, and his reason is the important part: *"离线写入发生的那一刻，就应该永久确定它
+ * 属于哪本账，而不是等以后联网时才根据某个可变化的状态决定。"*
+ *
+ * That is why this is a header sent by one shared wrapper rather than a "current ledger" the
+ * server remembers: a ledger the server remembers can change between the moment a person
+ * records something offline and the moment it is delivered. **A header written at send time
+ * from the value that was stored at write time cannot.**
+ *
+ * ⚠️ **Read synchronously from memory**, exactly like the device id above, because a request
+ * header cannot await. `primeBookId()` fills it once the ledger is known; until then the
+ * header is omitted and the server refuses the request with a clear message — which is
+ * better than guessing a ledger.
+ */
+let bookIdHeader = "";
+
+export function primeBookId(id: string | null): void {
+  bookIdHeader = id ?? "";
+}
+
+/** The ledger id currently being addressed, or `""` when none is known yet. */
+export function currentBookIdHeader(): string {
+  return bookIdHeader;
+}
 export class ApiRequestError extends Error {
   readonly status: number;
   readonly code: string;
@@ -29,6 +57,28 @@ export class ApiRequestError extends Error {
     this.code = code;
     this.details = details;
   }
+}
+
+/**
+ * The headers every request carries.
+ *
+ * ⚠️ **One place builds them, so no screen ever has to remember to.** That is the owner's
+ * instruction: *"旧接口可以通过统一客户端封装迁移，不需要让每个 UI 组件分别处理请求头."*
+ *
+ * `bookId` overrides the current ledger for a single call. The offline queue needs that:
+ * **each queued change carries the ledger it was made in**, and those do not have to match
+ * whichever ledger the person happens to be looking at when the network comes back.
+ */
+function buildHeaders(bookId?: string): Record<string, string> {
+  const headers: Record<string, string> = {
+    accept: "application/json",
+    "x-libellum-device": deviceHeader(),
+  };
+
+  const book = bookId ?? bookIdHeader;
+  if (book !== "") headers["x-libellum-book"] = book;
+
+  return headers;
 }
 
 interface RequestOptions {
@@ -46,6 +96,13 @@ interface RequestOptions {
   readonly formData?: FormData;
   /** Longer deadline for uploads, which are slower than a JSON call. */
   readonly timeoutMs?: number;
+  /**
+   * Address this ledger instead of the current one.
+   *
+   * ⚠️ Used by the offline queue, **not** by screens: a queued change belongs to the ledger
+   * it was written in, and delivering it must not depend on what is on screen now.
+   */
+  readonly bookId?: string;
 }
 
 function buildUrl(path: string, query: RequestOptions["query"]): string {
@@ -102,7 +159,7 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
      * for that by name — **and the server cannot tell one device from another without being told.** Sending it on
      * every request keeps that fact in one place rather than being passed down through every call site.
      */
-    headers: { accept: "application/json", "x-libellum-device": deviceHeader() },
+    headers: buildHeaders(options.bookId),
     signal: controller.signal,
   };
 
@@ -182,6 +239,7 @@ export async function apiFetchFile(
   path: string,
   query?: Record<string, string | undefined>,
   timeoutMs = 120_000,
+  bookId?: string,
 ): Promise<FetchedFile> {
   if (typeof navigator !== "undefined" && !navigator.onLine) {
     throw new ApiRequestError(0, "offline", "当前处于离线状态，无法与服务器同步。请恢复网络后重试。");
@@ -197,7 +255,13 @@ export async function apiFetchFile(
     response = await fetch(buildUrl(path, query), {
       method: "GET",
       credentials: "same-origin",
-      headers: { accept: "*/*" },
+      /**
+       * ⚠️ The same headers as the JSON calls, minus the JSON `accept`.
+       *
+       * A download is a request about a ledger too — the export route reads the ledger named
+       * in the header — so it goes through the same builder rather than hand-rolling its own.
+       */
+      headers: { ...buildHeaders(bookId), accept: "*/*" },
       signal: controller.signal,
     });
   } catch (error) {

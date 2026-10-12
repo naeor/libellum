@@ -32,6 +32,7 @@ import {
   sessionExpiryFrom,
 } from "../auth/session.js";
 import type { PrismaClient } from "../db.js";
+import { recordReferral } from "../collab/referral.js";
 import { createDefaultLedger } from "../ledger/bootstrap.js";
 import { badRequest, conflict, tooManyRequests, unauthorized } from "../lib/errors.js";
 
@@ -244,6 +245,36 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
 
       if (claimed.count !== 1) {
         throw badRequest("invite_used", "该邀请码已被使用。");
+      }
+
+      /**
+       * ⚠️ **A referral code leaves two traces, and both are written here, in the same transaction.**
+       *
+       * `referredByUserId` on the new account is *who invited me*; the reminder (when the generator
+       * allowed it) is what the newcomer actually sees on the collaborator screen for seven days.
+       *
+       * ⚠️ **Inside the transaction, because a half-recorded referral cannot be repaired**: an
+       * account created without its `referredByUserId`, or with one but no invitation marked used,
+       * is a state where "who invited whom" has two different answers depending on which table you
+       * ask. **`教训.md` §8.7 is about exactly that.**
+       *
+       * ⚠️ **A plain invitation leaves neither** — `createdByUserId` is what distinguishes a referral
+       * code from a batch-minted ticket, and this is where that distinction pays off.
+       */
+      if (invite.createdByUserId !== null) {
+        const generator = await tx.user.findUnique({
+          where: { id: invite.createdByUserId },
+          select: { displayName: true },
+        });
+
+        if (generator) {
+          await recordReferral(tx, {
+            newUserId: created.id,
+            generatorId: invite.createdByUserId,
+            allowsDirectCollaborator: invite.allowsDirectCollaborator,
+            generatorDisplayName: generator.displayName,
+          });
+        }
       }
 
       return created;

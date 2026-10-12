@@ -7,7 +7,6 @@ import {
 import type { FastifyInstance, FastifyRequest } from "fastify";
 
 import type { PrismaClient } from "../db.js";
-import { currentBookId } from "../ledger/access.js";
 import { badRequest, tooManyRequests } from "../lib/errors.js";
 import { TranscriptionRejected, type VoiceService } from "../voice/client.js";
 
@@ -119,11 +118,12 @@ export function registerVoiceRoutes(app: FastifyInstance, options: VoiceRouteOpt
        * message the user cannot act on. The server already knows which categories
        * this person has.
        *
-       * `currentBookId` rather than a hand-written query: it is the one place that
-       * decides which book "the" book is, and a second copy of that rule is how the
-       * two come to disagree.
+       * ⚠️ **The ledger comes from the request, and the request already proved the caller is a
+       * member of it** — see `requireBook`. That is what keeps the two from disagreeing: the
+       * ledger whose categories are read here is exactly the ledger the entry will be filed in,
+       * rather than whichever one the server happens to think "the" ledger is.
        */
-      const bookId = await currentBookId(prisma, request.currentUser!.id);
+      const bookId = request.book!.bookId;
 
       const categories = await prisma.category.findMany({
         where: { bookId },

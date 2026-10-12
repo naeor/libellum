@@ -3,6 +3,7 @@ import { useNavigate } from "react-router";
 
 import { useAuth } from "../auth/AuthProvider.js";
 import { ConfirmDialog } from "../components/ConfirmDialog.js";
+import { ReferralCodeSection } from "../components/ReferralCodeSection.js";
 import { DefaultAvatar } from "../components/DefaultAvatar.js";
 import { TabPage } from "../components/Layouts.js";
 import { APP_VERSION } from "../lib/version.js";
@@ -84,6 +85,16 @@ export function MePage(): React.JSX.Element {
           ))}
         </ul>
       </nav>
+
+      {/**
+        * ⚠️ **The account-level invitation code lives here, not on the ledger's collaboration
+        * screen** — the owner moved it: *"前者属于账号级功能，适合放在「账户」的相关设置中，
+        * 不需要占据当前账本的协作页面."* See `ReferralCodeSection` for why the two must never be
+        * confused with one another: one creates an account, the other joins a ledger.
+        */}
+      <div className="px-6 pt-6">
+        <ReferralCodeSection />
+      </div>
 
       <div className="px-6 py-8">
         <button

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * What version of the program this is.
  *
  * ⚠️ **The owner asked for a scheme and supplied it**: "我们现在假设当前版本 1.08.01（1表示这是
@@ -29,8 +29,15 @@
  * question that cost three rounds.
  */
 
-/** The version, as displayed. Bump the last part when behaviour changes. */
-export const APP_VERSION = "1.08.56";
+/**
+ * The version, as displayed. Bump the last part when behaviour changes.
+ *
+ * ⚠️ **The middle part moved from 08 to 09** on 2026-10-12: S8 (offline) is
+ * finished and this build is the first of **S9 (collaboration and multiple
+ * ledgers)**. That is the whole point of the middle segment — "which stage is
+ * this build from" is readable on screen, and the answer needs no lookup.
+ */
+export const APP_VERSION = "1.09.34";
 
 /**
  * When this bundle was built.

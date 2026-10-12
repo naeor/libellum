@@ -1,4 +1,21 @@
 import { EXPORT_COLUMNS, csvRow, parseCsv } from "@libellum/shared";
+
+/**
+ * ⚠️ **Find a column by its heading instead of counting positions.**
+ *
+ * The first version of these tests used literal indices (`row[4]` for the amount, `row[13]` for the
+ * export reference). Adding one column — 编号 — shifted every one of them, and **fifteen tests
+ * failed with messages that named the wrong problem** (`expected '支出' to be '-38.5'`).
+ *
+ * ⚠️ **A positional index encodes the column order into the test**, so the test breaks whenever the
+ * order changes even though nothing it was checking has changed. Looking the heading up means
+ * **inserting a column can only fail a test that is genuinely about the columns.**
+ */
+function columnIndex(header: string): number {
+  const index = EXPORT_COLUMNS.findIndex((column) => column.header === header);
+  if (index < 0) throw new Error(`导出列里没有「${header}」`);
+  return index;
+}
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 
 import { makeApp, prisma, resetDatabase, signUp, type LedgerMeta } from "./support.js";
@@ -132,7 +149,7 @@ describe("GET /export", () => {
     await addEntry(user, { amountCents: 3850 });
 
     const [, row] = parseCsv((await exportCsv(user)).body);
-    const amount = row?.[4];
+    const amount = row?.[columnIndex("金额")];
 
     expect(amount).toBe("-38.5");
     expect(Number(amount)).toBe(-38.5);
@@ -144,7 +161,7 @@ describe("GET /export", () => {
     await addEntry(user, { amountCents: 250000, kind: "income", categoryName: "工资" });
 
     const rows = parseCsv((await exportCsv(user)).body).slice(1);
-    const amounts = rows.map((row) => Number(row[4]));
+    const amounts = rows.map((row) => Number(row[columnIndex("金额")]));
 
     expect(amounts).toContain(-10);
     expect(amounts).toContain(2500);
@@ -161,7 +178,7 @@ describe("GET /export", () => {
     // The cell text must be preceded by an apostrophe, and the raw text must
     // never appear in a position a spreadsheet would evaluate.
     expect(raw).toContain(`'${attack.replace(/"/g, '""')}`.slice(0, 12));
-    expect(parseCsv(raw)[1]?.[8]).toBe(`'${attack}`);
+    expect(parseCsv(raw)[1]?.[columnIndex("备注")]).toBe(`'${attack}`);
   });
 
   it("names the export with an Out- reference and exposes it to the browser", async () => {
@@ -185,7 +202,7 @@ describe("GET /export", () => {
     const rows = parseCsv(body).slice(1);
 
     for (const row of rows) {
-      expect(row[13]).toBe(headers["x-libellum-file-ref"]);
+      expect(row[columnIndex("导出编号")]).toBe(headers["x-libellum-file-ref"]);
     }
   });
 
@@ -212,7 +229,7 @@ describe("GET /export", () => {
     const rows = parseCsv((await exportCsv(user, "?monthFrom=2026-09&monthTo=2026-09")).body).slice(1);
 
     expect(rows).toHaveLength(1);
-    expect(rows[0]?.[0]).toBe("2026-09-10");
+    expect(rows[0]?.[columnIndex("日期")]).toBe("2026-09-10");
   });
 
   it("offers a template with headings but no data", async () => {
@@ -280,12 +297,39 @@ describe("GET /export", () => {
 describe("POST /import", () => {
   const HEADERS = EXPORT_COLUMNS.map((column) => column.header);
 
+  /**
+   * ⚠️ **Column positions by name, for the same reason `columnIndex` exists.**
+   *
+   * These tests override individual cells by position (`row({ [at.amount]: "不是数字" })`), so inserting a
+   * column shifted every override onto the wrong field — and the failures read as *"the importer
+   * accepted a bad amount"* rather than *"the test edited the wrong cell."*
+   */
+  const at = {
+    date: columnIndex("日期"),
+    amount: columnIndex("金额"),
+    currency: columnIndex("币种"),
+    category: columnIndex("分类"),
+    note: columnIndex("备注"),
+    /** ⚠️ Separate from `note`: the tag list is its own column, and mixing the two silently broke
+     * the tag test while every other test still passed. */
+    tags: columnIndex("标签"),
+    fileId: columnIndex("流水编号"),
+  } as const;
+
   function file(rows: (string | number)[][]): string {
     return `\uFEFF${[csvRow(HEADERS), ...rows.map((row) => csvRow(row))].join("\r\n")}\r\n`;
   }
 
   function row(overrides: Partial<Record<number, string | number>> = {}): (string | number)[] {
     const base: (string | number)[] = [
+      /**
+       * ⚠️ **The 编号 column, deliberately empty.** Imported numbers are ignored — the server
+       * re-issues them — so a file that leaves this blank is exactly what a real user's file looks
+       * like. **The placeholder has to be here** because the rest of the array is positional:
+       * adding the column without it shifted every value by one, and fifteen tests failed at once
+       * with symptoms like `expected '支出' to be '-38.5'`.
+       */
+      "",
       "2026-10-10",
       "12:30",
       "Asia/Shanghai",
@@ -309,7 +353,7 @@ describe("POST /import", () => {
 
   it("imports a well-formed file", async () => {
     const user = await fixture("importer");
-    const result = await importCsv(user, file([row(), row({ 0: "2026-10-09" })]));
+    const result = await importCsv(user, file([row(), row({ [at.date]: "2026-10-09" })]));
 
     expect(result.status).toBe(200);
     expect(result.body["ok"]).toBe(true);
@@ -325,7 +369,7 @@ describe("POST /import", () => {
 
   it("records the import with its counts", async () => {
     const user = await fixture("importer");
-    await importCsv(user, file([row(), row({ 0: "2026-10-09" })]));
+    await importCsv(user, file([row(), row({ [at.date]: "2026-10-09" })]));
 
     const logs = await prisma.importLog.findMany();
     expect(logs).toHaveLength(1);
@@ -337,7 +381,7 @@ describe("POST /import", () => {
 
   it("writes nothing at all when one row is wrong, and says which line", async () => {
     const user = await fixture("importer");
-    const result = await importCsv(user, file([row(), row({ 4: "不是数字" }), row({ 0: "2026-13-01" })]));
+    const result = await importCsv(user, file([row(), row({ [at.amount]: "不是数字" }), row({ [at.date]: "2026-13-01" })]));
 
     expect(result.body["ok"]).toBe(false);
     expect(result.body["importedCount"]).toBe(0);
@@ -353,7 +397,7 @@ describe("POST /import", () => {
 
   it("names the column and the reason", async () => {
     const user = await fixture("importer");
-    const result = await importCsv(user, file([row({ 5: "XYZ" })]));
+    const result = await importCsv(user, file([row({ [at.currency]: "XYZ" })]));
 
     const errors = result.body["errors"] as { line: number; column: string; message: string }[];
     expect(errors[0]?.column).toBe("币种");
@@ -362,7 +406,7 @@ describe("POST /import", () => {
 
   it("refuses a category that does not exist rather than inventing one", async () => {
     const user = await fixture("importer");
-    const result = await importCsv(user, file([row({ 6: "不存在的分类" })]));
+    const result = await importCsv(user, file([row({ [at.category]: "不存在的分类" })]));
 
     expect(result.body["ok"]).toBe(false);
     expect(await prisma.transaction.count()).toBe(0);
@@ -370,7 +414,7 @@ describe("POST /import", () => {
 
   it("is idempotent: the same file twice changes nothing the second time", async () => {
     const user = await fixture("importer");
-    const csv = file([row(), row({ 0: "2026-10-09" })]);
+    const csv = file([row(), row({ [at.date]: "2026-10-09" })]);
 
     const first = await importCsv(user, csv);
     const second = await importCsv(user, csv);
@@ -386,12 +430,12 @@ describe("POST /import", () => {
     const user = await fixture("importer");
     const shared = crypto.randomUUID();
 
-    const first = await importCsv(user, file([row({ 11: shared })]));
+    const first = await importCsv(user, file([row({ [at.fileId]: shared })]));
     expect(first.body["importedCount"]).toBe(1);
 
     // A different file — different bytes, so not caught by the fingerprint —
     // that nevertheless carries a row we already have.
-    const second = await importCsv(user, file([row({ 11: shared, 9: "改了备注" })]));
+    const second = await importCsv(user, file([row({ [at.fileId]: shared, [at.note]: "改了备注" })]));
 
     expect(second.body["importedCount"]).toBe(0);
     expect(second.body["skippedCount"]).toBe(1);
@@ -402,7 +446,7 @@ describe("POST /import", () => {
   it("does not duplicate a row twice inside one file", async () => {
     const user = await fixture("importer");
     const shared = crypto.randomUUID();
-    const result = await importCsv(user, file([row({ 11: shared }), row({ 11: shared, 0: "2026-10-09" })]));
+    const result = await importCsv(user, file([row({ [at.fileId]: shared }), row({ [at.fileId]: shared, [at.date]: "2026-10-09" })]));
 
     expect(result.body["importedCount"]).toBe(1);
     expect(result.body["skippedCount"]).toBe(1);
@@ -464,7 +508,7 @@ describe("POST /import", () => {
 
   it("creates tags the file mentions", async () => {
     const user = await fixture("importer");
-    const result = await importCsv(user, file([row({ 9: "出差 可报销" })]));
+    const result = await importCsv(user, file([row({ [at.tags]: "出差 可报销" })]));
 
     expect(result.body["ok"]).toBe(true);
     expect((await prisma.tag.findMany()).map((tag) => tag.name).sort()).toEqual(["出差", "可报销"]);
@@ -490,8 +534,8 @@ describe("a full round trip", () => {
     // The file must carry the amount a person would recognise.
     const jpyRow = parseCsv(exported)
       .slice(1)
-      .find((row) => row[5] === "JPY");
-    expect(jpyRow?.[4]).toBe("-800");
+      .find((row) => row[columnIndex("币种")] === "JPY");
+    expect(jpyRow?.[columnIndex("金额")]).toBe("-800");
 
     const destination = await fixture("destination");
     const result = await importCsv(destination, exported);

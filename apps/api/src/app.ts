@@ -4,13 +4,17 @@ import { MAX_RECOGNIZE_BYTES, MAX_RECOGNIZE_IMAGES } from "@libellum/shared";
 import rateLimit from "@fastify/rate-limit";
 import Fastify, { type FastifyInstance, type FastifyServerOptions } from "fastify";
 
-import { createRequireAuth } from "./auth/guard.js";
+import { createRequireAuth, createRequireBook } from "./auth/guard.js";
 import { LoginThrottle, type LoginThrottleOptions } from "./auth/login-throttle.js";
 import type { PrismaClient } from "./db.js";
 import { forbidden, registerErrorHandlers } from "./lib/errors.js";
 import { OcrService } from "./ocr/client.js";
 import { registerAuthRoutes } from "./routes/auth.js";
+import { registerBooksRoutes } from "./routes/books.js";
 import { registerClassificationRoutes } from "./routes/classification.js";
+import { registerCollabRoutes } from "./routes/collab.js";
+import { registerNotificationRoutes } from "./routes/notifications.js";
+import { registerShareRoutes } from "./routes/share.js";
 import { registerExportRoutes } from "./routes/export.js";
 import { registerHealthRoute, type HealthDeps } from "./routes/health.js";
 import { registerImportRoutes } from "./routes/import.js";
@@ -166,14 +170,83 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       cookieSecure: options.cookieSecure ?? false,
     });
 
-    registerLedgerRoutes(app, { prisma: options.prisma, requireAuth });
-    registerTransactionRoutes(app, { prisma: options.prisma, requireAuth });
-    registerStatsRoutes(app, { prisma: options.prisma, requireAuth });
-    registerClassificationRoutes(app, { prisma: options.prisma, requireAuth });
-    registerRecognizeRoutes(app, { requireAuth, ocr });
-    registerVoiceRoutes(app, { requireAuth, prisma: options.prisma, voice });
-    registerExportRoutes(app, { prisma: options.prisma, requireAuth });
-    registerImportRoutes(app, { prisma: options.prisma, requireAuth });
+    /**
+     * ⚠️ **Ledgers themselves are registered with plain auth, and that is not a weaker check.**
+     *
+     * Every other route answers a question *inside* one ledger, so it can be guarded by asking
+     * whether the caller may be in the ledger they named. These routes are how a caller discovers
+     * which ledgers exist — a request asking "which books do I have" has no book to name, and
+     * requiring one would be a circle. Each of them checks `book_members` for the specific book it
+     * touches, and creating one grants `editor` explicitly.
+     */
+    registerBooksRoutes(app, { prisma: options.prisma, requireAuth });
+
+    /**
+     * ⚠️ **Collaborators and notifications are registered with plain auth.**
+     *
+     * A collaborator list is account-level by definition — the owner's correction — so it must work
+     * with no ledger in hand (he opens it from the home page, where "当前账本为空"). The routes that
+     * *do* need a ledger — sending an invitation into one — resolve and check it themselves, so the
+     * guard is not weaker, it is simply not the place where that question is asked.
+     */
+    registerCollabRoutes(app, { prisma: options.prisma, requireAuth });
+    registerNotificationRoutes(app, { prisma: options.prisma, requireAuth });
+
+    /**
+     * ⚠️ **Share links are registered with plain auth, and each route resolves its own ledger.**
+     * They live on a prefix whose ledger arrives in the body or in the token rather than in a
+     * header — and `/share/:token` is the one route that *cannot* name a ledger, because the person
+     * holding a link does not know which ledger it opens yet. That is the whole point of a link.
+     */
+    registerShareRoutes(app, { prisma: options.prisma, requireAuth });
+
+    /**
+     * ⚠️ **Two guards, and which one a route gets is the whole permission model.**
+     *
+     * `requireAuth` asks who is calling. It is for routes that are not *about* a particular
+     * ledger — creating one, listing them, signing in — so there is nothing else to check.
+     *
+     * `requireBook` asks whether the caller may touch **the ledger they named**, which is what
+     * makes `book_members` the only source of permission. It comes in two strengths:
+     *
+     * * **read** — membership is enough, and `viewer` is a full member;
+     * * **write** — the role is checked too, so a viewer's write fails **on the server** rather
+     *   than only in the UI. The owner asked for exactly that: *"即使 viewer 通过某种方式发起了
+     *   更改，服务器的数据也不会被污染."*
+     *
+     * ⚠️ **Every ledger-scoped route must be registered with one of these.** A route that reads
+     * `request.book!.bookId` while registered with the plain auth guard would throw at runtime,
+     * which is why the two changed together.
+     */
+    const requireBookRead = createRequireBook(options.prisma, requireAuth, { write: false });
+    const requireBookWrite = createRequireBook(options.prisma, requireAuth, { write: true });
+
+    /**
+     * ⚠️ **The ledger's own metadata is registered as a *write* route, which looks wrong and is
+     * deliberate.** It sits at the boundary: reading it needs only membership, but the moment
+     * it starts carrying "which ledger is this and what may I do here", a viewer's copy would be
+     * identical to an editor's. Until that distinction is drawn, treating it as a write route
+     * keeps the two from silently diverging — and the only caller it has today is a full
+     * editor.
+     */
+    registerLedgerRoutes(app, {
+      prisma: options.prisma,
+      requireAuth: requireBookWrite,
+      /**
+       * ⚠️ **The history read is handed the *read* guard**, because a viewer must be able to see who
+       * changed what — the owner's rule is that a viewer sees everything except editing. Passing the
+       * write guard for the whole module made `/ledger/history` answer **403 to every viewer**, which
+       * a test caught rather than a review.
+       */
+      requireRead: requireBookRead,
+    });
+    registerTransactionRoutes(app, { prisma: options.prisma, requireAuth: requireBookWrite });
+    registerStatsRoutes(app, { prisma: options.prisma, requireAuth: requireBookRead });
+    registerClassificationRoutes(app, { prisma: options.prisma, requireAuth: requireBookWrite });
+    registerRecognizeRoutes(app, { requireAuth: requireBookRead, ocr });
+    registerVoiceRoutes(app, { requireAuth: requireBookWrite, prisma: options.prisma, voice });
+    registerExportRoutes(app, { prisma: options.prisma, requireAuth: requireBookWrite });
+    registerImportRoutes(app, { prisma: options.prisma, requireAuth: requireBookWrite });
   }
 
   return app;

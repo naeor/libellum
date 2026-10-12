@@ -1,6 +1,7 @@
 import { createAsyncStoragePersister } from "@tanstack/query-async-storage-persister";
 import type { Query } from "@tanstack/react-query";
 
+import { scopedKey } from "./scope.js";
 import { readValue, removeValue, writeValue } from "./storage.js";
 
 /**
@@ -149,7 +150,21 @@ export const cachePersister = createAsyncStoragePersister({
     }
   },
   storage: {
-    getItem: (key) => readValue<string>(key),
+    /**
+     * ⚠️ **The key carries the account and the ledger, and this is where that happens.**
+     *
+     * The persister's own `key` is fixed when it is constructed — before any account is known — so
+     * the scope cannot live there. It is applied here instead, on every read and every write.
+     *
+     * **What this prevents**: two accounts on one device sharing a query cache, or one account's
+     * two ledgers sharing one. Without it, `transactions → {month}` from the last ledger would be
+     * handed to the next one **before the server was asked anything**, and the screen would show
+     * the wrong ledger's rows for as long as that took.
+     *
+     * ⚠️ **The scope is restored synchronously at startup** (see `restoreOfflineScopeSync`), which
+     * is what makes this correct on the very first read rather than only after a round trip.
+     */
+    getItem: (key) => readValue<string>(scopedKey(key)),
     /**
      * ⚠️ **Merge, rather than replace.**
      *
@@ -173,7 +188,11 @@ export const cachePersister = createAsyncStoragePersister({
      * wins for any key it does contain.
      */
     setItem: (key, value) => {
-      void writeMerged(key, value);
+      /**
+       * ⚠️ **The same scope as `getItem`, or the two would disagree** — a write to the unscoped
+       * key next to a read from the scoped one is a cache that never survives a reload.
+       */
+      void writeMerged(scopedKey(key), value);
     },
     /**
      * ⚠️ **Never called by us, and inert if the library calls it.**

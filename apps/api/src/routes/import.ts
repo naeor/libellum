@@ -16,7 +16,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 
 import type { PrismaClient } from "../db.js";
 import { badRequest } from "../lib/errors.js";
-import { currentBookId } from "../ledger/access.js";
+import { allocateTransactionSeq } from "../ledger/transactionSeq.js";
 
 /**
  * Import a CSV of entries.
@@ -107,7 +107,7 @@ export function registerImportRoutes(app: FastifyInstance, options: ImportRouteO
 
   app.post("/api/v1/import", { preHandler: requireAuth }, async (request, reply) => {
     const userId = request.currentUser!.id;
-    const bookId = await currentBookId(prisma, userId);
+    const bookId = request.book!.bookId;
 
     if (!request.isMultipart()) {
       throw badRequest("expected_multipart", "请以文件上传的方式提交。");
@@ -500,10 +500,25 @@ export function registerImportRoutes(app: FastifyInstance, options: ImportRouteO
     }
 
     await prisma.$transaction(async (tx) => {
+      /**
+       * ⚠️ **Imported entries get numbers too, and they get them here — from the server.**
+       *
+       * The owner's rule is that **every** entry is numbered by the server, not only the ones typed
+       * in the app: *"所有的账目都是在服务器同步时，由服务器给予的编号."* An import is a way entries
+       * reach the server, so the same allocation runs.
+       *
+       * ⚠️ **One allocation per row, inside the loop, rather than one reserved block.** A block would
+       * be faster, but it would also mean **an import that fails half-way leaves a gap in the
+       * numbers** — and a gap is exactly what "these numbers are never reused" is meant to explain.
+       * The rows are ordered by the file's own order, so the numbers follow it.
+       */
       for (const item of toInsert) {
+        const seq = await allocateTransactionSeq(tx, bookId);
+
         await tx.transaction.create({
           data: {
             id: item.id,
+            seq,
             bookId,
             userId,
             categoryId: item.categoryId,

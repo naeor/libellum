@@ -17,12 +17,14 @@ required with a third party — just your own server and your own data.
 
 | Area | State |
 |---|---|
-| Accounts | Username + password, invite-only registration, one-time recovery code (no email needed), one active session per account |
+| Accounts | Username + password, invite-only registration, one-time recovery code (no email needed), several devices per account (one session each; signing out affects only that device) |
 | Recording | Income and expenses, categories, payment methods, tags, multiple currencies per ledger, notes, exact time and time zone |
 | Detail screen | Per-currency monthly totals, income/expense switch, day-grouped list, filters, soft delete with a 5-second undo |
 | Statistics | Trend, category share, period comparison, year overview, calendar heatmap — all drawn as hand-written SVG |
 | Screenshot recognition | Upload a payment screenshot, read the fields locally with OCR, confirm or correct, save. Images are never written to disk and never leave the server |
-| Not built yet | Export / import (in progress), Chinese-English switch, light theme picker, public read-only demo account, offline writing |
+| Offline | **Recording, editing, deleting, reading history and statistics all work with no signal**; the queue drains by itself when the network returns, idempotently; two devices that changed the same entry get the non-conflicting fields merged and are asked only about the fields that really disagree |
+| Export / import | CSV / XLSX out, CSV back in, with `In-` / `Out-` traceable references |
+| Not built yet | Chinese-English switch, dark mode and theme-colour picker, collaboration and multiple books, public read-only demo account, public deployment |
 
 ## How data stays traceable
 
@@ -38,7 +40,7 @@ Every row also records where it came from (`source_ref`) and which import brough
 record how many rows arrived against how many were already present. The shape is enforced by
 database CHECK constraints rather than by convention, so a reference that cannot be traced cannot
 be written in the first place. Details in
-[docs/S6-导出与导入-设计决定.md](docs/S6-导出与导入-设计决定.md).
+[docs/档案/S6-导出与导入-设计决定.md](docs/档案/S6-导出与导入-设计决定.md).
 
 ## Tech stack
 
@@ -55,11 +57,12 @@ be written in the first place. Details in
 
 | Document | What it covers |
 |---|---|
+| [docs/交接.md](docs/交接.md) | Handover: where to start, how to run it, where it stands, what is next |
 | [docs/PLAN.md](docs/PLAN.md) | Technical plan: architecture, data model, API, security, deployment, cost |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Stage-by-stage build plan with acceptance criteria |
 | [docs/DEVLOG.md](docs/DEVLOG.md) | Development log: every change, decision and its evidence |
 | [docs/BACKLOG.md](docs/BACKLOG.md) | Deferred ideas, and the ones deliberately rejected |
-| [docs/S6-导出与导入-设计决定.md](docs/S6-导出与导入-设计决定.md) | Export/import decisions, including the reference scheme above |
+| [docs/档案/S6-导出与导入-设计决定.md](docs/档案/S6-导出与导入-设计决定.md) | Export/import decisions, including the reference scheme above |
 
 ## Privacy
 

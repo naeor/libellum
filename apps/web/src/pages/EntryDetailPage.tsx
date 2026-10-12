@@ -1,4 +1,10 @@
-import { decimalsFor, CURRENCIES, MAX_TAGS_PER_TRANSACTION, type Currency } from "@libellum/shared";
+import {
+  decimalsFor,
+  CURRENCIES,
+  formatTransactionNumber,
+  MAX_TAGS_PER_TRANSACTION,
+  type Currency,
+} from "@libellum/shared";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 
@@ -452,6 +458,26 @@ export function EntryDetailPage(): React.JSX.Element {
 
             <dt className="text-muted">备注</dt>
             <dd className="text-right text-ink">{data.note ?? "无"}</dd>
+
+            {/**
+              * ⚠️ **The number appears here and nowhere else.**
+              *
+              * The owner's rule: *"在明细界面不会直接这些编号，但点进每一笔账目之后……写出编号多少多少."*
+              * So it is deliberately **absent from the list** — a list is scanned by amount and time,
+              * and a row of `#0000xx` would be noise there — while the detail screen is where somebody
+              * asks "which entry is this?".
+              *
+              * ⚠️ **Hidden when the entry has no number, rather than shown as blank.** An entry typed
+              * offline has not reached the server, so it genuinely has none yet; rendering
+              * `编号 —` would read as "this entry has no number", which is true and confusing.
+              * **A row that is simply not there says the same thing without implying a fault.**
+              */}
+            {data.seq === undefined ? null : (
+              <>
+                <dt className="text-muted">编号</dt>
+                <dd className="text-right font-mono text-ink">{formatTransactionNumber(data.seq)}</dd>
+              </>
+            )}
           </dl>
 
           <section className="flex flex-col gap-2">

@@ -2,6 +2,9 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import App from "./App.js";
+import { primeBookId } from "./lib/api.js";
+import { currentBookId, restoreCurrentBook, subscribeCurrentBook } from "./lib/currentBook.js";
+import { restoreOfflineScopeSync } from "./lib/offline/scope.js";
 import { requestPersistentStorage } from "./lib/offline/persistence.js";
 import { registerServiceWorker } from "./lib/offline/worker.js";
 import "./index.css";
@@ -36,6 +39,37 @@ void registerServiceWorker();
  * would rather show once.
  */
 void requestPersistentStorage();
+
+/**
+ * ⚠️ **The one place the ledger and the request header are joined.**
+ *
+ * `currentBook.ts` owns the fact, `api.ts` owns the header it feeds, and neither imports the
+ * other — a cycle between them would be a module-initialisation order bug, which is the kind
+ * that only ever reproduces on somebody else's device. Wiring them here keeps both honest and
+ * makes the dependency visible in one line.
+ *
+ * ⚠️ **Before the first render, and not awaited — but it fills a synchronous mirror.** Every
+ * ledger-scoped request names its ledger, and the area a person was last in is remembered on
+ * the device so a reload does not lose it. If the value is already in memory the header is set
+ * before React mounts; if it is not, the server refuses the request rather than filing it under
+ * the wrong ledger.
+ */
+primeBookId(currentBookId());
+subscribeCurrentBook(() => {
+  primeBookId(currentBookId());
+});
+
+/**
+ * ⚠️ **The offline scope is restored first, and synchronously, because the persisted query cache
+ * is keyed by it.**
+ *
+ * The cache is read once, early. If the scope were still empty at that moment, the read would land
+ * on the unscoped key — **another account's copy, or none**. This is why the scope is remembered
+ * as a value that `storage.ts` has in its synchronous mirror rather than only in IndexedDB.
+ */
+restoreOfflineScopeSync();
+
+void restoreCurrentBook();
 
 createRoot(container).render(
   <StrictMode>

@@ -27,6 +27,19 @@ import { fileRefSchema } from "./refs.js";
  * "this is the file you exported on such a day" instead of guessing.
  */
 export const EXPORT_COLUMNS = [
+  /**
+   * **The number the person reads: `#000001`.**
+   *
+   * ⚠️ **In the file as a value, and as text.** `A000128` is what a spreadsheet would otherwise do
+   * to `#000128`: `#` is not a formula starter (only `=`, `+`, `-`, `@` are), but a leading `#` in a
+   * cell is easy to lose to formatting, and **the one thing a written-down number must survive is
+   * being read back.** See `xlsx.ts` — this column is written as an explicit string cell.
+   *
+   * ⚠️ **Read-only on import.** The owner's rule is that numbers are assigned by the server, so an
+   * imported file's numbering is **ignored and re-issued** — see `TEMPLATE_COLUMN_KEYS`, which
+   * deliberately omits this column so nobody is asked to fill it in.
+   */
+  { key: "displayNumber", header: "编号" },
   { key: "occurredLocalDate", header: "日期" },
   { key: "occurredTime", header: "时间" },
   { key: "occurredTz", header: "时区" },

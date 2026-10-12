@@ -1,6 +1,7 @@
 import type { Transaction, TransactionListResponse } from "@libellum/shared";
 
 import { logOffline } from "./diagnostics.js";
+import { scopedKey } from "./scope.js";
 import { readSnapshot, readValue, writeValue } from "./storage.js";
 
 /**
@@ -320,14 +321,22 @@ export async function readLocalTransactions(): Promise<readonly Transaction[]> {
  * read when they are needed, with nothing in between that can decide to drop them.**
  *
  * ```
- * ledger-months  →  { "2026-10": [ …entries… ], "2026-09": [ … ], … }
+ * ledger-months:<userId>:<bookId>  →  { "2026-10": [ …entries… ], "2026-09": [ … ], … }
  * ```
+ *
+ * ⚠️ **The key carries both the account and the ledger**, and the account half is the owner's
+ * correction: *"同一台设备上还可能切换不同账号。如果只有 bookId，缓存读取、退出登录和身份失效时
+ * 仍可能出现数据暴露或混用风险."* Without it, **signing in as somebody else on the same phone
+ * would show them the previous person's ledger** — out of IndexedDB, with no server involved to
+ * refuse it. See `offline/scope.ts`.
  *
  * No expiry, no eviction, no dehydrate/hydrate, no throttled whole-file rewrite. **A month is written
  * once when it is downloaded and stays until something deliberately removes it** — which is exactly what
  * "downloaded for offline use" means.
  */
-export const LEDGER_MONTHS_KEY = "ledger-months";
+export function ledgerMonthsKey(): string {
+  return scopedKey("ledger-months");
+}
 
 /**
  * Which entries have not reached the server, and which were deleted on this device.
@@ -348,8 +357,13 @@ export const LEDGER_MONTHS_KEY = "ledger-months";
  * Its stored copy is exactly what round 3 needs to show the user *what they deleted* while asking
  * whether the delete should stand. **Keeping it costs a few hundred bytes; losing it costs the
  * comparison.**
+ *
+ * ⚠️ **Scoped like the months above, and for the same reason**: a mark says "this device has
+ * unsent work for this entry", which is only meaningful inside one account and one ledger.
  */
-export const LEDGER_MARKS_KEY = "ledger-marks";
+export function ledgerMarksKey(): string {
+  return scopedKey("ledger-marks");
+}
 
 /**
  * What this device intends for one entry — **the only record of unsent work, and the source of its colour.**
@@ -463,11 +477,11 @@ export async function readMarks(): Promise<LedgerMarks> {
    * iPad reported `read ledger-marks — 键不存在` while marks had been written there, and **a device with no
    * marks cannot know what its owner asked to delete.**
    */
-  const cached = readSnapshot<LedgerMarks>(LEDGER_MARKS_KEY);
+  const cached = readSnapshot<LedgerMarks>(ledgerMarksKey());
 
   if (cached !== null && typeof cached === "object") return cached;
 
-  const stored = await readOwn<LedgerMarks>(LEDGER_MARKS_KEY);
+  const stored = await readOwn<LedgerMarks>(ledgerMarksKey());
 
   return stored === null || typeof stored !== "object" ? {} : stored;
 }
@@ -487,7 +501,7 @@ export async function clearAllMarks(): Promise<void> {
   const before = await readMarks();
   const hadConflict = Object.values(before).some((mark) => mark.conflict !== undefined);
 
-  await writeOwn(LEDGER_MARKS_KEY, {});
+  await writeOwn(ledgerMarksKey(), {});
 
   publishPending(new Set());
   publishDeleted(new Set());
@@ -544,7 +558,7 @@ export function publishConflicts(next: readonly ConflictRecord[]): void {
 export async function setConflict(id: string, conflict: ConflictRecord): Promise<void> {
   const all = await readMarks();
 
-  await writeOwn(LEDGER_MARKS_KEY, { ...all, [id]: { ...all[id], pending: true, conflict } });
+  await writeOwn(ledgerMarksKey(), { ...all, [id]: { ...all[id], pending: true, conflict } });
 
   publishConflicts(conflictsFromMarks({ ...all, [id]: { ...all[id], pending: true, conflict } }));
 }
@@ -570,14 +584,14 @@ export async function setMark(id: string, mark: EntryMark | null): Promise<void>
    * memory yet the marks have never been touched in this session, so an empty object is the truth** — and the
    * first `writeOwn` will persist it together with the new mark.
    */
-  const cached = readSnapshot<LedgerMarks>(LEDGER_MARKS_KEY);
+  const cached = readSnapshot<LedgerMarks>(ledgerMarksKey());
   const all: LedgerMarks = cached ?? await readMarks();
   const next = { ...all };
 
   if (mark === null || (mark.pending !== true && mark.deleted !== true)) delete next[id];
   else next[id] = mark;
 
-  await writeOwn(LEDGER_MARKS_KEY, next);
+  await writeOwn(ledgerMarksKey(), next);
 
   /**
    * ⚠️ **The stored marks and the in-memory set are updated together**, so the row colouring on
@@ -670,7 +684,7 @@ async function writeOwn(key: string, value: unknown): Promise<void> {
 
 /** Read the stored months. Never throws: an unreadable store is an empty one. */
 export async function readStoredMonths(): Promise<StoredMonths> {
-  const stored = await readOwn<StoredMonths>(LEDGER_MONTHS_KEY);
+  const stored = await readOwn<StoredMonths>(ledgerMonthsKey());
 
   return stored === null || typeof stored !== "object" ? {} : stored;
 }
@@ -691,7 +705,7 @@ export async function storeMonth(month: string, entries: readonly Transaction[])
   for (const entry of all[month] ?? []) {
     if (marks[entry.id]?.pending === true || marks[entry.id]?.deleted === true) merged.set(entry.id, entry);
   }
-  await writeOwn(LEDGER_MONTHS_KEY, { ...all, [month]: [...merged.values()] });
+  await writeOwn(ledgerMonthsKey(), { ...all, [month]: [...merged.values()] });
 }
 
 /**
@@ -707,14 +721,14 @@ export async function upsertEntry(entry: Transaction): Promise<void> {
 
   const without = existing.filter((candidate) => candidate.id !== entry.id);
 
-  await writeOwn(LEDGER_MONTHS_KEY, { ...all, [month]: [...without, entry] });
+  await writeOwn(ledgerMonthsKey(), { ...all, [month]: [...without, entry] });
 }
 
 /**
  * Every entry the device holds, from every stored month.
  *
  * ⚠️ **Locally deleted entries are left out**, because the screen must not show them. They stay in
- * storage for the conflict comparison in round 3 — see `LEDGER_MARKS_KEY` — so the filtering happens
+ * storage for the conflict comparison in round 3 — see `ledgerMarksKey()` — so the filtering happens
  * here, at the one place everything reads through.
  */
 export async function readStoredEntries(): Promise<readonly Transaction[]> {
@@ -792,7 +806,7 @@ export async function reconcileMarks(serverIds: ReadonlySet<string>): Promise<vo
 
   if (cleared === 0) return;
 
-  await writeOwn(LEDGER_MARKS_KEY, next);
+  await writeOwn(ledgerMarksKey(), next);
   publishPending(pendingFromMarks(next));
 
   await logOffline("DIAGNOSTIC:marks-reconciled", `清除 ${String(cleared)} 个已同步的标记`);

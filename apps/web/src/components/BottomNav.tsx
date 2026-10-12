@@ -1,3 +1,4 @@
+import { useLedger } from "../lib/queries.js";
 import { useRef, type ReactNode } from "react";
 import { Link } from "react-router";
 
@@ -83,15 +84,43 @@ interface Tab {
   readonly label: string;
   readonly icon: (props: IconProps) => React.JSX.Element;
   readonly primary?: boolean;
+  /**
+   * ⚠️ **The label depends on how many people are in the current ledger.**
+   *
+   * The owner's rule: *"只有自己一位成员时，显示「账本」。有两位或以上成员时，显示「协作」。……
+   * 这两个名称对应的实际上是**同一个功能空间**，页面的整体设计语言保持一致，
+   * 但展示重点和内容布局根据成员数量自动变化."*
+   *
+   * ⚠️ **A flag rather than two entries with two routes.** Two tabs pointing at the same page would
+   * mean the navigation had two states to keep in step, and **the day they disagree is the day the
+   * bar shows 协作 while the page shows one member.**
+   */
+  readonly labelFromMembers?: boolean;
 }
 
 export const TABS: readonly Tab[] = [
   { to: "/", label: "明细", icon: ListIcon },
   { to: "/stats", label: "分析", icon: ChartIcon },
   { to: "/add", label: "记账", icon: PlusIcon, primary: true },
-  { to: "/collaborators", label: "协作者", icon: PeopleIcon },
+  /** ⚠️ The fourth slot is the ledger itself — *"账本"* alone, *"协作"* with others. */
+  { to: "/ledger", label: "账本", icon: PeopleIcon, labelFromMembers: true },
   { to: "/me", label: "账户", icon: PersonIcon },
 ];
+
+/**
+ * The fourth slot's label, from the member count.
+ *
+ * ⚠️ **One member means 账本, two or more means 协作** — *"有两位或以上成员时"*. Written as a
+ * function so the rule has **one** implementation: the page will need the same answer when it
+ * decides how prominent to make the member area.
+ *
+ * ⚠️ **While the count is unknown it says 账本**, which is the quieter of the two. Guessing 协作
+ * would promise a collaboration screen to somebody who is alone — **and the wrong guess in that
+ * direction is the one a person notices.**
+ */
+export function ledgerTabLabel(memberCount: number | undefined): string {
+  return memberCount !== undefined && memberCount >= 2 ? "协作" : "账本";
+}
 
 interface EntryAction {
   readonly label: string;
@@ -196,6 +225,11 @@ export function BottomNav({
 }): React.JSX.Element {
   const open = cards.expanded;
   const pickerRef = useRef<HTMLInputElement | null>(null);
+  /**
+   * ⚠️ **Read here so the fourth slot can name itself.** Shared with whatever screen is open through
+   * the query cache, so this is not an extra request — see `ledgerTabLabel`.
+   */
+  const ledger = useLedger();
   return (
     // Not `fixed`: the frame that owns this bar is the full dynamic viewport
     // height and only scrolls its middle region, so the bar never ends up
@@ -333,6 +367,12 @@ export function BottomNav({
         {TABS.map((tab) => {
           const isActive = tab.to === active;
           const Icon = tab.icon;
+          /**
+           * ⚠️ **The fourth label is resolved here, from the ledger already in the query cache.**
+           * `useLedger` is TanStack Query, so the ledger screen's own fetch is shared rather than
+           * repeated — the bar costs no extra request.
+           */
+          const label = tab.labelFromMembers === true ? ledgerTabLabel(ledger.data?.book.memberCount) : tab.label;
 
           if (tab.primary === true) {
             return (
@@ -375,7 +415,7 @@ export function BottomNav({
                 }`}
               >
                 <Icon className="size-6" />
-                {tab.label}
+                {label}
               </button>
             </li>
           );

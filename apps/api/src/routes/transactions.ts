@@ -13,11 +13,12 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 
 import type { PrismaClient } from "../db.js";
 import {
-  currentBookId,
   resolveCategoryId,
   resolvePaymentMethodId,
   resolveTagIds,
 } from "../ledger/access.js";
+import { allocateTransactionSeq } from "../ledger/transactionSeq.js";
+import { diffEntry, recordEvent } from "../ledger/events.js";
 import {
   appendHistory,
   asArray,
@@ -49,6 +50,8 @@ const TRANSACTION_INCLUDE = {
 
 interface TransactionRow {
   id: string;
+  /** ⚠️ The number a person reads (`#000001`). Server-assigned; no request schema accepts it. */
+  seq: number;
   kind: TransactionKind;
   amountCents: bigint;
   currency: string;
@@ -192,6 +195,12 @@ function bodyFields(body: Record<string, unknown>): Record<string, unknown> {
 function toDto(row: TransactionRow): TransactionDto {
   return {
     id: row.id,
+    /**
+     * ⚠️ **The number, straight from the column — never re-derived here.** Recomputing it as
+     * "position in the list" would change a number the user has already read, and `教训.md` §8.12 is
+     * about exactly that: one fact implemented in two places comes to disagree with itself.
+     */
+    seq: row.seq,
     kind: row.kind,
     // Stored as bigint, handed out as a number: the amount ceiling in the
     // shared schema keeps every value inside the safe integer range.
@@ -268,7 +277,7 @@ export function registerTransactionRoutes(
   app.post("/api/v1/transactions", { preHandler: requireAuth }, async (request, reply) => {
     const body = createTransactionSchema.parse(request.body);
     const userId = request.currentUser!.id;
-    const bookId = await currentBookId(prisma, userId);
+    const bookId = request.book!.bookId;
 
     // Idempotency, first pass: a retried upload finds the entry it already
     // created and gets it back instead of a duplicate.
@@ -307,9 +316,43 @@ export function registerTransactionRoutes(
     };
 
     try {
-      const created = await prisma.transaction.create({
-        data: { ...data, tags: { create: tagIds.map((tagId) => ({ tagId })) } },
-        include: TRANSACTION_INCLUDE,
+      /**
+       * ⚠️ **The number is allocated inside the same transaction that inserts the entry**, and that
+       * is not a detail — see `allocateTransactionSeq`. Called outside, the row lock is released
+       * before the insert and two concurrent entries for one ledger can be handed the same number.
+       *
+       * ⚠️ **This is also why an entry created offline has no number**: nothing here runs until the
+       * entry reaches the server. The owner's rule — *"所有的编号都由服务器统一分配"* — falls out of
+       * the placement rather than being enforced by a separate check.
+       */
+      const created = await prisma.$transaction(async (tx) => {
+        const seq = await allocateTransactionSeq(tx, bookId);
+
+        const row = await tx.transaction.create({
+          data: {
+            ...data,
+            /** ⚠️ Server-assigned. No request schema has a `seq` field, so a client cannot set it. */
+            seq,
+            tags: { create: tagIds.map((tagId) => ({ tagId })) },
+          },
+          include: TRANSACTION_INCLUDE,
+        });
+
+        /**
+         * ⚠️ **Recorded in the same transaction as the insert**, so the ledger can never show an
+         * entry whose creation nobody performed — or a creation for an entry that was rolled back.
+         * The owner's example line: *"11:04，naeor 添加了 #000129 超市购物记录."*
+         */
+        await recordEvent(tx, {
+          bookId,
+          transactionId: row.id,
+          transactionSeq: row.seq,
+          actorId: userId,
+          actorName: request.currentUser!.displayName,
+          kind: "created",
+        });
+
+        return row;
       });
 
       reply.status(201);
@@ -355,7 +398,7 @@ export function registerTransactionRoutes(
   app.post("/api/v1/transactions/duplicates", { preHandler: requireAuth }, async (request) => {
     const body = duplicateCheckSchema.parse(request.body);
     const userId = request.currentUser!.id;
-    const bookId = await currentBookId(prisma, userId);
+    const bookId = request.book!.bookId;
 
     /**
      * The day's candidates, then the time compared on the entry's own clock.
@@ -401,7 +444,7 @@ export function registerTransactionRoutes(
   // -------------------------------------------------------------------------
   app.get("/api/v1/transactions", { preHandler: requireAuth }, async (request) => {
     const userId = request.currentUser!.id;
-    const bookId = await currentBookId(prisma, userId);
+    const bookId = request.book!.bookId;
 
     const query = request.query as Record<string, unknown>;
     const limitRaw = Number(readString(query["limit"]) ?? DEFAULT_PAGE_SIZE);
@@ -472,7 +515,7 @@ export function registerTransactionRoutes(
   // -------------------------------------------------------------------------
   app.get("/api/v1/summary", { preHandler: requireAuth }, async (request) => {
     const userId = request.currentUser!.id;
-    const bookId = await currentBookId(prisma, userId);
+    const bookId = request.book!.bookId;
 
     const query = request.query as Record<string, unknown>;
     const month = readString(query["month"]) ?? currentMonth();
@@ -536,7 +579,7 @@ export function registerTransactionRoutes(
   // -------------------------------------------------------------------------
   app.get("/api/v1/transactions/:id", { preHandler: requireAuth }, async (request) => {
     const userId = request.currentUser!.id;
-    const bookId = await currentBookId(prisma, userId);
+    const bookId = request.book!.bookId;
     const { id } = request.params as { id: string };
 
     const row = await prisma.transaction.findFirst({
@@ -555,7 +598,7 @@ export function registerTransactionRoutes(
   app.patch("/api/v1/transactions/:id", { preHandler: requireAuth }, async (request) => {
     const body = updateTransactionSchema.parse(request.body);
     const userId = request.currentUser!.id;
-    const bookId = await currentBookId(prisma, userId);
+    const bookId = request.book!.bookId;
     const { id } = request.params as { id: string };
 
     const existing = await prisma.transaction.findFirst({
@@ -783,6 +826,33 @@ export function registerTransactionRoutes(
       if (settling) await settleConflicts(tx, {
         transactionId: id, bookId, deviceId: deviceIdFrom(request), settled: write,
       });
+
+      /**
+       * ⚠️ **The history line for an edit, and it is the one the owner described in full**:
+       * *"naeor 将 #000128 午餐的金额从 ¥35 修改为 ¥38."*
+       *
+       * ⚠️ **`diffEntry` compares the row before and after, rather than trusting `write`.** `write`
+       * says what the *request* asked to change; the row says what actually differs. A request that
+       * sets a field to the value it already had **changed nothing**, and a history that reported it
+       * would be full of edits that never happened.
+       *
+       * ⚠️ **Only written when something really differs.** A save that changes nothing is not a
+       * historical event — recording it would make the history read like a log of button presses.
+       */
+      const changed = diffEntry(existing as unknown as Record<string, unknown>, result as unknown as Record<string, unknown>);
+
+      if (Object.keys(changed).length > 0) {
+        await recordEvent(tx, {
+          bookId,
+          transactionId: result.id,
+          transactionSeq: result.seq,
+          actorId: userId,
+          actorName: request.currentUser!.displayName,
+          kind: "updated",
+          changes: changed,
+        });
+      }
+
       return result;
     });
     request.log.info({ transactionId: id, deviceId: deviceIdFrom(request), settlesConflict: settling,
@@ -809,7 +879,7 @@ export function registerTransactionRoutes(
    */
   app.post("/api/v1/conflicts/resolve-with-server", { preHandler: requireAuth }, async (request) => {
     const userId = request.currentUser!.id;
-    const bookId = await currentBookId(prisma, userId);
+    const bookId = request.book!.bookId;
     const device = deviceIdFrom(request);
 
     const open = await openConflicts(prisma, bookId);
@@ -852,7 +922,7 @@ export function registerTransactionRoutes(
    */
   app.get("/api/v1/conflicts", { preHandler: requireAuth }, async (request) => {
     const userId = request.currentUser!.id;
-    const bookId = await currentBookId(prisma, userId);
+    const bookId = request.book!.bookId;
 
     const rows = await openConflicts(prisma, bookId);
     const ids = [...new Set(rows.map((row) => row.transactionId))];
@@ -895,21 +965,40 @@ export function registerTransactionRoutes(
   // -------------------------------------------------------------------------
   app.delete("/api/v1/transactions/:id", { preHandler: requireAuth }, async (request, reply) => {
     const userId = request.currentUser!.id;
-    const bookId = await currentBookId(prisma, userId);
+    const bookId = request.book!.bookId;
     const { id } = request.params as { id: string };
 
     const existing = await prisma.transaction.findFirst({
       where: { id, bookId, deletedAt: null },
-      select: { version: true },
+      select: { version: true, seq: true },
     });
 
     if (!existing) throw notFound("transaction_missing", "找不到这笔记账。");
 
-    // A tombstone, never a real delete: an offline device that still holds this
-    // entry must be able to learn that it is gone, instead of re-uploading it.
-    await prisma.transaction.update({
-      where: { id },
-      data: { deletedAt: new Date(), version: existing.version + 1 },
+    await prisma.$transaction(async (tx) => {
+      // A tombstone, never a real delete: an offline device that still holds this
+      // entry must be able to learn that it is gone, instead of re-uploading it.
+      await tx.transaction.update({
+        where: { id },
+        data: { deletedAt: new Date(), version: existing.version + 1 },
+      });
+
+      /**
+       * ⚠️ **The history line that a cascade would have destroyed**: *"昨天 19:18，naeor 删除了
+       * #000103 出租车记录."*
+       *
+       * ⚠️ **The delete is a tombstone, so `transaction_id` survives** — but the event stores the
+       * number as well, because the entry is no longer listable and **a history line has to be able
+       * to name what it is talking about**.
+       */
+      await recordEvent(tx, {
+        bookId,
+        transactionId: id,
+        transactionSeq: existing.seq,
+        actorId: userId,
+        actorName: request.currentUser!.displayName,
+        kind: "deleted",
+      });
     });
 
     reply.status(204);
@@ -928,14 +1017,14 @@ export function registerTransactionRoutes(
    */
   app.post("/api/v1/transactions/:id/restore", { preHandler: requireAuth }, async (request) => {
     const userId = request.currentUser!.id;
-    const bookId = await currentBookId(prisma, userId);
+    const bookId = request.book!.bookId;
     const { id } = request.params as { id: string };
 
     // Note: no `deletedAt: null` filter here — a deleted row is exactly what
     // this endpoint is looking for.
     const existing = await prisma.transaction.findFirst({
       where: { id, bookId },
-      select: { id: true, version: true, deletedAt: true },
+      select: { id: true, version: true, deletedAt: true, seq: true },
     });
 
     if (!existing) throw notFound("transaction_missing", "找不到这笔记账。");
@@ -944,10 +1033,31 @@ export function registerTransactionRoutes(
       throw conflict("transaction_not_deleted", "这笔记账没有被删除。");
     }
 
-    const restored = await prisma.transaction.update({
-      where: { id },
-      data: { deletedAt: null, version: existing.version + 1 },
-      include: TRANSACTION_INCLUDE,
+    const restored = await prisma.$transaction(async (tx) => {
+      const row = await tx.transaction.update({
+        where: { id },
+        data: { deletedAt: null, version: existing.version + 1 },
+        include: TRANSACTION_INCLUDE,
+      });
+
+      /**
+       * ⚠️ **A restore is recorded as its own event, not as an erasure of the delete.**
+       *
+       * The owner's rule for restoring history: *"**恢复应当作为一次新的修改被记录**，而不是抹除之后
+       * 发生的历史."* So the `deleted` event stays and this one joins it — **the ledger's past keeps
+       * both the deletion and the change of mind**, which is what makes the history a record rather
+       * than a current-state summary.
+       */
+      await recordEvent(tx, {
+        bookId,
+        transactionId: row.id,
+        transactionSeq: row.seq,
+        actorId: userId,
+        actorName: request.currentUser!.displayName,
+        kind: "restored",
+      });
+
+      return row;
     });
 
     return toDto(restored);

@@ -33,7 +33,17 @@ export function LoginPage(): React.JSX.Element {
     setBusy(true);
     try {
       await login(parsed.data.username, parsed.data.password);
-      await navigate("/", { replace: true });
+      /**
+       * ⚠️ **`?next=` is honoured only when it names a same-site path**, and that check is not
+       * decoration: an open redirect that forwards to `https://evil.example` right after a genuine
+       * sign-in is how a phishing page borrows the real one's credibility. `/join/<token>` is the
+       * case this exists for — **the token has to survive the sign-in round trip**, and the address
+       * bar is the only place it can survive a reload too.
+       */
+      const next = new URLSearchParams(window.location.search).get("next");
+      await navigate(next !== null && next.startsWith("/") && !next.startsWith("//") ? next : "/", {
+        replace: true,
+      });
     } catch (caught) {
       setError(errorMessage(caught));
     } finally {

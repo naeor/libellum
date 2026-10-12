@@ -1,4 +1,4 @@
-import { decimalsFor } from "@libellum/shared";
+import { decimalsFor, formatTransactionNumber } from "@libellum/shared";
 
 import type { PrismaClient } from "../db.js";
 
@@ -29,6 +29,8 @@ export interface ExportFilters {
 
 export interface ExportRow {
   readonly id: string;
+  /** **The number a person reads, exactly as displayed: `#000001`.** */
+  readonly displayNumber: string;
   /** `YYYY-MM-DD`, the phone's own calendar date. */
   readonly occurredLocalDate: string;
   /** `HH:mm`, in the zone the entry was recorded in. */
@@ -115,6 +117,8 @@ function buildWhere(bookId: string, filters: ExportFilters): Record<string, unkn
 /** The fields the file needs, and nothing else. */
 const SELECT = {
   id: true,
+  /** ⚠️ The printed number (`#000001`). Read from the column, **never recomputed** — see §8.12. */
+  seq: true,
   occurredAt: true,
   occurredLocalDate: true,
   occurredTz: true,
@@ -170,6 +174,12 @@ export async function* iterateExportRows(
     for (const row of rows) {
       yield {
         id: row.id,
+        /**
+         * ⚠️ **Formatted with the same function the screen uses.** A second formatter here would
+         * eventually pad differently, and **the file would disagree with the app about what a number
+         * looks like** — the copy someone hands to an accountant is the one that must match.
+         */
+        displayNumber: formatTransactionNumber(row.seq),
         occurredLocalDate: toDateOnly(row.occurredLocalDate).toISOString().slice(0, 10),
         occurredTime: timeInZone(row.occurredAt, row.occurredTz),
         occurredTz: row.occurredTz,

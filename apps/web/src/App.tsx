@@ -28,8 +28,12 @@ import { ImportPage } from "./pages/ImportPage.js";
 import { LoginPage } from "./pages/LoginPage.js";
 import { CategoriesPage, PaymentMethodsPage, TagsPage } from "./pages/ManagePages.js";
 import { MePage } from "./pages/MePage.js";
-import { CollaboratorsPage } from "./pages/PlaceholderPages.js";
+import { CollaboratorsPage } from "./pages/CollaboratorsPage.js";
+import { JoinPage } from "./pages/JoinPage.js";
+import { LedgerHistoryPage } from "./pages/LedgerHistoryPage.js";
+import { LedgerPage } from "./pages/LedgerPage.js";
 import { ProfilePage } from "./pages/ProfilePage.js";
+import { StartPage } from "./pages/StartPage.js";
 import { StatsPage } from "./pages/StatsPage.js";
 import { RecoverPage } from "./pages/RecoverPage.js";
 import { RegisterPage } from "./pages/RegisterPage.js";
@@ -99,6 +103,26 @@ function RequireAuth({ children }: { readonly children: React.ReactNode }): Reac
 
   if (status === "loading") return <Splash />;
   if (!user) return <Navigate to="/login" replace />;
+
+  return <>{children}</>;
+}
+
+/**
+ * ⚠️ **The same check, but it carries the destination through the sign-in.**
+ *
+ * A share link is the one URL in the app that a signed-out visitor is *supposed* to arrive at, and
+ * the token in it is the whole message. `RequireAuth` sends them to `/login` and **the token is gone
+ * from the address bar** — so this variant passes it along as `?next=`, and the login screen returns
+ * there. The check itself is unchanged; only the destination survives.
+ */
+function RequireAuthKeepingPath({ children }: { readonly children: React.ReactNode }): React.JSX.Element {
+  const { user, status } = useAuth();
+
+  if (status === "loading") return <Splash />;
+  if (!user) {
+    const next = `${window.location.pathname}${window.location.search}`;
+    return <Navigate to={`/login?next=${encodeURIComponent(next)}`} replace />;
+  }
 
   return <>{children}</>;
 }
@@ -214,6 +238,23 @@ function AppRoutes(): React.JSX.Element {
       <Route path="/payment-methods" element={<RequireAuth><PaymentMethodsPage /></RequireAuth>} />
       <Route path="/tags" element={<RequireAuth><TagsPage /></RequireAuth>} />
       <Route path="/books" element={<RequireAuth><BooksPage /></RequireAuth>} />
+      {/* ⚠️ 账本空间：目前是占位页，见 `档案/账本与协作页-设计决定.md` §2.4 与 §8。 */}
+      <Route path="/start" element={<RequireAuth><StartPage /></RequireAuth>} />
+      {/* ⚠️ 账本 / 协作：底部第四项。名称由成员数决定，但**只有一个路由**。 */}
+      <Route path="/ledger" element={<RequireAuth><LedgerPage /></RequireAuth>} />
+      <Route path="/ledger/history" element={<RequireAuth><LedgerHistoryPage /></RequireAuth>} />
+      {/**
+        * ⚠️ **A share link must be reachable while signed out**, and must come back to itself after
+        * signing in — that is why it uses the variant that keeps the path.
+        */}
+      <Route
+        path="/join/:token"
+        element={
+          <RequireAuthKeepingPath>
+            <JoinPage />
+          </RequireAuthKeepingPath>
+        }
+      />
       <Route path="/about" element={<RequireAuth><AboutPage /></RequireAuth>} />
 
       {ChartLabPage === null ? null : (

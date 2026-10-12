@@ -12,7 +12,6 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { PrismaClient } from "../db.js";
 import { buildXlsx } from "../export/xlsx.js";
 import { badRequest } from "../lib/errors.js";
-import { currentBookId } from "../ledger/access.js";
 import {
   countExportRows,
   iterateExportRows,
@@ -119,6 +118,13 @@ function contentDisposition(fileName: string): string {
 function rowValues(row: ExportRow, exportRef: string): (string | number)[] {
   return EXPORT_COLUMNS.map((column) => {
     switch (column.key) {
+      case "displayNumber":
+        /**
+         * ⚠️ **Written as the string the user sees, including the `#`.** The file should read like
+         * the app: somebody comparing a row in Excel with the detail screen must not have to work
+         * out that `128` and `#000128` are the same entry.
+         */
+        return row.displayNumber;
       case "occurredLocalDate":
         return row.occurredLocalDate;
       case "occurredTime":
@@ -161,7 +167,7 @@ export function registerExportRoutes(app: FastifyInstance, options: ExportRouteO
   // -------------------------------------------------------------------------
   app.get("/api/v1/export", { preHandler: requireAuth }, async (request, reply) => {
     const userId = request.currentUser!.id;
-    const bookId = await currentBookId(prisma, userId);
+    const bookId = request.book!.bookId;
 
     const query = exportQuerySchema.parse(request.query ?? {});
     const exportRef = newExportRef();
@@ -282,7 +288,7 @@ export function registerExportRoutes(app: FastifyInstance, options: ExportRouteO
    */
   app.post("/api/v1/export", { preHandler: requireAuth }, async (request, reply) => {
     const userId = request.currentUser!.id;
-    const bookId = await currentBookId(prisma, userId);
+    const bookId = request.book!.bookId;
 
     const query = exportQuerySchema.parse({
       ...(request.query as Record<string, unknown>),
@@ -315,7 +321,7 @@ export function registerExportRoutes(app: FastifyInstance, options: ExportRouteO
    */
   app.get("/api/v1/export-log", { preHandler: requireAuth }, async (request) => {
     const userId = request.currentUser!.id;
-    const bookId = await currentBookId(prisma, userId);
+    const bookId = request.book!.bookId;
 
     const rows = await prisma.exportLog.findMany({
       where: { bookId },

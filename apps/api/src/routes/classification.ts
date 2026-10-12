@@ -9,7 +9,6 @@ import {
 import type { FastifyInstance, FastifyRequest } from "fastify";
 
 import type { PrismaClient } from "../db.js";
-import { currentBookId } from "../ledger/access.js";
 import { conflict, forbidden, notFound } from "../lib/errors.js";
 
 export interface ClassificationRouteOptions {
@@ -60,7 +59,7 @@ export function registerClassificationRoutes(
   // -------------------------------------------------------------------------
   app.post("/api/v1/categories", { preHandler: requireAuth }, async (request, reply) => {
     const body = createCategorySchema.parse(request.body);
-    const bookId = await currentBookId(prisma, request.currentUser!.id);
+    const bookId = request.book!.bookId;
 
     // New items go last unless the client says otherwise.
     const highest = await prisma.category.aggregate({
@@ -91,7 +90,7 @@ export function registerClassificationRoutes(
 
   app.patch("/api/v1/categories/:id", { preHandler: requireAuth }, async (request) => {
     const body = updateCategorySchema.parse(request.body);
-    const bookId = await currentBookId(prisma, request.currentUser!.id);
+    const bookId = request.book!.bookId;
     const { id } = request.params as { id: string };
 
     const existing = await prisma.category.findFirst({
@@ -128,7 +127,7 @@ export function registerClassificationRoutes(
    * category and must keep showing its name.
    */
   app.delete("/api/v1/categories/:id", { preHandler: requireAuth }, async (request, reply) => {
-    const bookId = await currentBookId(prisma, request.currentUser!.id);
+    const bookId = request.book!.bookId;
     const { id } = request.params as { id: string };
 
     const existing = await prisma.category.findFirst({
@@ -150,7 +149,7 @@ export function registerClassificationRoutes(
   // -------------------------------------------------------------------------
   app.post("/api/v1/payment-methods", { preHandler: requireAuth }, async (request, reply) => {
     const body = createPaymentMethodSchema.parse(request.body);
-    const bookId = await currentBookId(prisma, request.currentUser!.id);
+    const bookId = request.book!.bookId;
 
     const highest = await prisma.paymentMethod.aggregate({
       where: { bookId },
@@ -179,7 +178,7 @@ export function registerClassificationRoutes(
 
   app.patch("/api/v1/payment-methods/:id", { preHandler: requireAuth }, async (request) => {
     const body = updatePaymentMethodSchema.parse(request.body);
-    const bookId = await currentBookId(prisma, request.currentUser!.id);
+    const bookId = request.book!.bookId;
     const { id } = request.params as { id: string };
 
     const existing = await prisma.paymentMethod.findFirst({ where: { id, bookId }, select: { id: true } });
@@ -201,7 +200,7 @@ export function registerClassificationRoutes(
   });
 
   app.delete("/api/v1/payment-methods/:id", { preHandler: requireAuth }, async (request, reply) => {
-    const bookId = await currentBookId(prisma, request.currentUser!.id);
+    const bookId = request.book!.bookId;
     const { id } = request.params as { id: string };
 
     const existing = await prisma.paymentMethod.findFirst({ where: { id, bookId }, select: { id: true } });
@@ -218,7 +217,7 @@ export function registerClassificationRoutes(
   // -------------------------------------------------------------------------
   app.post("/api/v1/tags", { preHandler: requireAuth }, async (request, reply) => {
     const body = createTagSchema.parse(request.body);
-    const bookId = await currentBookId(prisma, request.currentUser!.id);
+    const bookId = request.book!.bookId;
 
     try {
       const created = await prisma.tag.create({
@@ -236,7 +235,7 @@ export function registerClassificationRoutes(
 
   app.patch("/api/v1/tags/:id", { preHandler: requireAuth }, async (request) => {
     const body = updateTagSchema.parse(request.body);
-    const bookId = await currentBookId(prisma, request.currentUser!.id);
+    const bookId = request.book!.bookId;
     const { id } = request.params as { id: string };
 
     const existing = await prisma.tag.findFirst({ where: { id, bookId }, select: { id: true } });
@@ -261,7 +260,7 @@ export function registerClassificationRoutes(
    * entries were affected before the user commits.
    */
   app.delete("/api/v1/tags/:id", { preHandler: requireAuth }, async (request) => {
-    const bookId = await currentBookId(prisma, request.currentUser!.id);
+    const bookId = request.book!.bookId;
     const { id } = request.params as { id: string };
 
     const existing = await prisma.tag.findFirst({ where: { id, bookId }, select: { id: true } });

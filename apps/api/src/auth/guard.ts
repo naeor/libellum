@@ -3,6 +3,7 @@ import type { FastifyRequest } from "fastify";
 
 import type { PrismaClient } from "../db.js";
 import { unauthorized } from "../lib/errors.js";
+import { requireBook, requireBookForWrite } from "../ledger/access.js";
 import { SESSION_COOKIE_NAME, hashSessionToken } from "./session.js";
 
 /**
@@ -46,5 +47,34 @@ export function createRequireAuth(
     };
 
     request.currentUser = user;
+  };
+}
+
+/**
+ * Build the guard for routes that are **about one ledger**.
+ *
+ * ⚠️ **Two steps, both mandatory, in this order**: who is calling (`requireAuth`), then whether
+ * they may touch the ledger they named (`requireBook`).
+ *
+ * ⚠️ **The ledger comes from the request header, and the header is a declaration rather than a
+ * permission.** The client says which ledger it means; `book_members` decides whether it may
+ * have it — *"permission comes from `book_members` and from nothing else."*
+ *
+ * ⚠️ **Routes that change data must be registered with `write: true`.** That is what makes a
+ * viewer's write fail on the server rather than only in the UI, which is what the owner asked
+ * for: *"即使 viewer 通过某种方式发起了更改，服务器的数据也不会被污染."* A read route and a
+ * write route are otherwise identical, so the distinction is an explicit argument rather than
+ * something a reader has to infer.
+ */
+export function createRequireBook(
+  prisma: PrismaClient,
+  requireAuth: (request: FastifyRequest) => Promise<void>,
+  options: { readonly write: boolean },
+): (request: FastifyRequest) => Promise<void> {
+  return async function requireBookGuard(request: FastifyRequest): Promise<void> {
+    await requireAuth(request);
+
+    const check = options.write ? requireBookForWrite : requireBook;
+    request.book = await check(prisma, request, request.currentUser!.id);
   };
 }
