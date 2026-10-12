@@ -8,7 +8,7 @@ import { OceanBackdrop } from "../components/OceanBackdrop.js";
 import { QrCodeView } from "../components/QrCodeView.js";
 import { SkeletonRows } from "../components/States.js";
 import { errorMessage } from "../lib/api.js";
-import { markPresentationSeen, readSeenPresentation } from "../lib/spaceTransition.js";
+import { markPresentationSeen, readSeenPresentation, useSpaceTransition } from "../lib/spaceTransition.js";
 import {
   useActivateBook,
   useBooks,
@@ -58,9 +58,27 @@ export function LedgerSpacePage(): React.JSX.Element {
    * tested spring is still what the ledger screen uses; borrowing it here would mean tuning two
    * numbers until the result happened to land in the owner's range.
    */
-  const [progress, setProgress] = useState(() =>
-    readSeenPresentation(user?.id) ? 1 : 0,
-  );
+  /**
+   * ⚠️ **The tested spring, not a CSS transition — and the reason is the gesture.**
+   *
+   * My first version drove `--p` from React state and let `transition: 850ms` do the movement. That
+   * reads the owner's duration literally, **and it cannot follow a finger**: a CSS transition has one
+   * duration and no notion of "the position the finger is at right now". The owner asked for
+   * *"不同层次的波面可以带有轻微的速度差和惯性"* — **inertia is what a spring has and a transition
+   * does not.**
+   *
+   * ⚠️ **So the physics come from `transitionPhysics.ts`** — the same spring, speed ceiling and
+   * gesture rules the ledger screen uses, fixed by 13 tests. **A second implementation would be a
+   * second answer to "how fast does a flick count"**, whose symptom is *"this screen feels slightly
+   * off"*, the hardest kind of bug to attribute.
+   *
+   * ⚠️ **The owner's 600–850ms is honoured by the constants, not by a CSS rule.** The speed ceiling
+   * guarantees **at least** 500ms; the spring's stiffness and damping put an ordinary gesture above
+   * that. **The duration is a consequence of the motion rather than a number imposed on it**, which
+   * is the only way it can also follow the finger.
+   */
+  const [initial] = useState(() => (readSeenPresentation(user?.id) ? 1 : 0));
+  const space = useSpaceTransition(initial);
 
   /**
    * ⚠️ **The ordinary state is remembered as soon as it is reached**, not on unmount: the reader may
@@ -68,8 +86,8 @@ export function LedgerSpacePage(): React.JSX.Element {
    * "startup advertisement" the owner ruled out.**
    */
   useEffect(() => {
-    if (progress >= 1) markPresentationSeen(user?.id);
-  }, [progress, user?.id]);
+    if (space.atList) markPresentationSeen(user?.id);
+  }, [space.atList, user?.id]);
   const books = useBooks();
   const current = useLedger();
 
@@ -142,8 +160,21 @@ export function LedgerSpacePage(): React.JSX.Element {
      * under it. **One scroller cannot be both.**
      */
     <div
-      className="relative min-h-dvh overflow-hidden bg-canvas"
-      style={{ ["--p" as string]: String(progress) }}
+      ref={space.rootRef}
+      /**
+       * ⚠️ **`overflow-x-hidden`, not `overflow-hidden`.**
+       *
+       * My first version hid both axes — and it looked right, because **the sea's travel would slide
+       * the page sideways if it could scroll.** But this element is also the page: with `overflow:
+       * hidden` **a list longer than the screen is simply cut off**, and the reader cannot reach the
+       * ledgers below the fold. **That failure appears only once somebody has enough ledgers**, which
+       * is the worst way for a bug to arrive.
+       *
+       * ⚠️ **The vertical axis has to stay scrollable for a second reason too**: `claimsGesture` only
+       * takes a downward pull when `scrollTop` is 0, so **a scroller that can never move would turn
+       * every downward drag into a retreat**, including the ones meant to scroll back up the list.
+       */
+      className="relative min-h-dvh overflow-x-hidden bg-canvas"
     >
       {/**
         * ⚠️ **The sea, and the whole of the retreat is this one transform.**
@@ -156,16 +187,10 @@ export function LedgerSpacePage(): React.JSX.Element {
         * from.
         */}
       <div
-        className="fixed inset-0 transition-transform ease-out"
+        className="fixed inset-0"
         style={{
           transform: "translateY(calc(var(--p, 0) * -100%))",
-          /**
-           * ⚠️ **850ms with a long ease-out.** The owner's range is 600–850; the top of it is right
-           * because **the retreat is the moment he said he cares about most**, and an ease-out means
-           * it is *fast at the start and slow as it settles* — the water leaves quickly and the last
-           * of it lingers, which is how a tide actually behaves.
-           */
-          transitionDuration: "850ms",
+
         }}
       >
         <OceanBackdrop />
@@ -185,13 +210,19 @@ export function LedgerSpacePage(): React.JSX.Element {
         * ⚠️ **The ordinary state arrives from slightly below and fades in**, so the two movements are
         * opposites rather than one replacing the other: **water up, list up-behind-it.** A list that
         * simply appeared would be the "new page" the owner ruled out, even with the sea receding.
+        *
+        * ⚠️ **Nothing here is a React value, and that is the point.** `--p` is written by the spring on
+        * every frame; **reading it into state to compute an opacity would put a re-render in the
+        * middle of the animation** — the failure the ledger screen hit and the reason its progress is
+        * a ref. So the opacity and the small rise are both `calc()` on the same variable the sea uses,
+        * and React never hears about the movement at all.
         */}
       <div
-        className="relative mx-auto w-full max-w-md px-6 pt-10 pb-16 transition-all ease-out"
+        ref={space.scrollRef}
+        className="relative mx-auto w-full max-w-md px-6 pt-10 pb-16"
         style={{
-          opacity: progress,
-          transform: `translateY(calc((1 - var(--p, 0)) * 24px))`,
-          transitionDuration: "850ms",
+          opacity: "var(--p, 0)",
+          transform: "translateY(calc((1 - var(--p, 0)) * 24px))",
         }}
       >
         <h1 className="text-2xl font-semibold tracking-tight text-ink">我的账本</h1>
