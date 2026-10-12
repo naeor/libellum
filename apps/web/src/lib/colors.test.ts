@@ -11,7 +11,7 @@ import { describe, expect, it } from "vitest";
  * is easy to agree with and easy to break — one `#ffffff` in a hurry, and the
  * next person copies it. So it is checked here.
  *
- * Three files are allowed to hold literals, and only three:
+ * Four files are allowed to hold literals, and only four:
  *
  *  * `index.css` — the token definitions themselves;
  *  * `lib/chart/theme.ts` — the chart palettes, which must be literals because
@@ -24,6 +24,12 @@ import { describe, expect, it } from "vitest";
  *    would appear as "the QR code sometimes does not work on some phones" — the
  *    least diagnosable kind. The owner asked for these codes *"方便当面扫码加入"*,
  *    so they have to read.
+ *
+ *  * `components/OceanBackdrop.tsx` — **the sea's four fills, and they are a drawing rather than a
+ *    theme.** The owner specified the subject: brand green `#55997a` mixed towards white by depth,
+ *    *"而不是常见的科技粒子动画"*. Reading them from tokens would mean **four tokens that exist for
+ *    one illustration**, and the day a token changes the sea changes shape — **which is not what a
+ *    brand palette is for.**
  *
  * Comments are stripped before checking, so the document and the code may talk
  * about a colour without tripping the rule.
@@ -41,7 +47,7 @@ import { describe, expect, it } from "vitest";
 const SRC = resolve(import.meta.dirname, "..");
 
 /** Files permitted to define colour literals. */
-const EXEMPT = new Set(["index.css", "theme.ts", "QrCodeView.tsx"]);
+const EXEMPT = new Set(["index.css", "theme.ts", "QrCodeView.tsx", "OceanBackdrop.tsx"]);
 
 function stripComments(source: string): string {
   return source
@@ -82,7 +88,7 @@ describe("colour literals", () => {
     }
   }
 
-  it("appear only in the token file, the chart palettes and the QR code", () => {
+  it("appear only in the token file, the chart palettes, the QR code and the ocean", () => {
     expect(
       offenders,
       `组件里出现了硬编码颜色。请按 docs/COLORS.md §7 处理：\n  ${offenders.join("\n  ")}`,

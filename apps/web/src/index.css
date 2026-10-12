@@ -140,6 +140,29 @@
     }
   }
 
+  /*
+    ⚠️ **The tide under the ledger space's presentation state.**
+
+    The owner asked for *"海浪可以非常缓慢地起伏，波面之间存在轻微的速度差"* and ruled out the
+    opposite twice: *"不要剧烈晃动"* and *"不要持续出现高频闪烁"*. So this is a drift of a few
+    percentage points — at the scale of a glance the picture is still, and over half a minute it
+    breathes.
+
+    ⚠️ **One keyframe for four layers.** The amplitude comes from each layer's own `--tide-amp`, and
+    the *period* comes from the inline `animation` — **so the speed difference the owner asked for is
+    a number per layer rather than four near-identical blocks of CSS.** A single shared period would
+    drift them in lockstep and read as one sheet of water, which is the thing that stops looking like
+    depth.
+  */
+  @keyframes libellum-tide {
+    from {
+      transform: translateY(calc(var(--tide-amp, 2) * -1%));
+    }
+    to {
+      transform: translateY(calc(var(--tide-amp, 2) * 1%));
+    }
+  }
+
   /* ---- Shape ---------------------------------------------------------- */
   --radius-card: 1.25rem;
   --radius-field: 0.875rem;
