@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
+﻿import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -11,12 +11,19 @@ import { describe, expect, it } from "vitest";
  * is easy to agree with and easy to break — one `#ffffff` in a hurry, and the
  * next person copies it. So it is checked here.
  *
- * Two files are allowed to hold literals, and only two:
+ * Three files are allowed to hold literals, and only three:
  *
  *  * `index.css` — the token definitions themselves;
  *  * `lib/chart/theme.ts` — the chart palettes, which must be literals because
  *    they are handed to SVG as strings and asserted in tests. They are *data*
  *    rather than theme; see §4 of the document.
+ *  * `components/QrCodeView.tsx` — **and this one is an optical requirement, not a
+ *    colour choice.** A QR symbol is read by a camera's thresholding step, which
+ *    wants the modules near 0% and the plate near 100% reflectance. **A near-black
+ *    theme token is a different value and a real scanning risk**, and the failure
+ *    would appear as "the QR code sometimes does not work on some phones" — the
+ *    least diagnosable kind. The owner asked for these codes *"方便当面扫码加入"*,
+ *    so they have to read.
  *
  * Comments are stripped before checking, so the document and the code may talk
  * about a colour without tripping the rule.
@@ -34,7 +41,7 @@ import { describe, expect, it } from "vitest";
 const SRC = resolve(import.meta.dirname, "..");
 
 /** Files permitted to define colour literals. */
-const EXEMPT = new Set(["index.css", "theme.ts"]);
+const EXEMPT = new Set(["index.css", "theme.ts", "QrCodeView.tsx"]);
 
 function stripComments(source: string): string {
   return source
@@ -75,7 +82,7 @@ describe("colour literals", () => {
     }
   }
 
-  it("appear only in the token file and the chart palettes", () => {
+  it("appear only in the token file, the chart palettes and the QR code", () => {
     expect(
       offenders,
       `组件里出现了硬编码颜色。请按 docs/COLORS.md §7 处理：\n  ${offenders.join("\n  ")}`,

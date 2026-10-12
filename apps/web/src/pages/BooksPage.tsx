@@ -5,6 +5,7 @@ import { useAuth } from "../auth/AuthProvider.js";
 import { Button } from "../components/Button.js";
 import { ChoiceDialog } from "../components/ChoiceDialog.js";
 import { InnerPage } from "../components/Layouts.js";
+import { QrCodeView } from "../components/QrCodeView.js";
 import { SkeletonRows } from "../components/States.js";
 import { errorMessage } from "../lib/api.js";
 import {
@@ -367,6 +368,24 @@ function ShareSection(): React.JSX.Element {
           <p className="mt-2 break-all rounded-field bg-surface px-3 py-2 font-mono text-xs text-ink">
             {`${window.location.origin}/join/${freshToken}`}
           </p>
+          {/**
+            * ⚠️ **The link and the symbol sit together, and both are shown.** The owner asked for the
+            * QR code *"方便当面扫码加入"* — two people in the same room. **The text stays because the
+            * other case is unchanged**: somebody on a call who needs to paste it.
+            *
+            * ⚠️ **Same string in both**, taken from `window.location.origin` at render time, so a code
+            * scanned on a phone points at whatever address the person generating it is actually using —
+            * **not at a hostname baked into the bundle**, which would be wrong on every LAN and every
+            * self-hosted deployment.
+            */}
+          <div className="mt-3 flex justify-center">
+            <QrCodeView
+              text={`${window.location.origin}/join/${freshToken}`}
+              label="这本账的加入二维码"
+            />
+          </div>
+
+          <p className="mt-2 text-center text-xs text-muted">让对方用相机扫这个码</p>
           <div className="mt-3 flex gap-3">
             <Button
               fullWidth={false}
