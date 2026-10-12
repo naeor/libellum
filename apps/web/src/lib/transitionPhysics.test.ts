@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+﻿import { describe, expect, it } from "vitest";
 
 import {
   MAX_SPEED,
@@ -7,7 +7,9 @@ import {
   clampOvershoot,
   claimsGesture,
   decideTarget,
+  flickFromDrag,
   hasSettled,
+  progressFromDrag,
   limitStep,
   springStep,
   wheelFlick,
@@ -148,6 +150,50 @@ describe("transition physics", () => {
     /** ⚠️ A wheel and a finger are on different scales; the divide is what makes them comparable. */
     expect(wheelFlick(400)).toBe(1);
     expect(wheelFlick(-200)).toBe(-0.5);
+  });
+});
+
+/**
+ * The ledger space's own two directions.
+ *
+ * ⚠️ **These are the parts of `useSpaceTransition` that no test could reach while they lived inside
+ * the hook** — and **the sign is the one thing in the whole system that nothing else can check.**
+ * Get it backwards and the retreat still runs, still animates, still passes every other test, and
+ * **simply moves the wrong way.**
+ */
+describe("ledger space directions", () => {
+  it("moves towards the list when the finger travels up the screen", () => {
+    /**
+     * ⚠️ **A finger moving up produces a negative `dy`, and that has to *increase* progress.**
+     *
+     * The ledger screen inverts this the other way round, because its summary is at the top and its
+     * list below. **The two screens travel in opposite senses**, which is exactly why this is a named
+     * function with a test rather than a minus sign in a handler.
+     */
+    expect(progressFromDrag(0, -420)).toBe(1);
+    expect(progressFromDrag(1, 420)).toBe(0);
+
+    /** Half the distance is half the way. */
+    expect(progressFromDrag(0, -210)).toBeCloseTo(0.5, 10);
+  });
+
+  it("clamps, so a hard drag cannot leave the two states", () => {
+    /** ⚠️ Past either end there is no state — see `clampOvershoot`. */
+    expect(progressFromDrag(0.9, -5000)).toBe(1);
+    expect(progressFromDrag(0.1, 5000)).toBe(0);
+  });
+
+  it("starts from wherever the gesture began, not from zero", () => {
+    /** ⚠️ A gesture that starts half-way through must move from there, or the sea jumps on touch. */
+    expect(progressFromDrag(0.5, -210)).toBeCloseTo(1, 10);
+  });
+
+  it("measures a flick over the whole gesture", () => {
+    /** 420px in one second is exactly one drag-distance per second. */
+    expect(flickFromDrag(-420, 1000)).toBeCloseTo(-1, 10);
+
+    /** ⚠️ A gesture of no duration contributes no speed rather than an infinity. */
+    expect(flickFromDrag(-100, 0)).toBe(0);
   });
 });
 

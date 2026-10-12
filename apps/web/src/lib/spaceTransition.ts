@@ -11,7 +11,9 @@ import {
   clampOvershoot,
   claimsGesture,
   decideTarget,
+  flickFromDrag,
   hasSettled,
+  progressFromDrag,
   springStep,
   wheelFlick,
 } from "./transitionPhysics.js";
@@ -46,12 +48,6 @@ export interface SpaceTransition {
   readonly goTo: (progress: number) => void;
 }
 
-/**
- * ⚠️ **A deeper drag than the ledger screen's.** The sea is a full screen tall and the list has to be
- * pulled up from beyond it; the ledger's summary only shrinks by a few hundred pixels. **Reusing 260
- * would make one gesture cross the whole range and the retreat would read as a jump.**
- */
-const SPACE_DRAG = 420;
 
 /**
  * ⚠️ **The storage key prefix for "this account has seen the presentation state".**
@@ -248,14 +244,14 @@ export function useSpaceTransition(initial: number): SpaceTransition {
       if (!claimsGesture({ progress: progress.current, atTop, dy })) return;
 
       const elapsed = performance.now() - startTime;
-      if (elapsed > 0) flick = (((dy / elapsed) * 1000) / SPACE_DRAG);
+      flick = flickFromDrag(dy, elapsed);
 
       event.preventDefault();
       /**
        * ⚠️ **Dragging up moves towards the list, so the sign is inverted** — a finger travelling up
        * the screen (negative `dy`) must *increase* progress.
        */
-      dragTo(startProgress - dy / SPACE_DRAG);
+      dragTo(progressFromDrag(startProgress, dy));
     };
 
     const onEnd = (): void => {

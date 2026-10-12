@@ -195,6 +195,42 @@ export function wheelFlick(deltaY: number): number {
 }
 
 /**
+ * How far a finger must travel on the ledger space to carry it from one state to the other.
+ *
+ * ⚠️ **Deeper than the ledger screen's 260, and the difference is the geometry.** That screen's
+ * summary shrinks by a few hundred pixels; **this one's sea is a whole screen tall and the list has
+ * to be pulled up from beyond it.** Reusing 260 would make one gesture cross the whole range and
+ * **the retreat would read as a jump rather than as a tide.**
+ */
+export const SPACE_DRAG = 420;
+
+/**
+ * Where a finger is, as progress between the two states.
+ *
+ * ⚠️ **The sign is inverted, and that inversion is the whole reason this is a function.** On the
+ * ledger screen a downward drag *reduces* progress towards the list. Here the list is **above** the
+ * presentation state in the order the reader travels, so **a finger moving up the screen (a negative
+ * `dy`) has to *increase* progress.** Getting this backwards produces an animation that runs the
+ * wrong way while every test still passes — **nothing else in the system knows which way is "up".**
+ */
+export function progressFromDrag(startProgress: number, dy: number, drag = SPACE_DRAG): number {
+  return clamp01(startProgress - dy / drag);
+}
+
+/**
+ * The gesture's average speed, in drag-distances per second.
+ *
+ * ⚠️ **Averaged over the whole touch rather than sampled at the end**, for the reason the ledger
+ * screen discovered: **fingers slow and drift in the last few milliseconds before they lift, so the
+ * final delta is often tiny and sometimes points the wrong way** — and the spring then reverses
+ * briefly before finishing. The average cannot be flipped by that last stray sample.
+ */
+export function flickFromDrag(dy: number, elapsedMs: number, drag = SPACE_DRAG): number {
+  if (elapsedMs <= 0) return 0;
+  return ((dy / elapsedMs) * 1000) / drag;
+}
+
+/**
  * Whether a touch gesture that began in the list state belongs to the screen.
  *
  * ⚠️ **The owner's rule, and the reason it is about *where* rather than *which way*.** The version
