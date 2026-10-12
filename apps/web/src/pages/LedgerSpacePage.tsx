@@ -219,8 +219,21 @@ export function LedgerSpacePage(): React.JSX.Element {
         */}
       <div
         ref={space.scrollRef}
-        className="relative mx-auto w-full max-w-md px-6 pt-10 pb-16"
+        /**
+         * ⚠️ **The top inset, because this is a full-bleed screen now.**
+         *
+         * Every other screen sits inside a frame that already accounts for the notch. **This one
+         * starts at the top edge of the display**, so without the inset the title sits under the
+         * status bar on a phone with one — **and only on a phone with one.**
+         *
+         * ⚠️ There is no bottom inset here on purpose: the list is the page's own content and the
+         * page scrolls, so **the last card should be able to reach the bottom edge**; the extra space
+         * belongs to a fixed bar, and this screen has none.
+         */
+        className="relative mx-auto w-full max-w-md px-6 pb-16"
         style={{
+          /** ⚠️ The notch, plus the ordinary rhythm. */
+          paddingTop: "calc(2.5rem + env(safe-area-inset-top, 0px))",
           opacity: "var(--p, 0)",
           transform: "translateY(calc((1 - var(--p, 0)) * 24px))",
         }}

@@ -12,10 +12,22 @@
       Zoom is deliberately NOT disabled: this app is used by people who may need
       to magnify it, and blocking that to save ourselves a layout concern would
       be the wrong trade.
+
+      ⚠️ **`viewport-fit=cover` is what makes every `env(safe-area-inset-*)` in this
+      application do anything at all.** Without it iOS reports all four insets as
+      `0px` — on the grounds that the page has already been laid out inside the safe
+      area — so the bottom navigation's `pb-[env(safe-area-inset-bottom)]` and the
+      sheets' `pb-[calc(...)]` were **reading a constant zero**, and the app sat
+      against the home indicator on every phone that has one.
+
+      ⚠️ **A one-word omission whose symptom is a layout that looks right on a
+      desktop, right in a browser's device emulator, and wrong only on real
+      hardware.** Found while building the ledger space's presentation state — the
+      first screen whose content had to reach the display's edges on purpose.
     -->
     <meta
       name="viewport"
-      content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
     />
     <meta name="description" content="Libellum - the free, open ledger" />
     <title>Libellum</title>

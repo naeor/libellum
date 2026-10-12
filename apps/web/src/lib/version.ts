@@ -37,7 +37,7 @@
  * ledgers)**. That is the whole point of the middle segment — "which stage is
  * this build from" is readable on screen, and the answer needs no lookup.
  */
-export const APP_VERSION = "1.09.46";
+export const APP_VERSION = "1.09.47";
 
 /**
  * When this bundle was built.
