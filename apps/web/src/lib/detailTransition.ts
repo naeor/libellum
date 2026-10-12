@@ -59,59 +59,34 @@ export function writeSession(patch: Partial<Session>): void {
 }
 
 /**
- * How far a finger must travel to carry the transition from one end to the
- * other. Short enough to feel responsive, long enough that the summary shrinks
- * gradually rather than snapping.
- */
-const DRAG_DISTANCE = 260;
-
-/** A firm push, so the screen follows the finger rather than lagging behind. */
-const SPRING_STIFFNESS = 240;
-
-/**
- * Damped to just under critical.
+ * ⚠️ **The arithmetic now lives in `transitionPhysics.ts`, where it is tested.**
  *
- * The owner asked for "a very slight bounce, but no visible oscillation" —
- * underdamped enough to overshoot once by a couple of percent, damped enough
- * that it stops there instead of wobbling.
- */
-const SPRING_DAMPING = 27;
-
-/** Below this the motion is over; snapping to the exact end avoids a long tail. */
-const SETTLED = 0.0015;
-
-/**
- * The screen may not cross from one state to the other in less than this.
+ * These constants and the decisions built on them were tuned over several rounds of the owner
+ * reporting jolts, reversals and a swallowed scroll — and **every one of those conclusions was a
+ * comment in this file that no test could reach.** They are pure functions of numbers, so they did
+ * not need a DOM; they only needed to be somewhere a test could call them.
  *
- * The owner's fix, after several rounds of chasing the jolt properly. Anything
- * the transition does faster than this — a hard flick, a spring launched with
- * the finger's own speed — is where the stutter lives, and a stutter is far
- * more noticeable than a transition that takes half a second instead of a
- * quarter.
- *
- * So it is a speed limit rather than a physics fix: whatever the velocity
- * reading says, the value moves at most this fast, and the whole animation
- * therefore always plays out over at least half a second. It does not matter
- * which of the earlier causes was responsible, because none of them can act
- * faster than this.
+ * The hook below keeps what a DOM is actually required for: refs, listeners, animation frames.
  */
-const MAX_SPEED = 1 / 0.5;
-
-/** A flick is enough on its own, without needing to travel half the distance. */
-const FLICK_VELOCITY = 0.55;
-
-/**
- * Where the currency strip switches from wrapping to scrolling.
- *
- * Late on purpose: by this point the cards are nearly their final size, so the
- * row's reflow lands on a layout that has almost stopped changing and reads as
- * nothing at all.
- */
-const LATE_THRESHOLD = 0.72;
-
-function clamp01(value: number): number {
-  return value < 0 ? 0 : value > 1 ? 1 : value;
-}
+import {
+  DRAG_DISTANCE,
+  FLICK_VELOCITY,
+  LATE_THRESHOLD,
+  MAX_SPEED,
+  SETTLED,
+  SPRING_DAMPING,
+  SPRING_STIFFNESS,
+  WHEEL_IDLE_MS,
+  WHEEL_SCALE,
+  carryVelocity,
+  clamp01,
+  clampOvershoot,
+  claimsGesture,
+  decideTarget,
+  hasSettled,
+  springStep,
+  wheelFlick,
+} from "./transitionPhysics.js";
 
 export function useDetailTransition(initial: number): DetailTransition {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -195,26 +170,24 @@ export function useDetailTransition(initial: number): DetailTransition {
       const elapsed = Math.min((now - lastTick.current) / 1000, 1 / 30);
       lastTick.current = now;
 
-      const displacement = target.current - progress.current;
-      velocity.current += displacement * SPRING_STIFFNESS * elapsed;
-      velocity.current *= Math.exp(-SPRING_DAMPING * elapsed);
-
-      // The speed limit. Applied to the step rather than to the velocity so
-      // that a reading far above it simply travels at the ceiling instead of
-      // being thrown away, and the end still arrives smoothly.
-      const limit = MAX_SPEED * elapsed;
-      const step1 = velocity.current * elapsed;
-      progress.current += step1 > limit ? limit : step1 < -limit ? -limit : step1;
-
-      // Overshoot past the end would show a sliver of nothing at either edge.
-      if ((target.current === 0 && progress.current < 0) || (target.current === 1 && progress.current > 1)) {
-        progress.current = target.current;
-        velocity.current = 0;
-      }
+      // ⚠️ The arithmetic lives in `transitionPhysics.ts`, where it is tested — see the import.
+      const stepped = springStep(progress.current, velocity.current, target.current, elapsed);
+      const end = target.current === 0 ? 0 : 1;
+      const clamped = clampOvershoot(stepped.progress, end);
+      /**
+       * ⚠️ **A clamped step means the spring reached the end, so its speed is spent.**
+       *
+       * My first version wrote this as a comparison against `progress.current` — two floats compared
+       * for equality, reading as if it were asking something else. **The question is "did the clamp
+       * change the value", so that is what is asked now.**
+       */
+      const hitEnd = clamped !== stepped.progress;
+      progress.current = clamped;
+      velocity.current = hitEnd ? 0 : stepped.velocity;
 
       paint();
 
-      if (Math.abs(displacement) < SETTLED && Math.abs(velocity.current) < 0.05) {
+      if (hasSettled(progress.current, velocity.current, target.current)) {
         progress.current = target.current;
         velocity.current = 0;
         paint();
