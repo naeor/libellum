@@ -1,12 +1,15 @@
-﻿import { Link, useNavigate } from "react-router";
+﻿import { useState } from "react";
+import { Link, useNavigate } from "react-router";
 
+import { useAuth } from "../auth/AuthProvider.js";
 import { HistoryList } from "../components/HistoryList.js";
 import { MemberList } from "../components/MemberList.js";
 import { Section } from "../components/Section.js";
 import { MessageBoard } from "../components/MessageBoard.js";
 import { TabPage } from "../components/Layouts.js";
 import { SkeletonRows } from "../components/States.js";
-import { useBooks, useLedger } from "../lib/queries.js";
+import { errorMessage } from "../lib/api.js";
+import { useBookMembers, useBooks, useLeaveBook, useLedger } from "../lib/queries.js";
 
 /**
  * **账本 / 协作 —— 第四个主 Tab，和明细、分析、账户同级。**
@@ -170,9 +173,107 @@ export function LedgerPage(): React.JSX.Element {
               </dl>
             </Section>
           )}
+
+          <LeaveBookSection bookId={ledger.data.book.id} />
         </>
       ) : null}
     </TabPage>
+  );
+}
+
+/**
+ * **退出这本账 —— 只对「不是创建者」的人显示。**
+ *
+ * ⚠️ **The owner keeps two meanings apart**, and this is the second of them: *"不是同一回事"* (Q5).
+ * **弃置** is *"整本弃置"* — it sets the ledger aside for everybody, and **only its creator may do
+ * it**. **退出** is *"我不想再显示这本账"* — one person stepping out of somebody else's ledger.
+ *
+ * ⚠️ **So the creator sees no button here**, and the server says the same (`creator_cannot_leave`):
+ * **removing the last writer would leave a ledger nobody can edit, invite into or dispose of**, and
+ * no screen could undo it. Their route is 弃置, which lives on 我的账本.
+ *
+ * ⚠️ **It sits at the very bottom, after the information.** A destructive action placed above the
+ * content is one people reach by scrolling past it.
+ *
+ * ⚠️ **`bookId` is passed in rather than derived.** My first version wrote a helper that returned
+ * `member.userId` under the name `ledgerIdOf` — **which would have asked the server to make the user
+ * leave a ledger whose id happened to equal their own user id.** It is a type error waiting to be a
+ * runtime one, and the fix is to take the ledger from the ledger.
+ */
+function LeaveBookSection({ bookId }: { readonly bookId: string }): React.JSX.Element | null {
+  const { user } = useAuth();
+  const members = useBookMembers();
+  const leave = useLeaveBook();
+  const [confirming, setConfirming] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const me = members.data?.members.find((member) => member.userId === user?.id) ?? null;
+
+  /** ⚠️ Nothing at all while the answer is unknown — a button that appears then vanishes is worse. */
+  if (me === null || me.isCreator) return null;
+
+  return (
+    <Section title="退出这本账">
+      {error === null ? null : (
+        <p role="alert" className="mb-3 rounded-field bg-danger-soft px-4 py-3 text-sm text-danger">
+          {error}
+        </p>
+      )}
+
+      <p className="text-sm leading-relaxed text-muted">
+        退出之后这本账不再出现在你的列表里，你也就看不到它的账目了。
+        你记过的账目会留下，历史记录里也会留下这一条。
+      </p>
+
+      {confirming ? (
+        <div className="mt-3 flex gap-3">
+          <button
+            type="button"
+            disabled={leave.isPending}
+            onClick={() => {
+              setError(null);
+              void leave
+                .mutateAsync(bookId)
+                .then(() => {
+                  /**
+                   * ⚠️ **A reload, for the same reason entering a ledger is one**: leaving changes
+                   * which ledger every later request addresses and which slice of the offline copy is
+                   * read. **A screen showing this ledger's header over another's entries is the
+                   * failure the isolation exists to prevent**, and a reload cannot be half-done.
+                   */
+                  window.location.assign("/");
+                })
+                .catch((caught: unknown) => {
+                  setError(errorMessage(caught));
+                  setConfirming(false);
+                });
+            }}
+            className="rounded-field bg-danger px-4 py-2 text-sm text-white transition hover:bg-danger-dark disabled:opacity-45"
+          >
+            {leave.isPending ? "正在退出……" : "确认退出"}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setConfirming(false);
+            }}
+            className="rounded-field bg-canvas px-4 py-2 text-sm text-muted transition hover:text-ink"
+          >
+            取消
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => {
+            setConfirming(true);
+          }}
+          className="mt-3 rounded-field bg-canvas px-4 py-2 text-sm text-muted transition hover:text-danger"
+        >
+          退出这本账
+        </button>
+      )}
+    </Section>
   );
 }
 
