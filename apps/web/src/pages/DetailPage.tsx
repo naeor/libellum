@@ -848,10 +848,21 @@ export function DetailPage(): React.JSX.Element {
       */}
       {ledger.data === undefined || entryOpen ? null : (
         <p className="shrink-0 truncate px-6 pt-2 text-[11px] text-muted">
+          {/**
+            * ⚠️ **The ledger's number used to follow the name here, and the owner removed it**:
+            * *"把当前账本的编号删掉吧（也就是不显示编号），只显示名字就行，一来那个编号太长，
+            *  二来用户其实也用不着."*
+            *
+            * ⚠️ **Both of his reasons are about this line specifically.** It is a caption above a
+            * navigation bar — **an eight-digit number there is the longest thing on the row and the
+            * least useful**, because the number exists so two people can confirm they are looking at
+            * the same ledger *out loud*, which is a conversation, not a glance.
+            *
+            * ⚠️ **It is still shown where that conversation happens**: `LedgerInfoPage`, the member
+            * list, and the share-link confirmation screen all carry it, **and they are screens
+            * somebody opens deliberately.**
+            */}
           当前账本：{ledger.data.book.name}
-          {ledger.data.book.bookNumber === null ? null : (
-            <span className="ml-1.5 font-mono">{ledger.data.book.bookNumber}</span>
-          )}
         </p>
       )}
 

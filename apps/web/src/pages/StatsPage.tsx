@@ -99,6 +99,21 @@ export function StatsPage(): React.JSX.Element {
         <p className="mt-1.5 text-sm leading-relaxed text-white/80">
           以下结果由已记录的账目计算得出。
         </p>
+        {/**
+          * ⚠️ **Which ledger these numbers are about** — and this is not decoration.
+          *
+          * Once an account can have several ledgers, **every figure on this screen is a claim about
+          * one of them.** The entries screen already carried the name; **without it here, two
+          * ledgers' charts look identical**, and the only way to tell them apart is to navigate
+          * somewhere else and come back.
+          *
+          * ⚠️ **The number is deliberately absent** — the owner's instruction: *"只显示名字就行……
+          * 一来那个编号太长，二来用户其实也用不着."* The name is what a person recognises; the number
+          * is what they read out loud, which happens on 账本信息, not here.
+          */}
+        {ledger.data === undefined ? null : (
+          <p className="mt-1.5 truncate text-xs text-white/70">当前账本：{ledger.data.book.name}</p>
+        )}
       </header>
 
       <section className="flex flex-col gap-3 px-6 pt-5">
