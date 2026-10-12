@@ -1,4 +1,4 @@
-import {
+﻿import {
   CURRENCIES,
   RANGE_LABELS,
   STATS_RANGES,
@@ -23,6 +23,7 @@ import { CategoryDonut } from "../components/charts/CategoryDonut.js";
 import { ComparisonPanel, YearOverview } from "../components/charts/SummaryPanel.js";
 import { TrendChart } from "../components/charts/TrendChart.js";
 import { TabPage } from "../components/Layouts.js";
+import { Section } from "../components/Section.js";
 import { SkeletonRows } from "../components/States.js";
 import { useAuth } from "../auth/AuthProvider.js";
 import { errorMessage } from "../lib/api.js";
@@ -274,20 +275,6 @@ export function StatsPage(): React.JSX.Element {
   );
 }
 
-function Section({
-  title,
-  children,
-}: {
-  readonly title: string;
-  readonly children: React.ReactNode;
-}): React.JSX.Element {
-  return (
-    <section className="flex flex-col px-6 pt-7">
-      <h2 className="mb-3 text-sm font-medium text-ink">{title}</h2>
-      <div className="rounded-card border border-line bg-surface p-4">{children}</div>
-    </section>
-  );
-}
 
 function Stat({ label, value }: { readonly label: string; readonly value: string }): React.JSX.Element {
   return (
