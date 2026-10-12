@@ -117,6 +117,29 @@
     }
   }
 
+  /*
+    ⚠️ **The ledger page's sections arrive rather than appear.**
+
+    The owner asked for the move between a one-person ledger and a shared one to be *"轻微自然"* and
+    warned against the opposite: *"不要突然整页变成不同的视觉体系."* The sections that come and go
+    with the member count are what changes, so **they are what animates** — a short fade with a small
+    rise, 6px, which reads as "this belongs to the page above it" rather than as a page transition.
+
+    ⚠️ **Deliberately short and small.** 220ms and 6px are under the threshold where a person
+    notices an animation as an animation; **anything longer makes a tab feel slow to open**, and the
+    tab is opened often.
+  */
+  @keyframes libellum-section-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
   /* ---- Shape ---------------------------------------------------------- */
   --radius-card: 1.25rem;
   --radius-field: 0.875rem;
@@ -138,6 +161,30 @@
  */
 .refresh-turn {
   animation: libellum-refresh-turn 700ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/*
+  ⚠️ **The ledger page's sections, arriving.** The class sits outside `@theme` for the reason above.
+
+  ⚠️ **Nothing removes these from the DOM and re-adds them**, so the animation plays when the section
+  first mounts — which is exactly when the member count changes and the layout changes with it.
+  **A section that is already on screen when the count changes simply stays put**, and that is the
+  point: the owner asked for the two states to be *"同一个主页面根据当前账本状态改变信息重点"*,
+  **not two screens swapping.**
+*/
+.section-in {
+  animation: libellum-section-in 220ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/*
+  ⚠️ **Honouring `prefers-reduced-motion` is not a nicety here.** A short vertical movement is the
+  kind of motion that triggers nausea for some people, and the system setting exists precisely so they
+  can say so once. **The elements still appear — they just appear.**
+*/
+@media (prefers-reduced-motion: reduce) {
+  .section-in {
+    animation: none;
+  }
 }
 
 html,
