@@ -238,6 +238,31 @@
   }
 }
 
+/*
+  ⚠️ **The ledger space's scroller — and it has to be a real one, or the gesture lies.**
+
+  The page's list scrolls inside `LedgerSpaceScroll` rather than with the document, for the same
+  reason the ledger screen does it: **the gesture rule reads `scrollTop` to decide whether a downward
+  pull is "the top of the list, nowhere else to go" or an ordinary scroll back up.**
+
+  ⚠️ **My first version pointed the transition at a plain `<div>` that never scrolled** — so
+  `scrollTop` was a constant zero, `claimsGesture` believed the reader was always at the top, and
+  **a downward drag anywhere in a long list would have driven the retreat** — the exact
+  misjudgement the owner ruled out: *"不要把普通的向下滚动或轻微触碰误判成切换状态."*
+
+  ⚠️ **Written as a class here rather than as Tailwind utilities, because Tailwind removes classes it
+  cannot see in the source** — and that failure mode is silent (see the note on `.tide`).
+*/
+.space-scroll {
+  height: 100dvh;
+  overflow-y: auto;
+  /* ⚠️ The browser's rubber-band bounce is what would otherwise answer the pull. */
+  overscroll-behavior-y: none;
+  /* ⚠️ And no scroll anchoring: the sea's travel moves everything, and the browser's correction
+     would fight it — `DetailPage` learned this first. */
+  overflow-anchor: none;
+}
+
 html,
 body,
 #root {

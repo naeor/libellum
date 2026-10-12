@@ -230,7 +230,7 @@ export function LedgerSpacePage(): React.JSX.Element {
          * page scrolls, so **the last card should be able to reach the bottom edge**; the extra space
          * belongs to a fixed bar, and this screen has none.
          */
-        className="relative mx-auto w-full max-w-md px-6 pb-16"
+        className="space-scroll relative mx-auto w-full max-w-md px-6 pb-16"
         style={{
           /** ⚠️ The notch, plus the ordinary rhythm. */
           paddingTop: "calc(2.5rem + env(safe-area-inset-top, 0px))",
