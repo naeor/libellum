@@ -1,4 +1,4 @@
-@import "tailwindcss";
+﻿@import "tailwindcss";
 @import "./detail-motion.css";
 
 /*
@@ -154,12 +154,27 @@
     drift them in lockstep and read as one sheet of water, which is the thing that stops looking like
     depth.
   */
+  /*
+    ⚠️ **The tide scales; it does not move, and that is a bug fix rather than a preference.**
+
+    The previous version was `translateY(±amp)`: **the whole band slid up and down.** When a band
+    moved down, its top edge left the top of the container and **the band behind it showed through** —
+    which is the pale green the owner saw flickering along the top edge.
+
+    ⚠️ **His diagnosis was exact**: *"波面的变化主要体现在下边界，不能因整层移动而把顶部覆盖区域拉开."*
+    Scaling about `transform-origin: top` changes **only the lower edge** — the upper edge is pinned to
+    the top of the page at every frame, in both states, during the retreat, and during a bounce.
+
+    ⚠️ **The range is deliberately tiny** (0.985–1.015). The owner asked for *"缓慢的潮汐或呼吸感"*
+    and *"轻柔、连续，循环衔接自然"*; a band whose lower edge travels a few percent over twenty seconds
+    is alive without being an animation anyone watches.
+  */
   @keyframes libellum-tide {
     from {
-      transform: translateY(calc(var(--tide-amp, 2) * -1%));
+      transform: scaleY(0.985);
     }
     to {
-      transform: translateY(calc(var(--tide-amp, 2) * 1%));
+      transform: scaleY(1.015);
     }
   }
 
@@ -225,6 +240,8 @@
 */
 .tide {
   animation: libellum-tide var(--tide-period, 15s) ease-in-out infinite alternate;
+  /* ⚠️ Pinned, so the tide cannot pull the top edge away from the top of the page. */
+  transform-origin: top;
 }
 
 @media (prefers-reduced-motion: reduce) {

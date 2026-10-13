@@ -244,7 +244,8 @@ export function LedgerSpacePage(): React.JSX.Element {
            * content below starts there by itself — no `marginTop`, no cross-fade. That is the owner's
            * 「同一个页面的两种形态」 expressed as layout rather than as animation.
            */}
-          <div className="sticky top-0 z-20 w-full">
+          {/* ⚠️ 海固定在视口顶部、横跨全宽；内容用 paddingTop 从它下方开始，滚动时被它遮挡。 */}
+          <div className="fixed inset-x-0 top-0 z-30 w-full">
             <OceanBackdrop />
           </div>
 
@@ -258,7 +259,25 @@ export function LedgerSpacePage(): React.JSX.Element {
            * further down the same list and **was never meant to be the thing showing** — an earlier layout
            * simply let whatever happened to be at that offset show through.
            */}
-          <div className="mx-auto w-full max-w-md px-6 pb-16">
+          /**
+           * ⚠️ **The content starts below the sea by its own height, and that is why the sea can be
+           * `fixed`.**
+           *
+           * A `fixed` sea takes no space in the flow, so without this the title would sit underneath it.
+           * With it, **the list begins exactly where the water ends** — and because this padding scrolls
+           * with the content, scrolling up carries the cards **under** the sea, which is above them at
+           * `z-30`. That is the fix for the owner's fifth point: *"内容向上滚动进入顶部区域后，应被正确
+           * 遮挡或裁切，不能越过海浪后再次出现在它上方的白色区域."*
+           *
+           * ⚠️ **`sticky` could not do this job.** The sea was sticky before, and the scroll container is
+           * nested inside another one — so the sea **scrolled away with the content** and the title ended up
+           * in the white space where the water had been. `fixed` pins it to the viewport instead:
+           * **the sea cannot leave the top of the screen in any state or at any scroll position.**
+           */
+          <div
+            className="mx-auto w-full max-w-md px-6 pb-16"
+            style={{ paddingTop: "calc(var(--sea-h) + 1rem + env(safe-area-inset-top, 0px))" }}
+          >
         <h1 className="text-2xl font-semibold tracking-tight text-ink">我的账本</h1>
         <p className="mt-1.5 text-sm leading-relaxed text-muted">
           {user?.displayName ?? ""}
