@@ -108,25 +108,29 @@ const BANDS: readonly Band[] = [
  * control points somebody has to keep consistent.** Anything the owner asks for later — a different
  * amplitude, a third harmonic — is one number.
  */
+/**
+ * The box height that makes a band's *visible* height come out as the owner asked for it.
+ *
+ * ⚠️ **Needed because `buildPath` raises its baseline by the amplitude.** Without this the sea
+ * would simply be that much thinner — 63vh would arrive as 59vh — **and the error would be
+ * invisible in code review, because every number in `BANDS` would still read 63.**
+ */
+function bandHeight(target: number, band: Band): number {
+  /** ⚠️ The path's amplitude is fixed — it belongs to the curve, not to the box it is stretched over. */
+  const amp = (band.waves.reduce((sum, wave) => sum + Math.abs(wave.amp), 0) / band.left) * 100;
+  return (target * 100) / (100 - amp);
+}
+
 function buildPath(band: Band, rightRatio: number): string {
   const steps = 140;
-  /**
-   * ⚠️ **One ratio for both states, and 0.90 is a compromise the owner should know about.**
-   *
-   * He asked for 63 / 59 open (ratio 0.937) and 10 / 6 contracted (ratio 0.60). **One path cannot
-   * hold two ratios**, and he rejected the two-path answer because he could see the cross-fade:
-   * 「过渡动画中有出现淡入淡出的现象」.
-   *
-   * 0.85 lands within 8 vh of the open request (63 → 56.7 against 59) and 3 vh of the contracted
-   * one (10 → 8.5 against 6.75). **The owner asked for the contracted right side to be narrower**
-   * (「变窄20%到30%左右」), and 0.85 moves it most of the way there without a cross-fade.
-   */
+
+  /**    * ⚠️ **How far the curve may swing, in viewBox units, and why it is subtracted from the baseline.**    *    * The baseline used to be `100` — the bottom of the box — so **half of every sine went below it    * and was clipped by the SVG.** A clipped sine is not a wave: it is **a flat line along the band's    * lower edge.** That is the 「直线」 the owner kept seeing on top of a curve that was, genuinely,    * a pure sine.    *    * ⚠️ The baseline is raised by exactly this much, so the trough just touches `100` and nothing is    * ever clipped. **The visible heights he specified are restored by `bandHeight`, which scales each    * band's box up to compensate** — otherwise raising the baseline would silently make the sea thinner    * than he asked for.    */   const maxAmp = (band.waves.reduce((sum, wave) => sum + Math.abs(wave.amp), 0) / band.left) * 100;
   const yRight = rightRatio * 100;
   const points: string[] = [];
 
   for (let i = steps; i >= 0; i -= 1) {
     const t = i / steps;
-    const base = 100 + (yRight - 100) * t;
+    const base = (100 - maxAmp) + (yRight - (100 - maxAmp)) * t;
     let deviation = 0;
     for (const wave of band.waves) {
       /** ⚠️ vh → viewBox units: the box is the band's own height, so the conversion needs it. */
@@ -143,7 +147,7 @@ function buildPath(band: Band, rightRatio: number): string {
    * y, so that line has the least margin exactly when the eye is closest to it. **Drawing it two units
    * above the box costs nothing and removes the possibility entirely.**
    */
-  return `M0,-2 H100 V${yRight.toFixed(2)} ${points.join(" ")} L0,-2 Z`;
+  return `M-5,-10 H105 V${yRight.toFixed(2)} ${points.join(" ")} L-5,-10 Z`;
 }
 
 /**
@@ -173,7 +177,7 @@ export function OceanBackdrop(): React.JSX.Element {
           key={band.fill}
           className="tide absolute inset-x-0 top-0"
           style={{
-            height: "calc(" + band.left + "vh + (var(--p, 0) * (" + band.leftShort + "vh - " + band.left + "vh)))",
+            height: `calc(${bandHeight(band.left, band).toFixed(2)}vh + (var(--p, 0) * (${bandHeight(band.leftShort, band).toFixed(2)}vh - ${bandHeight(band.left, band).toFixed(2)}vh)))`,
             ["--tide-period" as string]: band.period + "s",
             animationDelay: index * -3.1 + "s",
             zIndex: BANDS.length - index,
@@ -196,10 +200,10 @@ export function OceanBackdrop(): React.JSX.Element {
           <svg
             className="absolute"
             style={{
-              left: "-6%",
-              top: "-6%",
-              width: "112%",
-              height: "112%",
+              /** ⚠️ Full size, NOT oversized: a 112% box scales the whole drawing up by 12%, which is
+               * what pushed the sea to 90% of the screen. The path itself extends past the viewBox
+               * instead — see `buildPath` — so the rotation has its margin without any scaling. */
+              inset: 0,
               transform: "rotate(-3deg)",
               transformOrigin: "center",
             }}
