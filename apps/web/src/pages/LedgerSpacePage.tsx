@@ -259,7 +259,7 @@ export function LedgerSpacePage(): React.JSX.Element {
            * further down the same list and **was never meant to be the thing showing** — an earlier layout
            * simply let whatever happened to be at that offset show through.
            */}
-          /**
+          {/**
            * ⚠️ **The content starts below the sea by its own height, and that is why the sea can be
            * `fixed`.**
            *
@@ -273,7 +273,7 @@ export function LedgerSpacePage(): React.JSX.Element {
            * nested inside another one — so the sea **scrolled away with the content** and the title ended up
            * in the white space where the water had been. `fixed` pins it to the viewport instead:
            * **the sea cannot leave the top of the screen in any state or at any scroll position.**
-           */
+           */}
           <div
             className="mx-auto w-full max-w-md px-6 pb-16"
             style={{ paddingTop: "calc(var(--sea-h) + 1rem + env(safe-area-inset-top, 0px))" }}

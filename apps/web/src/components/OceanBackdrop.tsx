@@ -47,13 +47,13 @@ interface Band {
  */
 const BANDS: readonly Band[] = [
   /** The main wave: a low left shoulder rising to a high right — the asymmetry the owner asked for. */
-  { d: "M0,0 H100 V78 C86,66 72,88 54,82 C34,76 16,92 0,84 Z", fill: "#3f7059", tall: 46, short: 5.5, period: 23 },
+  { d: "M0,0 H100 V88 C84,82 68,94 50,90 C32,86 16,93 0,88 Z", fill: "#3f7059", tall: 60, short: 6, period: 23 },
   /** One broad crest right of centre, falling away at both ends. */
-  { d: "M0,0 H100 V86 C82,74 66,92 44,88 C26,85 12,78 0,90 Z", fill: "#4f8a6d", tall: 60, short: 9, period: 18.5 },
+  { d: "M0,0 H100 V90 C82,85 64,94 46,91 C28,88 12,93 0,89 Z", fill: "#4f8a6d", tall: 66, short: 9.5, period: 18.5 },
   /** Tilted the other way: high on the left, falling to the right. */
-  { d: "M0,0 H100 V74 C78,88 58,80 38,90 C22,97 10,92 0,86 Z", fill: "#6aa78a", tall: 70, short: 12, period: 15.5 },
+  { d: "M0,0 H100 V87 C80,93 60,87 40,92 C22,96 10,90 0,93 Z", fill: "#6aa78a", tall: 73, short: 12.5, period: 15.5 },
   /** The calmest layer, nearly flat — it is the one that dissolves into the page. */
-  { d: "M0,0 H100 V90 C80,94 62,88 44,93 C26,98 10,94 0,97 Z", fill: "#96c4ac", tall: 80, short: 14.5, period: 12.5 },
+  { d: "M0,0 H100 V92 C82,95 62,90 44,94 C26,97 10,94 0,96 Z", fill: "#96c4ac", tall: 80, short: 15, period: 12.5 },
 ];
 
 /**
