@@ -130,8 +130,6 @@ export function OceanBackdrop(): React.JSX.Element {
             animationDelay: index * -2.3 + "s",
             /** ⚠️ Later bands sit behind earlier ones, so their curves stack rather than hide. */
             zIndex: BANDS.length - index,
-            ["--band-tall" as string]: band.tall + "vh",
-            ["--band-short" as string]: band.short + "vh",
           }}
           viewBox="0 0 100 100"
           /**

@@ -201,15 +201,15 @@ export function LedgerSpacePage(): React.JSX.Element {
       </div>
 
       {/**
-        * ⚠️ **The ordinary state arrives from slightly below and fades in**, so the two movements are
-        * opposites rather than one replacing the other: **water up, list up-behind-it.** A list that
-        * simply appeared would be the "new page" the owner ruled out, even with the sea receding.
+        * ⚠️ **The ordinary state is not faded in, and this comment said it was until the mechanism
+        * changed underneath it.** An earlier version arrived with `opacity: var(--p)` and a 24px rise
+        * — which is the cross-fade the owner rejected in as many words. **The list is now simply
+        * pushed down by however tall the sea is** (`marginTop: var(--sea-h)`), so it is in the layout
+        * from the first frame and **rises because the water above it contracts.**
         *
-        * ⚠️ **Nothing here is a React value, and that is the point.** `--p` is written by the spring on
-        * every frame; **reading it into state to compute an opacity would put a re-render in the
-        * middle of the animation** — the failure the ledger screen hit and the reason its progress is
-        * a ref. So the opacity and the small rise are both `calc()` on the same variable the sea uses,
-        * and React never hears about the movement at all.
+        * ⚠️ **A stale comment is worse than no comment here**: it describes the mechanism that was
+        * deliberately removed, so the next person to touch this — or the next round of me — would
+        * read it and put the fade back.
         */}
       <div
         ref={space.scrollRef}
