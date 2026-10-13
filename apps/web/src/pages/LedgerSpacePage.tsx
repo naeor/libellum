@@ -155,9 +155,7 @@ export function LedgerSpacePage(): React.JSX.Element {
      * already wrong in a smaller way: its `backTo` was `/start`, **so the back arrow pointed at the
      * page it was on.**
      *
-     * ⚠️ **`fixed inset-0` for the sea and `overflow-y-auto` for the list**, because the two states
-     * do not share a scroll: the sea is a fixed picture that recedes, and the ledger list scrolls
-     * under it. **One scroller cannot be both.**
+      * ⚠️ **The sea is `sticky` inside one scroller, and this paragraph used to say it was `fixed`       * with its own scroll.** That version was removed for two reasons: a `fixed` box travelling       * upward is a picture leaving the screen — *"很多安卓手机的开屏页"*, which is what the owner       * rejected — and **an independently scrolling sea means the ledger cards pass behind the       * water.** One scroll container, one sticky band, and neither can be scrolled through the       * other.
      */
     <div
       ref={space.rootRef}
