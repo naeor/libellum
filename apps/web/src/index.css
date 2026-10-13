@@ -1,4 +1,4 @@
-﻿@import "tailwindcss";
+@import "tailwindcss";
 @import "./detail-motion.css";
 
 /*
@@ -140,44 +140,6 @@
     }
   }
 
-  /*
-    ⚠️ **The tide under the ledger space's presentation state.**
-
-    The owner asked for *"海浪可以非常缓慢地起伏，波面之间存在轻微的速度差"* and ruled out the
-    opposite twice: *"不要剧烈晃动"* and *"不要持续出现高频闪烁"*. So this is a drift of a few
-    percentage points — at the scale of a glance the picture is still, and over half a minute it
-    breathes.
-
-    ⚠️ **One keyframe for four layers.** The amplitude comes from each layer's own `--tide-amp`, and
-    the *period* comes from the inline `animation` — **so the speed difference the owner asked for is
-    a number per layer rather than four near-identical blocks of CSS.** A single shared period would
-    drift them in lockstep and read as one sheet of water, which is the thing that stops looking like
-    depth.
-  */
-  /*
-    ⚠️ **The tide scales; it does not move, and that is a bug fix rather than a preference.**
-
-    The previous version was `translateY(±amp)`: **the whole band slid up and down.** When a band
-    moved down, its top edge left the top of the container and **the band behind it showed through** —
-    which is the pale green the owner saw flickering along the top edge.
-
-    ⚠️ **His diagnosis was exact**: *"波面的变化主要体现在下边界，不能因整层移动而把顶部覆盖区域拉开."*
-    Scaling about `transform-origin: top` changes **only the lower edge** — the upper edge is pinned to
-    the top of the page at every frame, in both states, during the retreat, and during a bounce.
-
-    ⚠️ **The range is deliberately tiny** (0.96–1.04). The owner asked for *"缓慢的潮汐或呼吸感"*
-    and *"轻柔、连续，循环衔接自然"*; a band whose lower edge travels a few percent over twenty seconds
-    is alive without being an animation anyone watches.
-  */
-  @keyframes libellum-tide {
-    from {
-      transform: scaleY(0.96);
-    }
-    to {
-      transform: scaleY(1.04);
-    }
-  }
-
   /* ---- Shape ---------------------------------------------------------- */
   --radius-card: 1.25rem;
   --radius-field: 0.875rem;
@@ -225,60 +187,6 @@
   }
 }
 
-/*
-  ⚠️ **The tide's rule, and it has to live out here for a reason that cost a build to learn.**
-
-  `@keyframes libellum-tide` sits inside `@theme` (that is where Tailwind wants it), and **Tailwind
-  removes keyframes nothing uses.** The first version drove the animation entirely from an inline
-  `style` on each layer — which Tailwind cannot see — so **the keyframes were dropped from the bundle
-  and the sea would have been perfectly still.** The check that caught it was reading the built CSS
-  for the animation's name; the check that missed it was the page compiling and looking fine.
-
-  ⚠️ **So the animation is named in a class, where the scanner can see it**, and only the *numbers*
-  stay inline: each layer sets `--tide-amp` (its own drift) and `--tide-period` (**its own speed, which
-  is the "轻微的速度差" the owner asked for**).
-*/
-.tide {
-  animation: libellum-tide var(--tide-period, 15s) ease-in-out infinite alternate;
-  /* ⚠️ Pinned, so the tide cannot pull the top edge away from the top of the page. */
-  transform-origin: top;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  /*
-    ⚠️ **The sea still exists, it simply stops moving.** The owner asked for a calm tide, and a reader
-    who has asked their system for less motion is asking for exactly that — **removing the water along
-    with the movement would be answering a different request.**
-  */
-  .tide {
-    animation: none;
-  }
-}
-
-/*
-  ⚠️ **The ledger space's scroller — and it has to be a real one, or the gesture lies.**
-
-  The page's list scrolls inside `LedgerSpaceScroll` rather than with the document, for the same
-  reason the ledger screen does it: **the gesture rule reads `scrollTop` to decide whether a downward
-  pull is "the top of the list, nowhere else to go" or an ordinary scroll back up.**
-
-  ⚠️ **My first version pointed the transition at a plain `<div>` that never scrolled** — so
-  `scrollTop` was a constant zero, `claimsGesture` believed the reader was always at the top, and
-  **a downward drag anywhere in a long list would have driven the retreat** — the exact
-  misjudgement the owner ruled out: *"不要把普通的向下滚动或轻微触碰误判成切换状态."*
-
-  ⚠️ **Written as a class here rather than as Tailwind utilities, because Tailwind removes classes it
-  cannot see in the source** — and that failure mode is silent (see the note on `.tide`).
-*/
-.space-scroll {
-  height: 100dvh;
-  overflow-y: auto;
-  /* ⚠️ The browser's rubber-band bounce is what would otherwise answer the pull. */
-  overscroll-behavior-y: none;
-  /* ⚠️ And no scroll anchoring: the sea's travel moves everything, and the browser's correction
-     would fight it — `DetailPage` learned this first. */
-  overflow-anchor: none;
-}
 
 html,
 body,
@@ -315,3 +223,32 @@ select,
 textarea {
   font-size: 16px;
 }
+
+/* /start: a single flow layout; only the lower content region scrolls. */
+.ledger-space {
+  --sea-short: max(15dvh, calc(116px + env(safe-area-inset-top, 0px) * 1.7));
+  --sea-h: calc(80dvh * (1 - var(--p)) + var(--sea-short) * var(--p));
+  position: relative;
+  height: 100dvh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-canvas);
+}
+.space-ocean { position: relative; flex: none; height: var(--sea-h); z-index: 2; pointer-events: none; }
+.space-waves { position: absolute; width: 100%; height: 110%; inset: 0; overflow: visible; }
+.space-brand {
+  position: absolute;
+  left: calc(50% * (1 - var(--p)) + (20px + env(safe-area-inset-left, 0px)) * var(--p));
+  top: calc(var(--sea-h) * 0.34 * (1 - var(--p)) + (14px + env(safe-area-inset-top, 0px)) * var(--p));
+  transform: translate(calc(-50% * (1 - var(--p))), calc(-50% * (1 - var(--p))));
+  color: white;
+  white-space: nowrap;
+}
+.space-brand-name { font-size: calc(2.1rem - 0.7rem * var(--p)); font-weight: 600; letter-spacing: 0.16em; line-height: 1.3; }
+.space-brand-tagline { margin-top: calc(10px - 7px * var(--p)); font-size: calc(14px - 4px * var(--p)); line-height: 1.5; letter-spacing: 0.08em; }
+.space-cue-window { height: calc(20dvh * (1 - var(--p))); flex: none; overflow: hidden; position: relative; }
+.space-cue { position: absolute; inset: 0; width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--color-muted); font-size: 12px; letter-spacing: 0.12em; padding-bottom: env(safe-area-inset-bottom, 0px); }
+.space-cue:focus-visible { outline: 2px solid var(--color-brand); outline-offset: -8px; }
+.space-scroll { min-height: 0; flex: 1; overflow-y: auto; overscroll-behavior-y: none; overflow-anchor: none; }
+.space-content { padding-top: max(24px, calc(var(--sea-h) * 0.07)); padding-bottom: calc(4rem + env(safe-area-inset-bottom, 0px)); }

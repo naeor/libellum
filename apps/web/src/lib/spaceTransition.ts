@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   MAX_SPEED,
@@ -16,7 +16,6 @@ import {
   hasSettled,
   progressFromDrag,
   springStep,
-  wheelFlick,
 } from "./transitionPhysics.js";
 
 /**
@@ -115,6 +114,10 @@ export function useSpaceTransition(initial: number): SpaceTransition {
      * and showed up as a stall.
      */
     rootRef.current?.style.setProperty("--p", progress.current.toFixed(4));
+    if (scrollRef.current) {
+      scrollRef.current.inert = progress.current <= 0.001;
+      scrollRef.current.style.overflowY = progress.current >= 1 ? "auto" : "hidden";
+    }
   }, []);
 
   const stop = useCallback((): void => {
@@ -128,6 +131,13 @@ export function useSpaceTransition(initial: number): SpaceTransition {
     stop();
     generation.current += 1;
     const mine = generation.current;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      progress.current = target.current;
+      velocity.current = 0;
+      paint();
+      setAtList(target.current >= 1);
+      return;
+    }
     lastTick.current = performance.now();
 
     const step = (now: number): void => {
@@ -195,7 +205,7 @@ export function useSpaceTransition(initial: number): SpaceTransition {
   const release = useCallback(
     (flick: number): void => {
       target.current = decideTarget(progress.current, flick);
-      velocity.current = carryVelocity(flick, target.current, MAX_SPEED);
+      velocity.current = -carryVelocity(flick, target.current, MAX_SPEED);
       run();
     },
     [run],
@@ -218,78 +228,82 @@ export function useSpaceTransition(initial: number): SpaceTransition {
      */
     const dragPx = (): number => spaceDragPx(window.innerHeight);
 
+    let wheelIdle: number | null = null;
+    let wheelTravel = 0;
     let tracking = false;
+    let claimed = false;
+    let eligible = false;
     let startY = 0;
+    let startX = 0;
     let startTime = 0;
     let startProgress = 0;
     let flick = 0;
 
     const onStart = (event: TouchEvent): void => {
-      if (event.touches.length !== 1) return;
-      const target = event.target;
-      /** ⚠️ A sideways-scrolling strip owns its own gestures entirely. */
-      const inStrip = target instanceof Element && target.closest("[data-h-scroll]") !== null;
-
-      tracking = !inStrip;
+      if (wheelIdle !== null) { window.clearTimeout(wheelIdle); wheelIdle = null; wheelTravel = 0; }
+      if (event.touches.length !== 1) {
+        tracking = false;
+        if (progress.current > 0 && progress.current < 1) release(0);
+        return;
+      }
+      const element = event.target;
+      tracking = !(element instanceof Element && element.closest("input, textarea, select, [data-h-scroll], [role=dialog]"));
+      claimed = false;
+      // A scroll that starts below the top remains an ordinary scroll throughout.
+      eligible = scroller.scrollTop <= 1;
       startY = event.touches[0]!.clientY;
+      startX = event.touches[0]!.clientX;
       startTime = performance.now();
       startProgress = progress.current;
+      if (tracking && startProgress > 0 && startProgress < 1) stop();
       flick = 0;
-      stop();
     };
-
     const onMove = (event: TouchEvent): void => {
       if (!tracking || event.touches.length !== 1) return;
-
       const dy = event.touches[0]!.clientY - startY;
-      const atTop = scroller.scrollTop <= 0;
-
-      /**
-       * ⚠️ **The owner's rule, enforced by `claimsGesture`** — and it is the rule that took him three
-       * attempts on the ledger screen: the only gesture claimed in the ordinary state is a *downward*
-       * pull at the very top, **the one with nowhere else to go.**
-       */
-      if (!claimsGesture({ progress: progress.current, atTop, dy })) return;
-
-      const elapsed = performance.now() - startTime;
-      flick = flickFromDrag(dy, elapsed, dragPx());
-
+      const dx = event.touches[0]!.clientX - startX;
+      if (!claimed) {
+        if (Math.max(Math.abs(dy), Math.abs(dx)) < 8) return;
+        if (Math.abs(dx) > Math.abs(dy) || !claimsGesture({ progress: startProgress, atTop: eligible, dy })) {
+          tracking = false;
+          if (progress.current > 0 && progress.current < 1) release(0);
+          return;
+        }
+        claimed = true;
+      }
+      if (!event.cancelable) { tracking = false; release(flick); return; }
       event.preventDefault();
-      /**
-       * ⚠️ **Dragging up moves towards the list, so the sign is inverted** — a finger travelling up
-       * the screen (negative `dy`) must *increase* progress.
-       */
+      flick = flickFromDrag(dy, performance.now() - startTime, dragPx());
       dragTo(progressFromDrag(startProgress, dy, dragPx()));
     };
-
     const onEnd = (): void => {
-      if (!tracking) return;
+      if (tracking && (claimed || (progress.current > 0 && progress.current < 1))) release(flick);
       tracking = false;
-      release(flick);
+      claimed = false;
     };
-
-    /**
-     * ⚠️ **`touchmove` is non-passive and the others are not** — only a non-passive listener may call
-     * `preventDefault`, and **preventing the browser's own scroll is the whole reason the gesture can
-     * drive the transition at all.**
-     */
     root.addEventListener("touchstart", onStart, { passive: true });
     root.addEventListener("touchmove", onMove, { passive: false });
     root.addEventListener("touchend", onEnd);
     root.addEventListener("touchcancel", onEnd);
-
-    let wheelIdle: number | null = null;
+    window.addEventListener("resize", onEnd);
 
     const onWheel = (event: WheelEvent): void => {
       /** ⚠️ Past the top of the list, the pull drives the retreat; anywhere else the list scrolls. */
-      if (progress.current >= 1 && scroller.scrollTop > 0) return;
+      if (event.ctrlKey || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
+      if (progress.current >= 1 && (scroller.scrollTop > 1 || event.deltaY >= 0)) return;
+      if (progress.current <= 0 && event.deltaY <= 0) return;
 
       event.preventDefault();
-      dragTo(progress.current + event.deltaY / WHEEL_SCALE);
+      const delta = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? window.innerHeight : 1);
+      wheelTravel += delta;
+      dragTo(progress.current + delta / WHEEL_SCALE);
 
       if (wheelIdle !== null) window.clearTimeout(wheelIdle);
       wheelIdle = window.setTimeout(() => {
-        release(wheelFlick(event.deltaY));
+        // A deliberate wheel notch commits; tiny trackpad noise returns to rest.
+        release(Math.abs(wheelTravel) >= 40 ? -Math.sign(wheelTravel) : 0);
+        wheelTravel = 0;
+        wheelIdle = null;
       }, WHEEL_IDLE_MS);
     };
 
@@ -304,6 +318,7 @@ export function useSpaceTransition(initial: number): SpaceTransition {
       root.removeEventListener("touchmove", onMove);
       root.removeEventListener("touchend", onEnd);
       root.removeEventListener("touchcancel", onEnd);
+      window.removeEventListener("resize", onEnd);
       root.removeEventListener("wheel", onWheel);
       if (wheelIdle !== null) window.clearTimeout(wheelIdle);
     };

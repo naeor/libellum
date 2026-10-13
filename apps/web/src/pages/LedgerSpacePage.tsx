@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 
 import { useAuth } from "../auth/AuthProvider.js";
@@ -24,59 +24,11 @@ import {
   type ShareLinkView,
 } from "../lib/queries.js";
 
-/**
- * The ledgers this account can open — and the one place a second ledger is made.
- *
- * ⚠️ **This screen replaces a page that stated a fact** ("一个账号对应一本账本"), and the fact is
- * no longer true: an account can belong to several ledgers, some of them made by other people.
- * Left as it was, it would have kept telling people they had one.
- *
- * ⚠️ **It is the functional form only.** The owner's plan gives this page two states — a display
- * state for the first sign-in and a ledger state for working in — and he asked for the functions
- * first: *"不过现在先制作功能页面就行，展示回头再说."* So this is the ledger state, reached from
- * the account screen.
- *
- * ⚠️ **`role` is shown, not assumed.** A viewer opening this screen sees the same ledgers and the
- * same numbers as an editor; the difference is that the server will refuse their writes, and the
- * badge is how they find that out before trying.
- */
+/** The same ledger content beneath a continuously contracting sea. */
 export function LedgerSpacePage(): React.JSX.Element {
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  /**
-   * ⚠️ **`0` is the presentation state — the sea. `1` is the ordinary one — this list.**
-   *
-   * ⚠️ **The progress is a React state *here*, and a ref everywhere else in the project, and the
-   * difference is deliberate.** The ledger screen animates on every frame of a finger's movement, so
-   * it cannot afford a re-render. **This page moves between two places in response to a gesture that
-   * has already ended** — so it is two renders, and React is the right place for it.
-   *
-   * ⚠️ **The timing lives in CSS (`transition`) and not in the spring**, which is the second
-   * departure. The owner gave a duration for this specific move — *"整体时长大致是 600–850 毫秒"* —
-   * and **a spring's duration is a consequence of its constants, not something you can set.** The
-   * tested spring is still what the ledger screen uses; borrowing it here would mean tuning two
-   * numbers until the result happened to land in the owner's range.
-   */
-  /**
-   * ⚠️ **The tested spring, not a CSS transition — and the reason is the gesture.**
-   *
-   * My first version drove `--p` from React state and let `transition: 850ms` do the movement. That
-   * reads the owner's duration literally, **and it cannot follow a finger**: a CSS transition has one
-   * duration and no notion of "the position the finger is at right now". The owner asked for
-   * *"不同层次的波面可以带有轻微的速度差和惯性"* — **inertia is what a spring has and a transition
-   * does not.**
-   *
-   * ⚠️ **So the physics come from `transitionPhysics.ts`** — the same spring, speed ceiling and
-   * gesture rules the ledger screen uses, fixed by 13 tests. **A second implementation would be a
-   * second answer to "how fast does a flick count"**, whose symptom is *"this screen feels slightly
-   * off"*, the hardest kind of bug to attribute.
-   *
-   * ⚠️ **The owner's 600–850ms is honoured by the constants, not by a CSS rule.** The speed ceiling
-   * guarantees **at least** 500ms; the spring's stiffness and damping put an ordinary gesture above
-   * that. **The duration is a consequence of the motion rather than a number imposed on it**, which
-   * is the only way it can also follow the finger.
-   */
   const [initial] = useState(() => (readSeenPresentation(user?.id) ? 1 : 0));
   const space = useSpaceTransition(initial);
 
@@ -147,149 +99,18 @@ export function LedgerSpacePage(): React.JSX.Element {
   }
 
   return (
-    /**
-     * ⚠️ **The page builds its own frame rather than using `InnerPage`, and it has to.**
-     *
-     * `InnerPage` is the white, `max-w-md`, back-arrow frame for screens *reached from* somewhere —
-     * **and this page's second state is a full-bleed sea that must reach every edge.** It was also
-     * already wrong in a smaller way: its `backTo` was `/start`, **so the back arrow pointed at the
-     * page it was on.**
-     *
-      * ⚠️ **The sea is `sticky` inside one scroller, and this paragraph used to say it was `fixed`       * with its own scroll.** That version was removed for two reasons: a `fixed` box travelling       * upward is a picture leaving the screen — *"很多安卓手机的开屏页"*, which is what the owner       * rejected — and **an independently scrolling sea means the ledger cards pass behind the       * water.** One scroll container, one sticky band, and neither can be scrolled through the       * other.
-     */
-    <div
-      ref={space.rootRef}
-      /**
-       * ⚠️ **`overflow-x-hidden`, not `overflow-hidden`.**
-       *
-       * My first version hid both axes — and it looked right, because **the sea's travel would slide
-       * the page sideways if it could scroll.** But this element is also the page: with `overflow:
-       * hidden` **a list longer than the screen is simply cut off**, and the reader cannot reach the
-       * ledgers below the fold. **That failure appears only once somebody has enough ledgers**, which
-       * is the worst way for a bug to arrive.
-       *
-       * ⚠️ **The vertical axis has to stay scrollable for a second reason too**: `claimsGesture` only
-       * takes a downward pull when `scrollTop` is 0, so **a scroller that can never move would turn
-       * every downward drag into a retreat**, including the ones meant to scroll back up the list.
-       */
-      className="relative min-h-dvh overflow-x-hidden bg-canvas"
-      /**
-       * ⚠️ **`--sea-h` is declared HERE, on the page root, and that is a bug fix.**
-       *
-       * It used to be declared inside `OceanBackdrop`. The content block that reads it is **its
-       * sibling, not its child** — so `var(--sea-h)` resolved to nothing, the whole `calc()` was
-       * invalid, and the padding collapsed to zero. **The content never moved with the sea.**
-       *
-       * ⚠️ **That is what made the water look like a curtain over a fixed page** — the owner's exact
-       * words: 「看起来海浪更像是一个幕布」. Both the sea and the content now read the same variable
-       * from the same element, so one spring drives both and they cannot disagree.
-       */
-      style={{ ["--sea-h" as string]: "calc(85.5vh + (var(--p, 0) * (16.5vh - 85.5vh)))" }}
-    >
-      {/**
-        * ⚠️ **The sea is a `sticky` element inside the scroll container, and that is the fix for two
-        * separate faults.**
-        *
-        * **Fault one: it used to be `fixed` and travel upward.** A `fixed` box plus
-        * `translateY(calc(var(--p) * -100%))` is a picture leaving the screen — which is exactly the
-        * mechanism the owner rejected as *"很多安卓手机的开屏页"*. It also meant the sea and the list
-        * scrolled independently, so **a reader scrolling the ordinary state watched the cards pass
-        * behind the water.**
-        *
-        * **Fault two: the brand text existed twice.** This file still carried its own copy from the
-        * first version while `OceanBackdrop` had gained one — **two `Libellum`s, on two different
-        * layers, at two different sizes.** Deleting this block removes the duplicate, and the one
-        * that remains is the one that belongs to the sea's own composition.
-        *
-        * ⚠️ **`sticky top-0` is what makes the tide-mark behave**: at the ordinary state the sea is a
-        * 13vh band that stays put while the ledger list scrolls under it, and **it cannot be scrolled
-        * away or passed through** — the owner's *"不得遮挡账本标题、卡片、操作按钮或滚动内容"* read the
-        * right way round: it must not cover them, and they must not run through it either.
-        */}
-
-      {/**
-        * ⚠️ **The ordinary state is not faded in, and this comment said it was until the mechanism
-        * changed underneath it.** An earlier version arrived with `opacity: var(--p)` and a 24px rise
-        * — which is the cross-fade the owner rejected in as many words. **The list is now simply
-        * pushed down by however tall the sea is** (`marginTop: var(--sea-h)`), so it is in the layout
-        * from the first frame and **rises because the water above it contracts.**
-        *
-        * ⚠️ **A stale comment is worse than no comment here**: it describes the mechanism that was
-        * deliberately removed, so the next person to touch this — or the next round of me — would
-        * read it and put the fade back.
-        */}
-      <div
-        ref={space.scrollRef}
-        /**
-         * ⚠️ **The top inset, because this is a full-bleed screen now.**
-         *
-         * Every other screen sits inside a frame that already accounts for the notch. **This one
-         * starts at the top edge of the display**, so without the inset the title sits under the
-         * status bar on a phone with one — **and only on a phone with one.**
-         *
-         * ⚠️ There is no bottom inset here on purpose: the list is the page's own content and the
-         * page scrolls, so **the last card should be able to reach the bottom edge**; the extra space
-         * belongs to a fixed bar, and this screen has none.
-         */
-        className="space-scroll relative w-full"
-        style={{
-          /** ⚠️ The notch, plus the ordinary rhythm. */
-          /**
-           * ⚠️ **The content is pushed down by however tall the sea is, and that is the whole
-           * transition.** The owner rejected the first version in as many words — *"不要再使用目前这种
-           * 「展示页整体渐隐，常规页面从下面出现」的方式"* — and it did exactly that. **A fade says
-           * "a different page arrived"; this says the same page uncovered itself.**
-           */
-          paddingTop: "calc(2.5rem + env(safe-area-inset-top, 0px))",
-        }}
-      >
-          {/**
-           * ⚠️ **The sea is inside the scroller and `w-full`, and both halves are the fix.**
-           *
-           * The wrapper used to be a flex child whose only content was absolutely positioned, so it had
-           * **no width** — while its height is `vh`, which does not depend on width. The box stayed tall
-           * as its width collapsed, which is what the screenshots showed: a green square in the corner in
-           * one state, a wide slab over the title in another. **Every visual parameter was being tuned on
-           * top of a broken box.**
-           *
-           * ⚠️ **A normal flow child, not a `fixed` overlay**: it occupies `--sea-h` of the page, so the
-           * content below starts there by itself — no `marginTop`, no cross-fade. That is the owner's
-           * 「同一个页面的两种形态」 expressed as layout rather than as animation.
-           */}
-          {/* ⚠️ 海固定在视口顶部、横跨全宽；内容用 paddingTop 从它下方开始，滚动时被它遮挡。 */}
-          <div className="fixed inset-x-0 top-0 z-30 w-full">
-            <OceanBackdrop />
-          </div>
-
-          {/**
-           * ⚠️ **The content is centred and width-limited; the scroller is not.** Holding `max-w-md` on the
-           * scroller is what would squeeze the sea into a narrow column — **the sea must reach both edges,
-           * the list must not.** So the constraint moved in one level.
-           *
-           * ⚠️ **The first thing under the sea is 我的账本 and then the real cards**, which is what the owner
-           * asked to see: 「优先考虑露出「我的账本」标题或第一张真实账本卡片的一部分」. The share form sits
-           * further down the same list and **was never meant to be the thing showing** — an earlier layout
-           * simply let whatever happened to be at that offset show through.
-           */}
-          {/**
-           * ⚠️ **The content starts below the sea by its own height, and that is why the sea can be
-           * `fixed`.**
-           *
-           * A `fixed` sea takes no space in the flow, so without this the title would sit underneath it.
-           * With it, **the list begins exactly where the water ends** — and because this padding scrolls
-           * with the content, scrolling up carries the cards **under** the sea, which is above them at
-           * `z-30`. That is the fix for the owner's fifth point: *"内容向上滚动进入顶部区域后，应被正确
-           * 遮挡或裁切，不能越过海浪后再次出现在它上方的白色区域."*
-           *
-           * ⚠️ **`sticky` could not do this job.** The sea was sticky before, and the scroll container is
-           * nested inside another one — so the sea **scrolled away with the content** and the title ended up
-           * in the white space where the water had been. `fixed` pins it to the viewport instead:
-           * **the sea cannot leave the top of the screen in any state or at any scroll position.**
-           */}
-          <div
-            className="mx-auto w-full max-w-md px-6 pb-16"
-            style={{ paddingTop: "calc(var(--sea-h) + 1rem - var(--p, 0) * 10px + env(safe-area-inset-top, 0px))" }}
-          >
+    <div ref={space.rootRef} className="ledger-space" style={{ ["--p" as string]: initial }}>
+      <OceanBackdrop />
+      <div className="space-cue-window">
+        <button type="button" className="space-cue" onClick={() => space.goTo(1)} tabIndex={space.atList ? -1 : 0} aria-label="展开账本列表">
+          <svg width="24" height="28" viewBox="0 0 24 28" fill="none" aria-hidden="true">
+            <path d="M12 25V5m-7 7 7-7 7 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          <span>上滑，进入我的账本</span>
+        </button>
+      </div>
+      <div ref={space.scrollRef} className="space-scroll" tabIndex={0} aria-label="账本列表">
+        <div className="mx-auto w-full max-w-md px-6 space-content">
         <h1 className="text-2xl font-semibold tracking-tight text-ink">我的账本</h1>
         <p className="mt-1.5 text-sm leading-relaxed text-muted">
           {user?.displayName ?? ""}
