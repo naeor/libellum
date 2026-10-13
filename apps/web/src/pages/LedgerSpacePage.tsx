@@ -233,9 +233,14 @@ export function LedgerSpacePage(): React.JSX.Element {
         className="space-scroll relative mx-auto w-full max-w-md px-6 pb-16"
         style={{
           /** ⚠️ The notch, plus the ordinary rhythm. */
+          /**
+           * ⚠️ **The content is pushed down by however tall the sea is, and that is the whole
+           * transition.** The owner rejected the first version in as many words — *"不要再使用目前这种
+           * 「展示页整体渐隐，常规页面从下面出现」的方式"* — and it did exactly that. **A fade says
+           * "a different page arrived"; this says the same page uncovered itself.**
+           */
+          marginTop: "var(--sea-h)",
           paddingTop: "calc(2.5rem + env(safe-area-inset-top, 0px))",
-          opacity: "var(--p, 0)",
-          transform: "translateY(calc((1 - var(--p, 0)) * 24px))",
         }}
       >
         <h1 className="text-2xl font-semibold tracking-tight text-ink">我的账本</h1>

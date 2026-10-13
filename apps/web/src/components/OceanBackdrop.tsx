@@ -1,148 +1,180 @@
 ﻿/**
- * **The green ocean behind the ledger space's presentation state.**
+ * **The green sea, in both of its states.**
  *
- * ⚠️ **Every position in here is a function of `--p`**, the single progress the whole page shares —
- * `0` is the presentation state, `1` is the ordinary one. Nothing is animated by a transition
- * between two finished layouts, and **nothing is drawn twice**: the sea does not fade out while the
- * ledger fades in, it **recedes**.
+ * ⚠️ **This file was rewritten after the owner rejected the first version**, and the rejection is
+ * worth stating before the code: *"目前实现的主要问题是：展示态更像很多安卓手机的开屏页，它覆盖在真正的
+ * 首页上方，用户上滑后，展示页逐渐变淡、消失，露出下面的正式页面。这不是我想要的效果。"*
  *
- * ⚠️ **The owner's brief, and what it rules out**: *"我希望它看起来像一片安静、广阔、具有生命力的绿色
- * 海洋，而不是常见的科技粒子动画，也不是儿童卡通风格的波浪."* So:
+ * What was wrong, concretely:
  *
- *  * **No particles, no dots, no glowing nodes** — that is the technology-animation vocabulary.
- *  * **No repeating sine scallops** — even, same-sized bumps are what makes a wave read as a cartoon.
- *    The curves below are **irregular**, with different control points per layer, and the layers have
- *    different periods and amplitudes.
- *  * **No highlights or gradients doing the work of "water"** — the depth comes from **lightness and
- *    opacity stepping back layer by layer**, which is how distance reads in a flat illustration.
+ *  1. **The sea sat at the bottom of the screen.** He asked for the opposite — *"最深色的绿色波面位于最
+ *     上层，构成页面上方的主要视觉区域"*: dark at the top, lightening downward, into white.
+ *  2. **It left the screen entirely.** `translateY(-100%)` meant the water *departed*, and that is
+ *     exactly what made it read as a splash screen closing. He asked for it to **contract**:
+ *     *"海浪不能完全消失……收束成常规态顶部的一小段波浪装饰."*
+ *  3. **The brand text floated on the water** instead of being composed into it.
  *
- * ⚠️ **`preserveAspectRatio="none"` is deliberate.** The sea must fill whatever the viewport is —
- * phone, iPad portrait, iPad landscape — and **a stretched curve is still a curve**, whereas a
- * fitted one would leave a white band at one edge on a wide screen.
+ * ⚠️ **So the mechanism is now height, not travel.** Each band's `top` and `height` are `calc()`
+ * interpolations on the one `--p` the page writes:
+ *
+ *  * `--p = 0` — the sea fills most of the screen, darkest at the top.
+ *  * `--p = 1` — the sea is a shallow band at the very top: **the same curves, compressed.**
+ *
+ * ⚠️ **Nothing here is translated off-screen and there is no cross-fade.** The owner ruled the fade
+ * out in one sentence: *"这段动画的核心是几何形态和布局的连续变化，而不是透明度变化。可以使用少量透明度辅助
+ * 细节过渡，但不能让整体淡入淡出成为主要动画机制."*
+ *
+ * ⚠️ **The compression is what flattens the curves, and that is a property rather than a trick.**
+ * `preserveAspectRatio="none"` means a band 24vh tall and the same band 3.4vh tall share one path —
+ * **the wave flattens in proportion as it contracts**, which is precisely *"波面曲线可以随状态变化而
+ * 自然变平缓."*
  */
 
-/** Layer definitions, far to near. The numbers are the design. */
-interface Layer {
-  /** The path's shape, in the 0–100 × 0–100 box the SVG uses. */
+/** The four bands, darkest first — the composition the owner described. */
+interface Band {
+  /** The curve, in a 0–100 × 100 box; the SVG is stretched to the band's box. */
   readonly d: string;
-  /** Brand green, mixed towards white as the layer recedes. */
   readonly fill: string;
-  /** Where the layer sits at `--p = 0`, as a percentage of the viewport height. */
-  readonly top: number;
-  /** How far it travels at `--p = 1`, as a percentage. Nearer layers travel further. */
-  readonly travel: number;
-  /** The tide's own drift, in percentage points. Different per layer, so they disagree slightly. */
+  /** Height at `--p = 0`, in vh. The deepest band is the largest: it is the subject. */
+  readonly tall: number;
+  /** Height at `--p = 1`, in vh — the tide-mark at the top of the ordinary state. */
+  readonly short: number;
+  /** The tide's own drift, in percentage points of the band's own height. */
   readonly tide: number;
-  /** Seconds for one tide cycle. Deliberately slow, and not the same for any two layers. */
+  /** Seconds per tide cycle. Different for every band, or they drift in lockstep. */
   readonly period: number;
 }
 
 /**
- * ⚠️ **The palettes come from the brand green `#55997a`, stepped back by lightness.**
+ * ⚠️ **The palette steps from the brand green down to near-white, darkest on top.**
  *
- * The near layer is the brand colour itself, because it is the one that reads as *this* product.
- * The ones behind it are mixed towards white, which is what makes distance read in a flat drawing —
- * **and it is the reason this looks like sea rather than like four stacked shapes.**
+ * The owner's direction: *"最深色的绿色波面位于最上层……越往下，绿色逐渐变浅，最终过渡到页面下方的白色或
+ * 近白色内容区域."* The lightest band sits only a few percent away from the page, **so the sea does
+ * not end in a line — it dissolves into the content area**, and the ledger card below reads as
+ * belonging to the same page rather than to a different one.
+ *
+ * ⚠️ **The curves are irregular on purpose.** Even, equal bumps are what makes a wave look drawn by
+ * a machine; the control points below differ per band, and *"避免机械重复的正弦波，也不要出现过于夸张的
+ * 尖峰"* is why none of them swings more than about sixteen units in a hundred.
  */
-const LAYERS: readonly Layer[] = [
-  {
-    d: "M0,42 C18,34 32,50 50,44 C68,38 82,26 100,34 L100,100 L0,100 Z",
-    fill: "#8fbfa6",
-    top: 44,
-    travel: 96,
-    tide: 1.6,
-    period: 19,
-  },
-  {
-    d: "M0,52 C14,44 30,60 48,53 C66,46 80,36 100,44 L100,100 L0,100 Z",
-    fill: "#6fae90",
-    top: 53,
-    travel: 84,
-    tide: 2.1,
-    period: 15.5,
-  },
-  {
-    d: "M0,64 C20,56 34,70 52,63 C70,56 84,48 100,56 L100,100 L0,100 Z",
-    fill: "#55997a",
-    top: 64,
-    travel: 70,
-    tide: 2.6,
-    period: 13,
-  },
-  {
-    d: "M0,78 C16,72 36,84 54,78 C72,72 86,66 100,73 L100,100 L0,100 Z",
-    fill: "#437a61",
-    top: 78,
-    travel: 56,
-    tide: 3.2,
-    period: 11,
-  },
+const BANDS: readonly Band[] = [
+  { d: "M0,10 C14,4 30,16 47,9 C64,2 82,13 100,6 L100,100 L0,100 Z", fill: "#3f7059", tall: 24, short: 3.4, tide: 1.1, period: 21 },
+  { d: "M0,14 C18,7 34,20 52,12 C70,4 86,15 100,9 L100,100 L0,100 Z", fill: "#4f8a6d", tall: 20, short: 3, tide: 1.3, period: 17.5 },
+  { d: "M0,18 C16,10 32,23 50,15 C68,7 84,18 100,12 L100,100 L0,100 Z", fill: "#6aa78a", tall: 18, short: 2.6, tide: 1.5, period: 14.5 },
+  { d: "M0,22 C20,14 36,26 54,18 C72,10 88,20 100,15 L100,100 L0,100 Z", fill: "#96c4ac", tall: 16, short: 2.2, tide: 1.7, period: 12 },
 ];
+
+/**
+ * Where each band's top edge sits, as a share of the sea's current height.
+ *
+ * ⚠️ **The bands overlap on purpose.** Butt-jointing them would put a hard horizontal seam between
+ * two greens — **four stripes instead of one sea.** Overlapping means what shows is each band's
+ * *curve*, with the one behind it continuing underneath.
+ */
+const TOPS = [0, 20, 38, 54];
+
+/**
+ * How tall the whole sea is at each end, in vh.
+ *
+ * ⚠️ **`72` is chosen so the ordinary state is visible while the presentation state shows.** The
+ * owner: *"展示态不应该完全遮挡常规态的内容……应当保留一部分白色或近白色区域，并让用户能够提前看到一些
+ * 属于账本空间的实际内容."* What is left below is the top of the first **real** ledger card — not a
+ * decorative stand-in, which is a distinction he made twice.
+ *
+ * ⚠️ **`13` at the other end is a judgement about usefulness rather than beauty.** He asked for
+ * *"一道小小的绿色潮痕"* and warned: *"不要让它占据过大的垂直空间，影响用户快速选择账本."* Thirteen
+ * percent is about a status bar plus a comfortable margin — **present as brand, never in the way.**
+ */
+const SEA_TALL = 72;
+const SEA_SHORT = 13;
 
 export function OceanBackdrop(): React.JSX.Element {
   return (
-    <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
-      {LAYERS.map((layer, index) => (
+    /**
+     * ⚠️ **The container writes the sea's height, and every band reads it.**
+     *
+     * One declaration, four consumers: **the bands cannot disagree about how tall the sea is**, which
+     * is what keeps them reading as one body of water rather than four shapes that happen to move.
+     */
+    <div
+      aria-hidden="true"
+      className="pointer-events-none absolute inset-x-0 top-0"
+      style={{
+        /**
+         * ⚠️ **Written twice on purpose: once as the height, once as a variable.**
+         *
+         * The height is what the bands live inside; `--sea-h` is what the text layer reads to know
+         * where the sea's middle is. **Without the variable the text layer silently kept the 72vh
+         * fallback**, so at the ordinary state the name would have sat at the middle of a sea that is
+         * no longer there — **the kind of bug that looks like a stray label rather than a mistake.**
+         */
+        ["--sea-h" as string]: "calc(" + SEA_TALL + "vh + (var(--p, 0) * (" + SEA_SHORT + "vh - " + SEA_TALL + "vh)))",
+        height: "var(--sea-h)",
+      }}
+    >
+      {BANDS.map((band, index) => (
         <svg
-          key={layer.d}
+          key={band.d}
           /**
-           * ⚠️ **Each layer is its own absolutely-positioned SVG**, so the sea's depth is a real
-           * stacking order rather than a `z-index` on four paths inside one drawing. It also means a
-           * layer's travel can be written as a plain percentage of the viewport — **the displacement
-           * the owner asked for ("整体向上移动或收束") is 96% of the screen for the nearest layer and
-           * 56% for the furthest, which is what gives the retreat its speed difference.**
-           *
-           * ⚠️ **`bottom-0` plus a `top` percentage**: the sea always reaches the bottom edge, and
-           * each layer starts at its own height. On a short screen the layers overlap more, which is
-           * the right failure — **a sea with a gap at the bottom is a bug, a sea that is compressed is
-           * still a sea.**
+           * ⚠️ **`top` is a share of the *current* height, not a fixed `vh`.** A fixed top would leave
+           * the second band at 20vh while the sea shrank to 13vh — **it would fall out of the bottom
+           * of the composition rather than following the first band up.**
            */
-          className="tide absolute inset-x-0 bottom-0"
+          className="tide absolute inset-x-0"
           style={{
-            top: `${String(layer.top)}%`,
-            height: "62%",
-            /**
-             * ⚠️ **The travel, driven by the one progress.** Multiplying the layer's own distance by
-             * `--p` (0…1) means **the same gesture moves every layer, on every frame, by an amount
-             * that is already resolved** — no React state, no per-layer animation, and nothing that
-             * can fall out of step with the others.
-             */
-            transform: `translateY(calc(var(--p, 0) * ${String(layer.travel)}%))`,
-            /**
-             * ⚠️ **The tide, as two numbers on the layer rather than a keyframe per layer.**
-             *
-             * My first version wrote `--tide-${index}` — **a variable nothing ever defined, so the
-             * drift would have been a constant zero** — and put a non-offset value into the
-             * `animation` shorthand. Both are the kind of mistake that renders something plausible
-             * and simply never moves.
-             *
-             * The owner asked for *"非常缓慢地起伏，波面之间存在轻微的速度差"* and warned against
-             * *"剧烈晃动"*. This is **a few percentage points over eleven to nineteen seconds**, and
-             * **the periods are all different on purpose**: equal periods would drift in lockstep and
-             * read as one sheet of water rather than as depth.
-             */
-            ["--tide-amp" as string]: `${String(layer.tide)}`,
-            ["--tide-period" as string]: `${String(layer.period)}s`,
-            /** ⚠️ A negative delay starts each layer at a different point in its cycle, so four layers never line up. */
-            animationDelay: `${String(index * -1.7)}s`,
-            /**
-             * ⚠️ **The opacity stays 1.** The sea's recession is a *movement*, and the owner ruled
-             * out the alternative in one sentence: *"不能只是绿色画面渐隐、白色页面渐显."* What fades
-             * is the whole backdrop against the ordinary content appearing beneath it — never the
-             * water fading into nothing on its own.
-             */
-            opacity: 1,
+            top: "calc(" + (TOPS[index] ?? 0) + "% )",
+            height: "calc(" + (100 - (TOPS[index] ?? 0)) + "% )",
+            ["--tide-amp" as string]: String(band.tide),
+            ["--tide-period" as string]: band.period + "s",
+            /** ⚠️ A negative delay starts each band at a different point, so four never line up. */
+            animationDelay: index * -2.3 + "s",
+            /** ⚠️ Later bands sit behind earlier ones, so their curves stack rather than hide. */
+            zIndex: BANDS.length - index,
+            ["--band-tall" as string]: band.tall + "vh",
+            ["--band-short" as string]: band.short + "vh",
           }}
           viewBox="0 0 100 100"
           /**
-           * ⚠️ **`none`, so the sea fills whatever the viewport is.** A stretched curve is still a
-           * curve; a fitted one would leave a white band at one edge on a wide screen.
+           * ⚠️ **`none`, and it is doing real work now**: the band's box gets shorter as the sea
+           * contracts, so **the curve flattens in proportion** — the owner's *"波面曲线可以随状态变化而
+           * 自然变平缓"*, without a second path or an animation.
            */
           preserveAspectRatio="none"
         >
-          <path d={layer.d} fill={layer.fill} />
+          <path d={band.d} fill={band.fill} />
         </svg>
       ))}
+
+      {/**
+        * ⚠️ **The brand text lives inside the sea, in its darkest part.**
+        *
+        * The owner: *"品牌文字应该成为海浪构图的一部分，而不是漂浮在独立白色卡片上"*, and he asked the
+        * dark area to give it *"足够的文字对比度和视觉空间"*. So it is anchored to the top half of the
+        * sea, where the two darkest bands are — **white on `#3f7059` is comfortable for large text.**
+        *
+        * ⚠️ **It contracts instead of cross-fading.** At `--p = 1` the name is smaller and sits in the
+        * tide-mark; **it is the same element in the same place at a different size**, which is what
+        * *"不要毫无联系地消失，再在另一个位置重新出现"* asks for. Only the tagline fades, and it is
+        * the part that has nowhere to go at 13vh.
+        */}
+      <div
+        className="absolute inset-x-0 top-0 flex flex-col items-center justify-center overflow-hidden px-8 text-center"
+        style={{ height: "calc(var(--sea-h) * 0.56)" }}
+      >
+        <p
+          className="font-semibold tracking-[0.16em] text-white"
+          style={{ fontSize: "calc(2.1rem - var(--p, 0) * 0.85rem)" }}
+        >
+          Libellum
+        </p>
+        <p
+          className="mt-2 text-sm leading-relaxed text-white/80"
+          /** ⚠️ Opacity as a detail only — the tagline has nowhere to sit at 13vh. */
+          style={{ opacity: "calc(1 - var(--p, 0) * 0.95)" }}
+        >
+          记一本账，安静而长久。
+        </p>
+      </div>
     </div>
   );
 }
