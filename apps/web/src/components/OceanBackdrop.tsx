@@ -47,13 +47,13 @@ interface Band {
  */
 const BANDS: readonly Band[] = [
   /** The main wave: a low left shoulder rising to a high right — the asymmetry the owner asked for. */
-  { d: "M0,0 H100 V85 C84,90 68,82 50,88 C32,94 16,90 0,99 Z", fill: "#3f7059", tall: 65, short: 15, period: 23 },
+  { d: "M0,0 H100 V92 C84,95 68,89 50,93 C32,97 16,94 0,100 Z", fill: "#3f7059", tall: 63, short: 8, period: 23 },
   /** One broad crest right of centre, falling away at both ends. */
-  { d: "M0,0 H100 V87 C82,92 66,85 48,90 C30,95 15,91 0,99 Z", fill: "#4f8a6d", tall: 72, short: 17, period: 18.5 },
+  { d: "M0,0 H100 V93 C82,96 66,90 48,94 C30,98 15,95 0,100 Z", fill: "#4f8a6d", tall: 69, short: 9.3, period: 18.5 },
   /** Tilted the other way: high on the left, falling to the right. */
-  { d: "M0,0 H100 V88 C80,93 64,86 46,91 C28,96 14,92 0,99 Z", fill: "#6aa78a", tall: 79, short: 19, period: 15.5 },
+  { d: "M0,0 H100 V93 C80,96 64,90 46,94 C28,98 14,95 0,100 Z", fill: "#6aa78a", tall: 76, short: 10.7, period: 15.5 },
   /** The calmest layer, nearly flat — it is the one that dissolves into the page. */
-  { d: "M0,0 H100 V89 C78,93 62,87 44,92 C26,97 12,93 0,100 Z", fill: "#96c4ac", tall: 85, short: 20, period: 12.5 },
+  { d: "M0,0 H100 V92 C78,95 62,90 44,94 C26,98 12,95 0,100 Z", fill: "#96c4ac", tall: 83, short: 12, period: 12.5 },
 ];
 
 /**
@@ -131,8 +131,10 @@ export function OceanBackdrop(): React.JSX.Element {
         className="absolute top-0 flex flex-col"
         style={{
           zIndex: TEXT_Z,
-          left: "calc(50% * (1 - var(--p, 0)) + 1.5rem * var(--p, 0))",
+          left: "calc(50% * (1 - var(--p, 0)) + 9px * var(--p, 0))",
           transform: "translateX(calc(-50% * (1 - var(--p, 0))))",
+          /** ⚠️ 收缩时整体再向下 5px（所有者：logo 往左下方挪一些）。 */
+          top: "calc(5px * var(--p, 0))",
           alignItems: "center",
           textAlign: "center",
           height: "calc(var(--sea-h) * 0.52 + env(safe-area-inset-top, 0px))",
