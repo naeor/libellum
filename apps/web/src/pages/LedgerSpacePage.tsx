@@ -173,6 +173,18 @@ export function LedgerSpacePage(): React.JSX.Element {
        * every downward drag into a retreat**, including the ones meant to scroll back up the list.
        */
       className="relative min-h-dvh overflow-x-hidden bg-canvas"
+      /**
+       * ⚠️ **`--sea-h` is declared HERE, on the page root, and that is a bug fix.**
+       *
+       * It used to be declared inside `OceanBackdrop`. The content block that reads it is **its
+       * sibling, not its child** — so `var(--sea-h)` resolved to nothing, the whole `calc()` was
+       * invalid, and the padding collapsed to zero. **The content never moved with the sea.**
+       *
+       * ⚠️ **That is what made the water look like a curtain over a fixed page** — the owner's exact
+       * words: 「看起来海浪更像是一个幕布」. Both the sea and the content now read the same variable
+       * from the same element, so one spring drives both and they cannot disagree.
+       */
+      style={{ ["--sea-h" as string]: "calc(85vh + (var(--p, 0) * (20vh - 85vh)))" }}
     >
       {/**
         * ⚠️ **The sea is a `sticky` element inside the scroll container, and that is the fix for two

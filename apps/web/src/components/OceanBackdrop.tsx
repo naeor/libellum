@@ -47,13 +47,13 @@ interface Band {
  */
 const BANDS: readonly Band[] = [
   /** The main wave: a low left shoulder rising to a high right — the asymmetry the owner asked for. */
-  { d: "M0,0 H100 V88 C84,82 68,94 50,90 C32,86 16,93 0,88 Z", fill: "#3f7059", tall: 60, short: 6, period: 23 },
+  { d: "M0,0 H100 V85 C84,90 68,82 50,88 C32,94 16,90 0,99 Z", fill: "#3f7059", tall: 65, short: 15, period: 23 },
   /** One broad crest right of centre, falling away at both ends. */
-  { d: "M0,0 H100 V90 C82,85 64,94 46,91 C28,88 12,93 0,89 Z", fill: "#4f8a6d", tall: 66, short: 9.5, period: 18.5 },
+  { d: "M0,0 H100 V87 C82,92 66,85 48,90 C30,95 15,91 0,99 Z", fill: "#4f8a6d", tall: 72, short: 17, period: 18.5 },
   /** Tilted the other way: high on the left, falling to the right. */
-  { d: "M0,0 H100 V87 C80,93 60,87 40,92 C22,96 10,90 0,93 Z", fill: "#6aa78a", tall: 73, short: 12.5, period: 15.5 },
+  { d: "M0,0 H100 V88 C80,93 64,86 46,91 C28,96 14,92 0,99 Z", fill: "#6aa78a", tall: 79, short: 19, period: 15.5 },
   /** The calmest layer, nearly flat — it is the one that dissolves into the page. */
-  { d: "M0,0 H100 V92 C82,95 62,90 44,94 C26,97 10,94 0,96 Z", fill: "#96c4ac", tall: 80, short: 15, period: 12.5 },
+  { d: "M0,0 H100 V89 C78,93 62,87 44,92 C26,97 12,93 0,100 Z", fill: "#96c4ac", tall: 85, short: 20, period: 12.5 },
 ];
 
 /**
@@ -73,7 +73,6 @@ export function OceanBackdrop(): React.JSX.Element {
       aria-hidden="true"
       className="relative w-full"
       style={{
-        ["--sea-h" as string]: "calc(80vh + (var(--p, 0) * (14.5vh - 80vh)))",
         height: "var(--sea-h)",
       }}
     >
@@ -118,11 +117,27 @@ export function OceanBackdrop(): React.JSX.Element {
         * tagline fades, because a 5.5 vh band has nowhere to put it.
         */}
       <div
-        className="absolute inset-x-0 top-0 flex flex-col items-center justify-center px-8 text-center"
+        /**
+         * ⚠️ **Centred while the sea is showing, tucked into the top-left once it has contracted** —
+         * the owner asked for exactly that move: 「在收缩模式下，logo 移到屏幕左上方而非正中间」.
+         *
+         * ⚠️ **It is one element sliding, not two copies swapping.** `left` interpolates from 50% to
+         * 1.5rem while `translateX` interpolates from −50% to 0 — so at rest it is centred, at the end
+         * it is left-aligned, and **every frame in between is a real position.** A second logo that
+         * faded in would be the *"毫无联系地消失，再在另一个位置重新出现"* the owner ruled out.
+         *
+         * ⚠️ **`inset-x-0` had to go**, because a full-width box cannot be moved by `left`.
+         */
+        className="absolute top-0 flex flex-col"
         style={{
           zIndex: TEXT_Z,
+          left: "calc(50% * (1 - var(--p, 0)) + 1.5rem * var(--p, 0))",
+          transform: "translateX(calc(-50% * (1 - var(--p, 0))))",
+          alignItems: "center",
+          textAlign: "center",
           height: "calc(var(--sea-h) * 0.52 + env(safe-area-inset-top, 0px))",
           paddingTop: "env(safe-area-inset-top, 0px)",
+          justifyContent: "center",
         }}
       >
         <p
