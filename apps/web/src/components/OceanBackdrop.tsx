@@ -20,7 +20,16 @@
 
 /** One sine component of a band's deviation from its straight line. */
 interface Wave {
-  /** Deviation in viewBox units (1 unit ≈ 1% of the band's own height). */
+  /**
+   * ⚠️ **The deviation in vh — an absolute height, NOT a share of the band.**
+   *
+   * This was a percentage and it caused the bands to **overlap**: band 0's amplitude was 11% of its own
+   * 63vh, which is 6.9vh, and the gap to band 1 is only 6vh — **so its troughs crossed into the layer
+   * below.** The owner saw it: 「好多还相互重合」.
+   *
+   * ⚠️ **In vh the same number means the same thing on every band**, so a rule like "keep it under half
+   * the gap" is checkable by reading one line rather than multiplying by each band's height.
+   */
   readonly amp: number;
   /** Cycles across the width. Higher gives more, smaller swells. */
   readonly freq: number;
@@ -61,27 +70,27 @@ const BANDS: readonly Band[] = [
     fill: "#3f7059",
     left: 63, leftShort: 10,
     /** The deepest band: a broad swell with a second, smaller ripple over it. */
-    waves: [{ amp: 11, freq: 1.15, phase: 0 }, { amp: 4, freq: 2.4, phase: 0.4 }],
+    waves: [{ amp: 2.0, freq: 1.15, phase: 0 }, { amp: 0.8, freq: 2.4, phase: 0.4 }],
     period: 10,
   },
   {
     fill: "#4f8a6d",
     left: 69, leftShort: 12,
     /** Offset in phase, so its crest sits where the first band has a trough. */
-    waves: [{ amp: 14, freq: 1.45, phase: 0.85 }],
+    waves: [{ amp: 2.4, freq: 1.45, phase: 0.85 }],
     period: 11,
   },
   {
     fill: "#6aa78a",
     left: 76, leftShort: 14,
-    waves: [{ amp: 9, freq: 1.05, phase: 1.95 }],
+    waves: [{ amp: 2.2, freq: 1.05, phase: 1.95 }],
     period: 9,
   },
   {
     fill: "#96c4ac",
     left: 83, leftShort: 16,
     /** The calmest layer — it is the one that dissolves into the page. */
-    waves: [{ amp: 5, freq: 1.35, phase: 3.1 }],
+    waves: [{ amp: 1.8, freq: 1.35, phase: 3.1 }],
     period: 12,
   },
 ];
@@ -100,7 +109,7 @@ const BANDS: readonly Band[] = [
  * amplitude, a third harmonic — is one number.
  */
 function buildPath(band: Band): string {
-  const steps = 48;
+  const steps = 140;
   /**
    * ⚠️ **One ratio for both states, and 0.90 is a compromise the owner should know about.**
    *
@@ -120,7 +129,8 @@ function buildPath(band: Band): string {
     const base = 100 + (yRight - 100) * t;
     let deviation = 0;
     for (const wave of band.waves) {
-      deviation += wave.amp * Math.sin(2 * Math.PI * (wave.freq * t + wave.phase));
+      /** ⚠️ vh → viewBox units: the box is the band's own height, so the conversion needs it. */
+      deviation += ((wave.amp / band.left) * 100) * Math.sin(2 * Math.PI * (wave.freq * t + wave.phase));
     }
     points.push(`L${(t * 100).toFixed(2)},${(base + deviation).toFixed(2)}`);
   }
