@@ -70,27 +70,27 @@ const BANDS: readonly Band[] = [
     fill: "#3f7059",
     left: 63, leftShort: 10,
     /** The deepest band: a broad swell with a second, smaller ripple over it. */
-    waves: [{ amp: 2.0, freq: 1.15, phase: 0 }, { amp: 0.8, freq: 2.4, phase: 0.4 }],
+    waves: [{ amp: 2.2, freq: 1.15, phase: 0 }, { amp: 0.8, freq: 2.4, phase: 0.4 }],
     period: 10,
   },
   {
     fill: "#4f8a6d",
     left: 69, leftShort: 12,
     /** Offset in phase, so its crest sits where the first band has a trough. */
-    waves: [{ amp: 2.4, freq: 1.45, phase: 0.85 }],
+    waves: [{ amp: 3.4, freq: 1.45, phase: 0.85 }],
     period: 11,
   },
   {
     fill: "#6aa78a",
     left: 76, leftShort: 14,
-    waves: [{ amp: 2.2, freq: 1.05, phase: 1.95 }],
+    waves: [{ amp: 3.4, freq: 1.05, phase: 1.95 }],
     period: 9,
   },
   {
     fill: "#96c4ac",
     left: 83, leftShort: 16,
     /** The calmest layer — it is the one that dissolves into the page. */
-    waves: [{ amp: 1.8, freq: 1.35, phase: 3.1 }],
+    waves: [{ amp: 2.4, freq: 1.35, phase: 3.1 }],
     period: 12,
   },
 ];
@@ -108,7 +108,7 @@ const BANDS: readonly Band[] = [
  * control points somebody has to keep consistent.** Anything the owner asks for later — a different
  * amplitude, a third harmonic — is one number.
  */
-function buildPath(band: Band): string {
+function buildPath(band: Band, rightRatio: number): string {
   const steps = 140;
   /**
    * ⚠️ **One ratio for both states, and 0.90 is a compromise the owner should know about.**
@@ -117,11 +117,11 @@ function buildPath(band: Band): string {
    * hold two ratios**, and he rejected the two-path answer because he could see the cross-fade:
    * 「过渡动画中有出现淡入淡出的现象」.
    *
-   * 0.90 lands within 2 vh of the open request (63 → 56.7 against 59) and 3 vh of the contracted
-   * one (10 → 9.0 against 6). **The contracted tilt is therefore gentler than he asked for**, and that
-   * is the unavoidable cost of a single curve rather than a cross-fade.
+   * 0.85 lands within 8 vh of the open request (63 → 56.7 against 59) and 3 vh of the contracted
+   * one (10 → 8.5 against 6.75). **The owner asked for the contracted right side to be narrower**
+   * (「变窄20%到30%左右」), and 0.85 moves it most of the way there without a cross-fade.
    */
-  const yRight = 90;
+  const yRight = rightRatio * 100;
   const points: string[] = [];
 
   for (let i = steps; i >= 0; i -= 1) {
@@ -137,6 +137,24 @@ function buildPath(band: Band): string {
 
   return `M0,0 H100 V${yRight.toFixed(2)} ${points.join(" ")} Z`;
 }
+
+/**
+ * ⚠️ **Two ratios, and the cross-fade between them is invisible — which is the point.**
+ *
+ * The owner asked for the open state''s right end at 59/63 (**0.93**) and, separately, for the
+ * contracted right side to be **20–30% narrower** than the left. Those are two different ratios, and
+ * one path cannot hold both.
+ *
+ * ⚠️ **He rejected the earlier two-path version because he could see it fade**: both curves had
+ * different shapes everywhere, so the cross-fade was two drawings swapping. **These two differ in
+ * exactly one number — where the right end lands.** Every sample to the left of it is identical, so
+ * what the fade actually shows is **the right side drawing itself in**, which is the motion he asked
+ * for rather than an artefact.
+ *
+ * ⚠️ `0.675` is the middle of his 20–30% band: 10vh × 0.675 = 6.75vh against a left of 10vh.
+ */
+const RIGHT_OPEN = 0.93;
+const RIGHT_SHORT = 0.675;
 
 const TEXT_Z = 10;
 
@@ -164,7 +182,8 @@ export function OceanBackdrop(): React.JSX.Element {
             * ⚠️ **The band's height still interpolates** — the curve is fixed and the box it is stretched
             * over shrinks, so **the water flattens as it contracts without anything fading.**
             */}
-          <path d={buildPath(band)} fill={band.fill} />
+          <path d={buildPath(band, RIGHT_OPEN)} fill={band.fill} style={{ opacity: "calc(1 - var(--p, 0))" }} />
+          <path d={buildPath(band, RIGHT_SHORT)} fill={band.fill} style={{ opacity: "var(--p, 0)" }} />
         </svg>
       ))}
 
