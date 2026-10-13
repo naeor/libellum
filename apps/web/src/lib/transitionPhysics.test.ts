@@ -199,15 +199,15 @@ describe("ledger space directions", () => {
 
   it("scales the gesture with the viewport, not with the device", () => {
     /**
-     * ⚠️ **This is the measurement that fixed the feel.** The sea contracts by **59vh**, and the drag
+     * ⚠️ **This is the measurement that fixed the feel.** The sea contracts by **66vh**, and the drag
      * distance used to be a flat 420px — on an 844px phone that is **498px of water against 420px of
      * finger**, so the last fifth of the retreat happened with no finger left to follow it.
      *
-     * ⚠️ **62vh of finger for 59vh of sea, on every screen**: a phone, an iPad in landscape, a short
+     * ⚠️ **70vh of finger for 66vh of sea, on every screen**: a phone, an iPad in landscape, a short
      * desktop window. **The same felt effort rather than the same number of pixels.**
      */
-    expect(spaceDragPx(844)).toBeCloseTo(523.3, 1);
-    expect(spaceDragPx(768)).toBeCloseTo(476.2, 1);
+    expect(spaceDragPx(844)).toBeCloseTo(590.8, 1);
+    expect(spaceDragPx(768)).toBeCloseTo(537.6, 1);
 
     /** ⚠️ Proportional means the *ratio* is constant, not the distance. */
     expect(spaceDragPx(844) / 844).toBeCloseTo(spaceDragPx(768) / 768, 10);

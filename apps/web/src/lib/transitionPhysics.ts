@@ -197,18 +197,18 @@ export function wheelFlick(deltaY: number): number {
 /**
  * How far a finger must travel on the ledger space, **expressed in vh so it is proportional**.
  *
- * ⚠️ **The unit is the point, and it took a measurement to see it.** The sea contracts from 72vh to
- * 13vh — **a 59vh journey** — while this was a flat `420px`. On a 844px-tall phone that is 498px of
+ * ⚠️ **The unit is the point, and it took a measurement to see it.** The sea contracts from 80vh to
+ * 14vh — **a 66vh journey** — while this was a flat `420px`. On an 844px-tall phone that is 557px of
  * water against 420px of finger: **the finger runs out of screen before the sea finishes moving, so
  * the last fifth of the retreat happens with nothing left to follow it.**
  *
- * ⚠️ **A percentage keeps the two in step on every device.** 62vh of finger carries 59vh of sea, on a
+ * ⚠️ **A percentage keeps the two in step on every device.** 70vh of finger carries 66vh of sea, on a
  * phone, on an iPad in landscape, and in a short desktop window — **the same felt effort rather than
  * the same number of pixels.** The ledger screen's flat `260` is right *there* because what it moves
  * shrinks by a few hundred pixels regardless of the screen; **this one's travel is itself a share of
  * the viewport, so the gesture has to be measured in the same unit.**
  */
-export const SPACE_DRAG_VH = 62;
+export const SPACE_DRAG_VH = 70;
 
 /** The same distance in pixels, for a viewport of a known height. */
 export function spaceDragPx(viewportHeight: number): number {
