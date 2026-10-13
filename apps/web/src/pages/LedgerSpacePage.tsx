@@ -184,7 +184,7 @@ export function LedgerSpacePage(): React.JSX.Element {
        * words: 「看起来海浪更像是一个幕布」. Both the sea and the content now read the same variable
        * from the same element, so one spring drives both and they cannot disagree.
        */
-      style={{ ["--sea-h" as string]: "calc(83vh + (var(--p, 0) * (23vh - 83vh)))" }}
+      style={{ ["--sea-h" as string]: "calc(83vh + (var(--p, 0) * (16vh - 83vh)))" }}
     >
       {/**
         * ⚠️ **The sea is a `sticky` element inside the scroll container, and that is the fix for two

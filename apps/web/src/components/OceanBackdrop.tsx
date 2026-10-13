@@ -29,21 +29,21 @@ interface Band {
 }
 
 /**
- * ⚠️ **The spacing is the owner's second request**: *"中间的三个过渡海浪，每个都占屏幕的3%-8%左右,
- * 不会被挤得太窄或者过宽."*
+ * ⚠️ **The owner asked for 3–8%, not for exact equality** — *"他们可以从3%到8%之间浮动……只要他们相距
+ * 不太大都可以."* The open spacings are 6 / 7 / 7, which is inside that band and close to even.
  *
  * The four heights differ by **6 / 7 / 7 vh** when open and **5 / 5 / 5 vh** when contracted — so the
  * three visible strips between the bands are **the same width at both ends**, and neither state
  * squeezes one of them to a sliver or blows one out.
  *
- * ⚠️ Contracted heights are 8 / 13 / 18 / 23 rather than 8 / 9.3 / 10.7 / 12: at the old spacing the
- * strips were **1.3vh** — a hard line rather than layers.
+ * ⚠️ Contracted heights are 10 / 12 / 14 / 16 — the deepest band reaches 10% and each of the other
+ * three adds about 2%, so the contracted sea stays thin *and* keeps three readable strips.
  */
 const BANDS: readonly Band[] = [
-  { dTall: "M0,0 H100 V93 C84,96 68,91 50,94 C32,97 16,95 0,100 Z", dShort: "M0,0 H100 V70 C84,80 68,64 50,76 C32,88 16,78 0,100 Z", fill: "#3f7059", tall: 63, short: 8, period: 23 },
-  { dTall: "M0,0 H100 V93 C82,96 66,91 48,94 C30,97 15,95 0,100 Z", dShort: "M0,0 H100 V72 C82,81 66,66 48,77 C30,88 15,79 0,100 Z", fill: "#4f8a6d", tall: 69, short: 13, period: 18.5 },
-  { dTall: "M0,0 H100 V93 C80,96 64,91 46,94 C28,97 14,95 0,100 Z", dShort: "M0,0 H100 V73 C80,82 64,67 46,78 C28,89 14,80 0,100 Z", fill: "#6aa78a", tall: 76, short: 18, period: 15.5 },
-  { dTall: "M0,0 H100 V93 C78,96 62,91 44,94 C26,97 12,95 0,100 Z", dShort: "M0,0 H100 V72 C78,81 62,67 44,77 C26,88 12,79 0,100 Z", fill: "#96c4ac", tall: 83, short: 23, period: 12.5 },
+  { dTall: "M0,0 H100 V93 C84,96 68,91 50,94 C32,97 16,95 0,100 Z", dShort: "M0,0 H100 V70 C84,80 68,64 50,76 C32,88 16,78 0,100 Z", fill: "#3f7059", tall: 63, short: 10, period: 12 },
+  { dTall: "M0,0 H100 V93 C82,96 66,91 48,94 C30,97 15,95 0,100 Z", dShort: "M0,0 H100 V72 C82,81 66,66 48,77 C30,88 15,79 0,100 Z", fill: "#4f8a6d", tall: 69, short: 12, period: 10.5 },
+  { dTall: "M0,0 H100 V93 C80,96 64,91 46,94 C28,97 14,95 0,100 Z", dShort: "M0,0 H100 V73 C80,82 64,67 46,78 C28,89 14,80 0,100 Z", fill: "#6aa78a", tall: 76, short: 14, period: 9 },
+  { dTall: "M0,0 H100 V93 C78,96 62,91 44,94 C26,97 12,95 0,100 Z", dShort: "M0,0 H100 V72 C78,81 62,67 44,77 C26,88 12,79 0,100 Z", fill: "#96c4ac", tall: 83, short: 16, period: 7.5 },
 ];
 
 const TEXT_Z = 10;
