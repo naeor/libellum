@@ -194,9 +194,6 @@ export function LedgerSpacePage(): React.JSX.Element {
         * away or passed through** — the owner's *"不得遮挡账本标题、卡片、操作按钮或滚动内容"* read the
         * right way round: it must not cover them, and they must not run through it either.
         */}
-      <div className="sticky top-0 z-20">
-        <OceanBackdrop />
-      </div>
 
       {/**
         * ⚠️ **The ordinary state is not faded in, and this comment said it was until the mechanism
@@ -222,7 +219,7 @@ export function LedgerSpacePage(): React.JSX.Element {
          * page scrolls, so **the last card should be able to reach the bottom edge**; the extra space
          * belongs to a fixed bar, and this screen has none.
          */
-        className="space-scroll relative mx-auto w-full max-w-md px-6 pb-16"
+        className="space-scroll relative w-full"
         style={{
           /** ⚠️ The notch, plus the ordinary rhythm. */
           /**
@@ -231,10 +228,37 @@ export function LedgerSpacePage(): React.JSX.Element {
            * 「展示页整体渐隐，常规页面从下面出现」的方式"* — and it did exactly that. **A fade says
            * "a different page arrived"; this says the same page uncovered itself.**
            */
-          marginTop: "var(--sea-h)",
           paddingTop: "calc(2.5rem + env(safe-area-inset-top, 0px))",
         }}
       >
+          {/**
+           * ⚠️ **The sea is inside the scroller and `w-full`, and both halves are the fix.**
+           *
+           * The wrapper used to be a flex child whose only content was absolutely positioned, so it had
+           * **no width** — while its height is `vh`, which does not depend on width. The box stayed tall
+           * as its width collapsed, which is what the screenshots showed: a green square in the corner in
+           * one state, a wide slab over the title in another. **Every visual parameter was being tuned on
+           * top of a broken box.**
+           *
+           * ⚠️ **A normal flow child, not a `fixed` overlay**: it occupies `--sea-h` of the page, so the
+           * content below starts there by itself — no `marginTop`, no cross-fade. That is the owner's
+           * 「同一个页面的两种形态」 expressed as layout rather than as animation.
+           */}
+          <div className="sticky top-0 z-20 w-full">
+            <OceanBackdrop />
+          </div>
+
+          {/**
+           * ⚠️ **The content is centred and width-limited; the scroller is not.** Holding `max-w-md` on the
+           * scroller is what would squeeze the sea into a narrow column — **the sea must reach both edges,
+           * the list must not.** So the constraint moved in one level.
+           *
+           * ⚠️ **The first thing under the sea is 我的账本 and then the real cards**, which is what the owner
+           * asked to see: 「优先考虑露出「我的账本」标题或第一张真实账本卡片的一部分」. The share form sits
+           * further down the same list and **was never meant to be the thing showing** — an earlier layout
+           * simply let whatever happened to be at that offset show through.
+           */}
+          <div className="mx-auto w-full max-w-md px-6 pb-16">
         <h1 className="text-2xl font-semibold tracking-tight text-ink">我的账本</h1>
         <p className="mt-1.5 text-sm leading-relaxed text-muted">
           {user?.displayName ?? ""}
@@ -400,6 +424,7 @@ export function LedgerSpacePage(): React.JSX.Element {
           });
         }}
       />
+      </div>
       </div>
     </div>
   );
