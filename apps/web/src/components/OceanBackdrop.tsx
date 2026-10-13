@@ -70,27 +70,27 @@ const BANDS: readonly Band[] = [
     fill: "#3f7059",
     left: 63, leftShort: 10,
     /** The deepest band: a broad swell with a second, smaller ripple over it. */
-    waves: [{ amp: 2.2, freq: 1.15, phase: 0 }, { amp: 0.8, freq: 2.4, phase: 0.4 }],
+    waves: [{ amp: 3.0, freq: 0.8, phase: 0 }, { amp: 1.0, freq: 1.6, phase: 0.2 }],
     period: 10,
   },
   {
     fill: "#4f8a6d",
     left: 69, leftShort: 12,
     /** Offset in phase, so its crest sits where the first band has a trough. */
-    waves: [{ amp: 3.4, freq: 1.45, phase: 0.85 }],
+    waves: [{ amp: 2.8, freq: 1.0, phase: 0.08 }],
     period: 11,
   },
   {
     fill: "#6aa78a",
     left: 76, leftShort: 14,
-    waves: [{ amp: 3.4, freq: 1.05, phase: 1.95 }],
+    waves: [{ amp: 2.6, freq: 0.75, phase: -0.07 }],
     period: 9,
   },
   {
     fill: "#96c4ac",
     left: 83, leftShort: 16,
     /** The calmest layer — it is the one that dissolves into the page. */
-    waves: [{ amp: 2.4, freq: 1.35, phase: 3.1 }],
+    waves: [{ amp: 2.4, freq: 0.9, phase: 0.06 }],
     period: 12,
   },
 ];
@@ -135,7 +135,15 @@ function buildPath(band: Band, rightRatio: number): string {
     points.push(`L${(t * 100).toFixed(2)},${(base + deviation).toFixed(2)}`);
   }
 
-  return `M0,0 H100 V${yRight.toFixed(2)} ${points.join(" ")} Z`;
+  /**
+   * ⚠️ **The box is drawn from `-2` and closed at `-2`, so the top edge sits OUTSIDE the band.**
+   *
+   * `M0,0 H100` is a real horizontal line — **the band's top edge** — and it is only hidden while a
+   * deeper band covers it. In the contracted state all four bands are inside 16vh and start at the same
+   * y, so that line has the least margin exactly when the eye is closest to it. **Drawing it two units
+   * above the box costs nothing and removes the possibility entirely.**
+   */
+  return `M0,-2 H100 V${yRight.toFixed(2)} ${points.join(" ")} L0,-2 Z`;
 }
 
 /**
@@ -153,8 +161,7 @@ function buildPath(band: Band, rightRatio: number): string {
  *
  * ⚠️ `0.675` is the middle of his 20–30% band: 10vh × 0.675 = 6.75vh against a left of 10vh.
  */
-const RIGHT_OPEN = 0.93;
-const RIGHT_SHORT = 0.675;
+const RIGHT_RATIO = 1;
 
 const TEXT_Z = 10;
 
@@ -162,9 +169,9 @@ export function OceanBackdrop(): React.JSX.Element {
   return (
     <div aria-hidden="true" className="relative w-full" style={{ height: "var(--sea-h)" }}>
       {BANDS.map((band, index) => (
-        <svg
+        <div
           key={band.fill}
-          className="tide absolute inset-x-0 top-0 w-full"
+          className="tide absolute inset-x-0 top-0"
           style={{
             height: "calc(" + band.left + "vh + (var(--p, 0) * (" + band.leftShort + "vh - " + band.left + "vh)))",
             ["--tide-period" as string]: band.period + "s",
@@ -172,9 +179,33 @@ export function OceanBackdrop(): React.JSX.Element {
             zIndex: BANDS.length - index,
             transformOrigin: "top",
           }}
-          viewBox="0 0 100 100"
-          preserveAspectRatio="none"
         >
+          {/**
+            * ⚠️ **The rotation lives on the SVG, not on the band — and it has to.** `.tide` animates
+            * `transform: scaleY(...)` on the band, **so a `rotate` there would simply be overwritten
+            * every frame.** The inner element is free to carry it.
+            *
+            * ⚠️ **Oversized by 12% on every side.** A rotated rectangle does not fill the rectangle it
+            * was rotated in: its top edge becomes a slope, and without the margin **the band's corners
+            * would lift away from the top of the page and show a wedge of background.**
+            *
+            * ⚠️ **Counter-clockwise, so the right end rides higher** — the owner's *"逆时针旋转三度……
+            * 这样应该可以做出左低右高的效果"*. `RIGHT_RATIO` is therefore 1: **the tilt comes from one
+            * place now, not two.**
+            */}
+          <svg
+            className="absolute"
+            style={{
+              left: "-6%",
+              top: "-6%",
+              width: "112%",
+              height: "112%",
+              transform: "rotate(-3deg)",
+              transformOrigin: "center",
+            }}
+            viewBox="0 0 100 100"
+            preserveAspectRatio="none"
+          >
           {/**
             * ⚠️ **ONE path, and that is the fix.** The previous version drew two and cross-faded them,
             * which is exactly the fade the owner spotted: 「过渡动画中有出现淡入淡出的现象」.
@@ -182,9 +213,9 @@ export function OceanBackdrop(): React.JSX.Element {
             * ⚠️ **The band's height still interpolates** — the curve is fixed and the box it is stretched
             * over shrinks, so **the water flattens as it contracts without anything fading.**
             */}
-          <path d={buildPath(band, RIGHT_OPEN)} fill={band.fill} style={{ opacity: "calc(1 - var(--p, 0))" }} />
-          <path d={buildPath(band, RIGHT_SHORT)} fill={band.fill} style={{ opacity: "var(--p, 0)" }} />
-        </svg>
+            <path d={buildPath(band, RIGHT_RATIO)} fill={band.fill} />
+          </svg>
+        </div>
       ))}
 
       <div
