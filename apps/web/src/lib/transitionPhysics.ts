@@ -1,4 +1,4 @@
-/**
+﻿/**
  * **The arithmetic behind a two-state screen, as pure functions.**
  *
  * ⚠️ **This file exists because the mechanism had no tests at all.** `useDetailTransition` is the only
@@ -195,14 +195,25 @@ export function wheelFlick(deltaY: number): number {
 }
 
 /**
- * How far a finger must travel on the ledger space to carry it from one state to the other.
+ * How far a finger must travel on the ledger space, **expressed in vh so it is proportional**.
  *
- * ⚠️ **Deeper than the ledger screen's 260, and the difference is the geometry.** That screen's
- * summary shrinks by a few hundred pixels; **this one's sea is a whole screen tall and the list has
- * to be pulled up from beyond it.** Reusing 260 would make one gesture cross the whole range and
- * **the retreat would read as a jump rather than as a tide.**
+ * ⚠️ **The unit is the point, and it took a measurement to see it.** The sea contracts from 72vh to
+ * 13vh — **a 59vh journey** — while this was a flat `420px`. On a 844px-tall phone that is 498px of
+ * water against 420px of finger: **the finger runs out of screen before the sea finishes moving, so
+ * the last fifth of the retreat happens with nothing left to follow it.**
+ *
+ * ⚠️ **A percentage keeps the two in step on every device.** 62vh of finger carries 59vh of sea, on a
+ * phone, on an iPad in landscape, and in a short desktop window — **the same felt effort rather than
+ * the same number of pixels.** The ledger screen's flat `260` is right *there* because what it moves
+ * shrinks by a few hundred pixels regardless of the screen; **this one's travel is itself a share of
+ * the viewport, so the gesture has to be measured in the same unit.**
  */
-export const SPACE_DRAG = 420;
+export const SPACE_DRAG_VH = 62;
+
+/** The same distance in pixels, for a viewport of a known height. */
+export function spaceDragPx(viewportHeight: number): number {
+  return (viewportHeight * SPACE_DRAG_VH) / 100;
+}
 
 /**
  * Where a finger is, as progress between the two states.
@@ -213,7 +224,7 @@ export const SPACE_DRAG = 420;
  * `dy`) has to *increase* progress.** Getting this backwards produces an animation that runs the
  * wrong way while every test still passes — **nothing else in the system knows which way is "up".**
  */
-export function progressFromDrag(startProgress: number, dy: number, drag = SPACE_DRAG): number {
+export function progressFromDrag(startProgress: number, dy: number, drag: number): number {
   return clamp01(startProgress - dy / drag);
 }
 
@@ -225,7 +236,7 @@ export function progressFromDrag(startProgress: number, dy: number, drag = SPACE
  * final delta is often tiny and sometimes points the wrong way** — and the spring then reverses
  * briefly before finishing. The average cannot be flipped by that last stray sample.
  */
-export function flickFromDrag(dy: number, elapsedMs: number, drag = SPACE_DRAG): number {
+export function flickFromDrag(dy: number, elapsedMs: number, drag: number): number {
   if (elapsedMs <= 0) return 0;
   return ((dy / elapsedMs) * 1000) / drag;
 }

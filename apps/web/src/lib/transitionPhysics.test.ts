@@ -10,6 +10,7 @@ import {
   flickFromDrag,
   hasSettled,
   progressFromDrag,
+  spaceDragPx,
   limitStep,
   springStep,
   wheelFlick,
@@ -170,30 +171,46 @@ describe("ledger space directions", () => {
      * list below. **The two screens travel in opposite senses**, which is exactly why this is a named
      * function with a test rather than a minus sign in a handler.
      */
-    expect(progressFromDrag(0, -420)).toBe(1);
-    expect(progressFromDrag(1, 420)).toBe(0);
+    expect(progressFromDrag(0, -420, 420)).toBe(1);
+    expect(progressFromDrag(1, 420, 420)).toBe(0);
 
     /** Half the distance is half the way. */
-    expect(progressFromDrag(0, -210)).toBeCloseTo(0.5, 10);
+    expect(progressFromDrag(0, -210, 420)).toBeCloseTo(0.5, 10);
   });
 
   it("clamps, so a hard drag cannot leave the two states", () => {
     /** ⚠️ Past either end there is no state — see `clampOvershoot`. */
-    expect(progressFromDrag(0.9, -5000)).toBe(1);
-    expect(progressFromDrag(0.1, 5000)).toBe(0);
+    expect(progressFromDrag(0.9, -5000, 420)).toBe(1);
+    expect(progressFromDrag(0.1, 5000, 420)).toBe(0);
   });
 
   it("starts from wherever the gesture began, not from zero", () => {
     /** ⚠️ A gesture that starts half-way through must move from there, or the sea jumps on touch. */
-    expect(progressFromDrag(0.5, -210)).toBeCloseTo(1, 10);
+    expect(progressFromDrag(0.5, -210, 420)).toBeCloseTo(1, 10);
   });
 
   it("measures a flick over the whole gesture", () => {
     /** 420px in one second is exactly one drag-distance per second. */
-    expect(flickFromDrag(-420, 1000)).toBeCloseTo(-1, 10);
+    expect(flickFromDrag(-420, 1000, 420)).toBeCloseTo(-1, 10);
 
     /** ⚠️ A gesture of no duration contributes no speed rather than an infinity. */
-    expect(flickFromDrag(-100, 0)).toBe(0);
+    expect(flickFromDrag(-100, 0, 420)).toBe(0);
+  });
+
+  it("scales the gesture with the viewport, not with the device", () => {
+    /**
+     * ⚠️ **This is the measurement that fixed the feel.** The sea contracts by **59vh**, and the drag
+     * distance used to be a flat 420px — on an 844px phone that is **498px of water against 420px of
+     * finger**, so the last fifth of the retreat happened with no finger left to follow it.
+     *
+     * ⚠️ **62vh of finger for 59vh of sea, on every screen**: a phone, an iPad in landscape, a short
+     * desktop window. **The same felt effort rather than the same number of pixels.**
+     */
+    expect(spaceDragPx(844)).toBeCloseTo(523.3, 1);
+    expect(spaceDragPx(768)).toBeCloseTo(476.2, 1);
+
+    /** ⚠️ Proportional means the *ratio* is constant, not the distance. */
+    expect(spaceDragPx(844) / 844).toBeCloseTo(spaceDragPx(768) / 768, 10);
   });
 });
 

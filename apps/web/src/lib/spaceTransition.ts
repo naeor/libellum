@@ -12,6 +12,7 @@ import {
   claimsGesture,
   decideTarget,
   flickFromDrag,
+  spaceDragPx,
   hasSettled,
   progressFromDrag,
   springStep,
@@ -210,6 +211,13 @@ export function useSpaceTransition(initial: number): SpaceTransition {
     const scroller = scrollRef.current;
     if (root === null || scroller === null) return;
 
+    /**
+     * ⚠️ **Measured from the viewport every time, not captured once.** A phone rotates, a desktop
+     * window is resized, and Safari's dynamic viewport changes height as its toolbars slide away —
+     * **a distance captured at mount would be the wrong one for the rest of the session.**
+     */
+    const dragPx = (): number => spaceDragPx(window.innerHeight);
+
     let tracking = false;
     let startY = 0;
     let startTime = 0;
@@ -244,14 +252,14 @@ export function useSpaceTransition(initial: number): SpaceTransition {
       if (!claimsGesture({ progress: progress.current, atTop, dy })) return;
 
       const elapsed = performance.now() - startTime;
-      flick = flickFromDrag(dy, elapsed);
+      flick = flickFromDrag(dy, elapsed, dragPx());
 
       event.preventDefault();
       /**
        * ⚠️ **Dragging up moves towards the list, so the sign is inverted** — a finger travelling up
        * the screen (negative `dy`) must *increase* progress.
        */
-      dragTo(progressFromDrag(startProgress, dy));
+      dragTo(progressFromDrag(startProgress, dy, dragPx()));
     };
 
     const onEnd = (): void => {
