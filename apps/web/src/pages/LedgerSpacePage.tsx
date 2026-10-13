@@ -177,33 +177,27 @@ export function LedgerSpacePage(): React.JSX.Element {
       className="relative min-h-dvh overflow-x-hidden bg-canvas"
     >
       {/**
-        * ⚠️ **The sea, and the whole of the retreat is this one transform.**
+        * ⚠️ **The sea is a `sticky` element inside the scroll container, and that is the fix for two
+        * separate faults.**
         *
-        * `translateY(calc(var(--p) * -100%))` — **the picture leaves upward, it does not fade.**
-        * The owner ruled out the alternative twice: *"不能只是绿色画面渐隐、白色页面渐显，更不要简单把一个
-        * 完整的新页面从下面推上来覆盖旧页面."* So there is no opacity on this element at all:
-        * **what the reader sees is water moving off the top of the screen, uncovering what is under
-        * it** — and the layers inside it travel at their own speeds, which is where the depth comes
-        * from.
+        * **Fault one: it used to be `fixed` and travel upward.** A `fixed` box plus
+        * `translateY(calc(var(--p) * -100%))` is a picture leaving the screen — which is exactly the
+        * mechanism the owner rejected as *"很多安卓手机的开屏页"*. It also meant the sea and the list
+        * scrolled independently, so **a reader scrolling the ordinary state watched the cards pass
+        * behind the water.**
+        *
+        * **Fault two: the brand text existed twice.** This file still carried its own copy from the
+        * first version while `OceanBackdrop` had gained one — **two `Libellum`s, on two different
+        * layers, at two different sizes.** Deleting this block removes the duplicate, and the one
+        * that remains is the one that belongs to the sea's own composition.
+        *
+        * ⚠️ **`sticky top-0` is what makes the tide-mark behave**: at the ordinary state the sea is a
+        * 13vh band that stays put while the ledger list scrolls under it, and **it cannot be scrolled
+        * away or passed through** — the owner's *"不得遮挡账本标题、卡片、操作按钮或滚动内容"* read the
+        * right way round: it must not cover them, and they must not run through it either.
         */}
-      <div
-        className="fixed inset-0"
-        style={{
-          transform: "translateY(calc(var(--p, 0) * -100%))",
-
-        }}
-      >
+      <div className="sticky top-0 z-20">
         <OceanBackdrop />
-
-        {/**
-          * ⚠️ **The brand text is part of the water, so it leaves with it.** Putting it in the layer
-          * rather than above it is what makes the retreat read as one movement — **the title sinks
-          * with the surface it is written on.**
-          */}
-        <div className="absolute inset-0 flex flex-col items-center justify-center px-8 text-center">
-          <p className="text-4xl font-semibold tracking-[0.18em] text-white/95">Libellum</p>
-          <p className="mt-4 text-sm leading-relaxed text-white/75">记一本账，安静而长久。</p>
-        </div>
       </div>
 
       {/**
