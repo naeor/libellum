@@ -30,12 +30,15 @@ interface Wave {
 
 interface Band {
   readonly fill: string;
-  /** Open state: the left and right ends of this band's lower edge, in vh. */
+  /**
+   * ⚠️ **Only the LEFT end is declared, and that is not an omission.**
+   *
+   * The right end is `left × 0.90`, computed once inside `buildPath`. Declaring both would leave two
+   * numbers that must agree — **and the day they disagree, the sea tilts by an amount nobody chose.**
+   */
   readonly left: number;
-  readonly right: number;
-  /** Contracted state: the same two ends. Steeper ratios, so the tilt still reads when it is short. */
+  /** Height once contracted. The curve is the same; only the box it is stretched over shrinks. */
   readonly leftShort: number;
-  readonly rightShort: number;
   /** What makes this band's curve *this band's* curve. */
   readonly waves: readonly Wave[];
   /** Seconds per tide cycle. */
@@ -56,27 +59,27 @@ interface Band {
 const BANDS: readonly Band[] = [
   {
     fill: "#3f7059",
-    left: 63, right: 59, leftShort: 10, rightShort: 6,
+    left: 63, leftShort: 10,
     /** The deepest band: a broad swell with a second, smaller ripple over it. */
     waves: [{ amp: 11, freq: 1.15, phase: 0 }, { amp: 4, freq: 2.4, phase: 0.4 }],
     period: 10,
   },
   {
     fill: "#4f8a6d",
-    left: 69, right: 65, leftShort: 12, rightShort: 8,
+    left: 69, leftShort: 12,
     /** Offset in phase, so its crest sits where the first band has a trough. */
     waves: [{ amp: 14, freq: 1.45, phase: 0.85 }],
     period: 11,
   },
   {
     fill: "#6aa78a",
-    left: 76, right: 71, leftShort: 14, rightShort: 10,
+    left: 76, leftShort: 14,
     waves: [{ amp: 9, freq: 1.05, phase: 1.95 }],
     period: 9,
   },
   {
     fill: "#96c4ac",
-    left: 83, right: 77, leftShort: 16, rightShort: 12,
+    left: 83, leftShort: 16,
     /** The calmest layer — it is the one that dissolves into the page. */
     waves: [{ amp: 5, freq: 1.35, phase: 3.1 }],
     period: 12,
@@ -96,9 +99,20 @@ const BANDS: readonly Band[] = [
  * control points somebody has to keep consistent.** Anything the owner asks for later — a different
  * amplitude, a third harmonic — is one number.
  */
-function buildPath(band: Band, contracted: boolean): string {
+function buildPath(band: Band): string {
   const steps = 48;
-  const yRight = ((contracted ? band.rightShort : band.right) / (contracted ? band.leftShort : band.left)) * 100;
+  /**
+   * ⚠️ **One ratio for both states, and 0.90 is a compromise the owner should know about.**
+   *
+   * He asked for 63 / 59 open (ratio 0.937) and 10 / 6 contracted (ratio 0.60). **One path cannot
+   * hold two ratios**, and he rejected the two-path answer because he could see the cross-fade:
+   * 「过渡动画中有出现淡入淡出的现象」.
+   *
+   * 0.90 lands within 2 vh of the open request (63 → 56.7 against 59) and 3 vh of the contracted
+   * one (10 → 9.0 against 6). **The contracted tilt is therefore gentler than he asked for**, and that
+   * is the unavoidable cost of a single curve rather than a cross-fade.
+   */
+  const yRight = 90;
   const points: string[] = [];
 
   for (let i = steps; i >= 0; i -= 1) {
@@ -134,11 +148,13 @@ export function OceanBackdrop(): React.JSX.Element {
           preserveAspectRatio="none"
         >
           {/**
-            * ⚠️ **Two paths, both from `buildPath`, cross-faded.** Same fill, same band — so the swap
-            * reads as the water steepening, **not as two seas changing places.**
+            * ⚠️ **ONE path, and that is the fix.** The previous version drew two and cross-faded them,
+            * which is exactly the fade the owner spotted: 「过渡动画中有出现淡入淡出的现象」.
+            *
+            * ⚠️ **The band's height still interpolates** — the curve is fixed and the box it is stretched
+            * over shrinks, so **the water flattens as it contracts without anything fading.**
             */}
-          <path d={buildPath(band, false)} fill={band.fill} style={{ opacity: "calc(1 - var(--p, 0))" }} />
-          <path d={buildPath(band, true)} fill={band.fill} style={{ opacity: "var(--p, 0)" }} />
+          <path d={buildPath(band)} fill={band.fill} />
         </svg>
       ))}
 
