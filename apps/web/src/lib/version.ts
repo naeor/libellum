@@ -1,4 +1,4 @@
-﻿/**
+/**
  * What version of the program this is.
  *
  * ⚠️ **The owner asked for a scheme and supplied it**: "我们现在假设当前版本 1.08.01（1表示这是
@@ -36,8 +36,38 @@
  * finished and this build is the first of **S9 (collaboration and multiple
  * ledgers)**. That is the whole point of the middle segment — "which stage is
  * this build from" is readable on screen, and the answer needs no lookup.
+ *
+ * ⚠️ **The middle part moved from 09 to 10** on 2026-10-13: **S11 (界面统一与
+ * 编码化)** is the stage being developed now. The owner renumbered the roadmap
+ * that day — **S11 = 界面统一与编码化, S12 = 可上线** — and asked for the
+ * document tidy-up to be recorded as **1.10.01**.
+ *
+ * ⚠️ **Both segments are zero-padded to two digits** (`1.10.01`, not `1.10.1`),
+ * so the three parts line up as columns across the whole history.
+ *
+ * ⚠️ **The middle part stays at 10 for the rename** (2026-10-14, 1.10.20,
+ * Libellum → Libevra). Changing the brand is a user-visible change, so the last
+ * segment moves; **it is not a new stage**, and moving the middle one would claim
+ * that S11 had been left. See `docs/Libevra品牌迁移记录.md`.
+ *
+ * ⚠️ **1.10.21 is phase two of the same rename** — the GitHub repository and the
+ * engineering tidy-up that the migration record listed as manual work. It is a
+ * separate last-segment bump because it changed a different set of things: the
+ * remote repository name, one user-visible URL, and the documentation links.
+ *
+ * ⚠️ **1.10.22 is the administrator mechanism** (2026-10-14), and it is the first
+ * bump in this series that changed *behaviour* rather than names: registration can
+ * no longer confer administration, and an admin request is now decided by two
+ * independent server-side checks. See `docs/管理员与权限边界-设计决定.md`.
+ *
+ * ⚠️ **1.10.23 makes the second of those checks genuinely independent** (S12-A,
+ * 2026-10-14). 1.10.22 introduced two checks that both read `admin_grants`, so one
+ * grant satisfied both and they could never disagree. The allow list is now its own
+ * table (`admin_allowlist`), written by `pnpm admin:allow` and withdrawn by
+ * `pnpm admin:disallow` — and neither of those touches `admin_grants`.
+ * See `docs/S12-A上线前安全与发布准备.md` §4.
  */
-export const APP_VERSION = "1.09.72";
+export const APP_VERSION = "1.10.23";
 
 /**
  * When this bundle was built.

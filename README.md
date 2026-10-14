@@ -1,4 +1,4 @@
-# Libellum
+# Libevra
 
 **The free, open ledger.**
 
@@ -8,8 +8,11 @@
 > **Status: in development.** Accounts, recording, statistics and screenshot recognition are
 > built and in daily use; export and import are next, and nothing is deployed publicly yet.
 > The stage-by-stage position is in [ROADMAP.md](docs/ROADMAP.md).
+>
+> **⚠️ Formerly Libellum.** Renamed on 2026-10-14 for domain reasons. Which names changed,
+> which were deliberately kept, and what still needs a human: [docs/Libevra品牌迁移记录.md](docs/Libevra品牌迁移记录.md).
 
-Libellum is an open-source, self-hosted expense tracker for individuals and families. It aims to be
+Libevra is an open-source, self-hosted expense tracker for individuals and families. It aims to be
 the kind of tool you can hand to a family member: fast on a phone, no ads, no tracking, no account
 required with a third party — just your own server and your own data.
 
@@ -40,7 +43,7 @@ Every row also records where it came from (`source_ref`) and which import brough
 record how many rows arrived against how many were already present. The shape is enforced by
 database CHECK constraints rather than by convention, so a reference that cannot be traced cannot
 be written in the first place. Details in
-[docs/档案/S6-导出与导入-设计决定.md](docs/档案/S6-导出与导入-设计决定.md).
+[docs/归档/S6-导出与导入-设计决定.md](docs/归档/S6-导出与导入-设计决定.md).
 
 ## Tech stack
 
@@ -62,11 +65,12 @@ be written in the first place. Details in
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Stage-by-stage build plan with acceptance criteria |
 | [docs/DEVLOG.md](docs/DEVLOG.md) | Development log: every change, decision and its evidence |
 | [docs/BACKLOG.md](docs/BACKLOG.md) | Deferred ideas, and the ones deliberately rejected |
-| [docs/档案/S6-导出与导入-设计决定.md](docs/档案/S6-导出与导入-设计决定.md) | Export/import decisions, including the reference scheme above |
+| [docs/归档/S6-导出与导入-设计决定.md](docs/归档/S6-导出与导入-设计决定.md) | Export/import decisions, including the reference scheme above |
+| [docs/Libevra品牌迁移记录.md](docs/Libevra品牌迁移记录.md) | The rename from Libellum: what changed, what was kept, what is still manual |
 
 ## Privacy
 
-Libellum ships no analytics and no advertising SDKs. It does not sell data. The only data it holds is
+Libevra ships no analytics and no advertising SDKs. It does not sell data. The only data it holds is
 what you enter yourself, on a server you control. Payment screenshots used for recognition are
 decoded in memory, never written to disk, and never sent to a third-party service.
 
@@ -77,6 +81,9 @@ Licensed under the **GNU Affero General Public License v3.0** — see [LICENSE](
 In short: you may use, study, modify and share this software freely. But if you run a modified version
 as a network service for others, you must publish your modified source too. That is deliberate: this
 tool should stay free for its users, and nobody should be able to turn it into a closed service.
+
+**The rename did not change the licence.** [LICENSE](LICENSE) is the official AGPL-3.0 text and
+was not touched.
 
 ---
 

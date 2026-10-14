@@ -1,35 +1,50 @@
-// Regenerate the readable exports of the documents.
+// Regenerate the readable exports of every document.
 //
-// The Markdown files are the source; the `.docx` files in `docs/` are generated
-// for reading and printing, and are git-ignored. Run `pnpm docs:build` after
-// editing any of them.
+// The Markdown files are the source; `docs/*.docx` and `docs/*.pdf` are
+// generated for reading and printing, and are git-ignored. Run `pnpm docs:build`
+// after editing any of them.
 //
-// Three things are deliberate here.
+// Five things are deliberate here.
 //
-// **The generator is the project's own converter**, `tools/md2docx.py`. It needs
-// `python-docx`, and no single interpreter on a given machine is guaranteed to
-// have it — this script therefore probes the likely candidates and picks the
-// first that can actually import it, rather than assuming `python` means the
-// right one and failing with a confusing traceback.
+// **The generator is the project's own converters**, `tools/md2docx.py` and
+// `tools/md2pdf.py`. They need `python-docx` and `fpdf2`, and no single
+// interpreter on a given machine is guaranteed to have them — this script
+// therefore probes the likely candidates and picks the first that can actually
+// import them, rather than assuming `python` means the right one and failing
+// with a confusing traceback.
 //
 // **`-X utf8` is not decoration.** Without it, a Chinese console code page makes
-// the converter fail while printing its own progress, which looks like a
+// the converters fail while printing their own progress, which looks like a
 // converter bug and is not one.
 //
-// **There is no PDF step.** Earlier exports included PDFs produced by
-// LibreOffice on a machine that had it; this one does not, and inventing a
-// second, worse PDF pipeline to avoid saying so would be dishonest. So the `.md`
-// files are the source, the `.docx` files are regenerated here, and the stale
-// PDFs are deleted rather than left behind looking current.
+// ⚠️ **The document list is discovered, not hand-maintained.** Until 1.10.01 it
+// was a literal array, and that array had already failed twice in the same way:
+// `S8-冲突-设计决定.md` — the document carrying the entire conflict rule — was
+// missing from it *entirely*, and later three of the four newest design
+// documents had no Word version at all. **A list that must be updated by hand is
+// a list that will be out of date**, so this walks the tree instead and only
+// keeps a table of titles.
+//
+// ⚠️ **Both formats come out of the same pass.** The owner asked for it in as
+// many words: **"所有的 markdown 文件最好都有一个 word 阅读版……如果可以的话，
+// 最好还有个 PDF，PDF 读起来比 word 省心。"** There is no LibreOffice, pandoc or
+// wkhtmltopdf on this machine, so `md2pdf.py` reads the Markdown directly rather
+// than converting the `.docx` — the same reasoning `md2docx.py` records.
+//
+// **There is no PDF step that depends on an external office suite**, and the
+// stale-PDF cleanup stays: a file that looks authoritative while being wrong is
+// worse than a missing one.
 
 import { execFileSync } from "node:child_process";
-import { existsSync, rmSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { existsSync, readdirSync, rmSync, statSync } from "node:fs";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const docs = join(root, "docs");
-const converter = join(root, "tools", "md2docx.py");
+const archive = join(docs, "归档");
+const docxConverter = join(root, "tools", "md2docx.py");
+const pdfConverter = join(root, "tools", "md2pdf.py");
 
 /**
  * Interpreters to try, best first.
@@ -55,8 +70,8 @@ function candidates() {
   return list;
 }
 
-function canImportDocx(interpreter) {
-  const args = interpreter === "py" ? ["-3", "-c", "import docx"] : ["-c", "import docx"];
+function canImport(interpreter, module) {
+  const args = interpreter === "py" ? ["-3", "-c", `import ${module}`] : ["-c", `import ${module}`];
   try {
     execFileSync(interpreter, args, { stdio: "ignore" });
     return true;
@@ -65,20 +80,99 @@ function canImportDocx(interpreter) {
   }
 }
 
+function pythonFor(module) {
+  for (const candidate of candidates()) {
+    if (canImport(candidate, module)) return candidate;
+  }
+  return null;
+}
+
 function pythonArgs(interpreter, rest) {
   const lead = interpreter === "py" ? ["-3"] : [];
   return [...lead, "-X", "utf8", ...rest];
 }
 
-let python = null;
-for (const candidate of candidates()) {
-  if (canImportDocx(candidate)) {
-    python = candidate;
-    break;
+/**
+ * Titles for the documents, keyed by source path relative to `docs/`.
+ *
+ * Anything not listed gets a title derived from its filename — which is a fine
+ * default and is why this table does not have to be complete. It exists so the
+ * important documents get the name the owner knows them by.
+ *
+ * ⚠️ **Titles follow the current brand (2026-10-14, Libellum → Libevra)**, and
+ * `版本记录（1.08-1.09）.md` is the one exception worth naming: it *is* history,
+ * so its title says so — the old name is the subject of that document, not a
+ * stale label on a current one. See `docs/Libevra品牌迁移记录.md`.
+ */
+const TITLES = {
+  "README.md": "Libevra · docs 目录说明",
+  "交接.md": "Libevra · 交接：从这里开始",
+  "教训.md": "Libevra · 教训",
+  "版本记录（1.10）.md": "Libevra · 版本记录（1.10）",
+  "版本记录（1.08-1.09）.md": "Libellum（原名）· 版本记录（1.08-1.09）· 历史存档",
+  "ROADMAP.md": "Libevra 制作计划与大纲",
+  "PLAN.md": "Libevra 记账应用 · 技术方案",
+  "BACKLOG.md": "Libevra 后期待办与想法池",
+  "COLORS.md": "Libevra · 颜色清单与语义分类",
+  "DEVLOG.md": "Libevra 开发日志",
+  "海浪效果要求.md": "Libevra · 海浪效果要求与实现交接",
+  "管理员与权限边界-设计决定.md": "Libevra · 系统管理员与权限边界 · 设计决定",
+  "S12-A上线前安全与发布准备.md": "Libevra · S12-A 上线前安全与发布准备",
+  "Libevra品牌迁移记录.md": "Libevra · 品牌迁移记录（原名 Libellum）",
+  "归档/README.md": "Libevra · 归档说明：这里的东西接近被废弃",
+  "归档/归档说明.md": "Libevra · 1.10.01 文档整理记录",
+  "归档/S6-导出与导入-设计决定.md": "Libevra S6 · 导出与导入 · 设计决定",
+  "归档/协作与多账本-设计决定.md": "Libevra · 协作与多账本 · 设计决定",
+  "归档/S8-离线写入-设计决定.md": "Libevra S8 · 离线写入 · 设计决定",
+  "归档/S8-冲突-设计决定.md": "Libevra S8 · 冲突 · 设计决定",
+  "归档/离线与同步-设计决定.md": "Libevra · 离线与同步 · 设计决定",
+  "归档/账本与协作页-设计决定.md": "Libevra · 账本与协作页 · 设计决定",
+  "归档/账本空间-展示态-设计决定.md": "Libevra · 开始页面展示态 · 设计决定",
+  "归档/邀请码-示例.md": "Libevra · 邀请码格式示例",
+};
+
+/**
+ * Directories under `docs/` that hold reading reports and other working papers,
+ * not documents the owner reads on a phone. Excluded on purpose, and named here
+ * so the exclusion is a decision rather than an oversight.
+ */
+const SKIP_DIRS = new Set(["阅读报告"]);
+
+function walk(dir) {
+  const out = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name.startsWith(".")) continue;
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (dir === archive && SKIP_DIRS.has(entry.name)) continue;
+      out.push(...walk(full));
+    } else if (entry.isFile() && entry.name.toLowerCase().endsWith(".md")) {
+      out.push(full);
+    }
   }
+  return out;
 }
 
-if (python === null) {
+function titleFor(rel) {
+  if (TITLES[rel]) return TITLES[rel];
+  const base = rel.replace(/\.md$/i, "").split("/").pop();
+  return `Libevra · ${base}`;
+}
+
+/**
+ * Files in `docs/` that are deliberately *not* generated.
+ *
+ * ⚠️ **`恢复码.docx` must stay.** It is the only document in the repository with
+ * no Markdown source, it is not produced by this script, and the owner asked
+ * explicitly that it be kept. Anyone tidying the folder — including an AI —
+ * will read it as an orphan. It is not one.
+ */
+const NEVER_DELETE = new Set(["恢复码.docx"]);
+
+const docxPython = pythonFor("docx");
+const pdfPython = pythonFor("fpdf");
+
+if (docxPython === null) {
   console.error(
     [
       "找不到带 python-docx 的 Python，文档导出已跳过。",
@@ -86,7 +180,7 @@ if (python === null) {
       "  Markdown 才是源文件，导出件是给人阅读用的，不影响项目运行。",
       "  要重新生成 Word 版，先装一次依赖：",
       "",
-      "      pip install python-docx",
+      "      pip install python-docx fpdf2",
       "",
       "  或者用环境变量指定解释器：",
       "",
@@ -96,131 +190,88 @@ if (python === null) {
   );
   process.exitCode = 1;
 } else {
-  console.log(`使用解释器：${python}`);
+  console.log(`Word  使用解释器：${docxPython}`);
+  if (pdfPython === null) {
+    console.warn(
+      "⚠️ 找不到带 fpdf2 的 Python，PDF 已跳过（Word 仍会生成）。\n" +
+        "   装一次即可：pip install fpdf2\n",
+    );
+  } else {
+    console.log(`PDF   使用解释器：${pdfPython}`);
+  }
 
-  /**
-   * source Markdown → exported Word file → the export names this document has
-   * carried over time, with the title used on its cover.
-   *
-   * The extra names matter: the English `.md` filenames do not match the Chinese
-   * export names (`PLAN.md` exports as `技术方案.docx`), so "replace .md with
-   * .pdf" does not find the old PDFs. Listing them explicitly is honest about
-   * the mismatch instead of papering over it.
-   */
-  const DOCUMENTS = [
-    /**
-     * ⚠️ **The handover document is deliberately first**, because it is the one that says where to start —
-     * "读这一份就够了；每一节都指到更细的文档，而不是重复它们."
-     */
-    ["交接.md", "交接.docx", "Libellum · 交接：从这里开始", ["交接.pdf"]],
-    ["PLAN.md", "技术方案.docx", "Libellum 记账应用 · 技术方案", ["技术方案.pdf"]],
-    ["ROADMAP.md", "制作计划.docx", "Libellum 制作计划与大纲", ["制作计划.pdf", "制作计划与大纲.pdf"]],
-    ["BACKLOG.md", "后期待办.docx", "Libellum 后期待办与想法池", ["后期待办.pdf"]],
-    ["DEVLOG.md", "开发日志.docx", "Libellum 开发日志", ["开发日志.pdf"]],
-    /**
-     * ⚠️ **The design documents live in `档案/`, and the path is why.**
-     *
-     * They were moved there at the owner's request — **"新建一个不常用文件夹，把所有现在用不到的文件放进去"** —
-     * and `档案` means **"rarely opened, but still the authority"**, not "obsolete".
-     *
-     * ⚠️ **The source path carries the folder; the output name does not.** `.docx` files stay in `docs/` so the
-     * export names this document has always used keep working, **and only the `source` element of each entry
-     * changes.**
-     */
-    [
-      "档案/S6-导出与导入-设计决定.md",
-      "S6-导出与导入-设计决定.docx",
-      "Libellum S6 · 导出与导入 · 设计决定",
-      ["S6-导出与导入-设计决定.pdf"],
-    ],
-    [
-      "档案/协作与多账本-设计决定.md",
-      "协作与多账本-设计决定.docx",
-      "Libellum · 协作与多账本 · 设计决定",
-      ["协作与多账本-设计决定.pdf"],
-    ],
-    [
-      "档案/S8-离线写入-设计决定.md",
-      "S8-离线写入-设计决定.docx",
-      "Libellum S8 · 离线写入 · 设计决定",
-      ["S8-离线写入-设计决定.pdf"],
-    ],
-    /**
-     * ⚠️ **`S8-冲突-设计决定.md` was missing from this list entirely**, so the document that carries the whole
-     * conflict rule — the four judgements, the candidate-generation rule, the resolution sequence — **had no
-     * `.docx` and was not in the count.** It is the round that took the longest and the one a reader is most likely
-     * to need on a phone.
-     */
-    [
-      "档案/S8-冲突-设计决定.md",
-      "S8-冲突-设计决定.docx",
-      "Libellum S8 · 冲突 · 设计决定",
-      ["S8-冲突-设计决定.pdf"],
-    ],
-    [
-      "教训.md",
-      "教训.docx",
-      "Libellum · 教训",
-      ["教训.pdf"],
-    ],
-    [
-      "版本记录.md",
-      "版本记录.docx",
-      "Libellum · 版本记录与发版规则",
-      ["版本记录.pdf"],
-    ],
-    [
-      "档案/离线与同步-设计决定.md",
-      "离线与同步-设计决定.docx",
-      "Libellum · 离线与同步 · 设计决定",
-      ["离线与同步-设计决定.pdf"],
-    ],
-    /**
-     * The colour inventory exports too, even though it is a reference rather
-     * than a narrative document: the owner asked for it by name, and a `.docx`
-     * is what he reads on a phone.
-     *
-     * `COLORS.md` is an English filename with a Chinese export name, which is
-     * why this list exists at all rather than deriving one from the other.
-     */
-    ["COLORS.md", "颜色清单.docx", "Libellum · 颜色清单与语义分类", ["颜色清单.pdf"]],
-  ];
+  const sources = walk(docs).sort();
+  console.log(`发现 ${String(sources.length)} 份 Markdown。\n`);
 
-  // Remove the stale PDFs **first**, not last. They are from an earlier export
-  // run on a machine that had LibreOffice, they no longer match the Markdown,
-  // and a file that looks authoritative while being wrong is worse than a
-  // missing one. Doing it first also means a later failure cannot leave them
-  // behind — which is exactly what happened the first time this ran, when the
-  // cleanup sat after the conversion loop and the loop never finished.
-  for (const [source, , , stalePdfs] of DOCUMENTS) {
-    for (const staleName of stalePdfs) {
-      const stale = join(docs, staleName);
-      if (existsSync(stale)) {
-        rmSync(stale);
-        console.log(`  – 删除过期的 PDF：${staleName}（本机无 LibreOffice，不再生成 PDF）`);
-      }
+  // Every generated file this run is going to write, so that anything left over
+  // from an earlier layout can be removed. Renaming an export used to leave the
+  // old name behind looking current.
+  const produced = new Set();
+  for (const from of sources) {
+    const rel = relative(docs, from).split("\\").join("/");
+    const base = rel.replace(/\.md$/i, "");
+    const name = base.split("/").pop();
+    produced.add(`${name}.docx`);
+    produced.add(`${name}.pdf`);
+  }
+
+  // ⚠️ **Stale cleanup runs first, not last.** A file that looks authoritative
+  // while being wrong is worse than a missing one, and doing it after the
+  // conversions means a later failure strands them — which is what happened the
+  // first time this script ran.
+  let removed = 0;
+  for (const name of readdirSync(docs)) {
+    if (NEVER_DELETE.has(name)) continue;
+    if (!/\.(docx|pdf)$/i.test(name)) continue;
+    if (produced.has(name)) continue;
+    rmSync(join(docs, name));
+    console.log(`  – 删除已不再生成的旧产物：${name}`);
+    removed += 1;
+  }
+  // Same rule one level down: `docs/*/` must not accumulate generated copies,
+  // which is how three stale `.docx` files ended up sitting inside the old
+  // `档案/` folder looking exactly like the current ones.
+  for (const dir of [archive]) {
+    if (!existsSync(dir)) continue;
+    for (const name of readdirSync(dir)) {
+      const full = join(dir, name);
+      if (!statSync(full).isFile()) continue;
+      if (!/\.(docx|pdf)$/i.test(name)) continue;
+      rmSync(full);
+      console.log(`  – 删除子目录里的过期生成物：${relative(root, full)}`);
+      removed += 1;
     }
   }
+  if (removed > 0) console.log("");
 
   let failed = 0;
 
-  for (const [source, target, title] of DOCUMENTS) {
-    const from = join(docs, source);
-    const to = join(docs, target);
-
-    if (!existsSync(from)) {
-      console.error(`  ✗ ${source} 不存在，跳过`);
-      failed += 1;
-      continue;
-    }
+  for (const from of sources) {
+    const rel = relative(docs, from).split("\\").join("/");
+    const base = rel.replace(/\.md$/i, "");
+    const stem = base.split("/").pop();
+    const title = titleFor(rel);
+    const docx = join(docs, `${stem}.docx`);
+    const pdf = join(docs, `${stem}.pdf`);
 
     try {
-      execFileSync(python, pythonArgs(python, [converter, from, to, "--title", title]), {
+      execFileSync(docxPython, pythonArgs(docxPython, [docxConverter, from, docx, "--title", title]), {
         stdio: "inherit",
       });
     } catch (error) {
-      console.error(`  ✗ ${source} → ${target} 生成失败：${String(error)}`);
+      console.error(`  ✗ ${rel} → Word 生成失败：${String(error)}`);
       failed += 1;
+    }
+
+    if (pdfPython !== null) {
+      try {
+        execFileSync(pdfPython, pythonArgs(pdfPython, [pdfConverter, from, pdf, "--title", title]), {
+          stdio: "inherit",
+        });
+      } catch (error) {
+        console.error(`  ✗ ${rel} → PDF 生成失败：${String(error)}`);
+        failed += 1;
+      }
     }
   }
 
@@ -228,6 +279,7 @@ if (python === null) {
     console.error(`\n${String(failed)} 份文档生成失败。`);
     process.exitCode = 1;
   } else {
-    console.log("\n全部 Markdown 已重新导出为 Word（PDF 已按上面的说明处理）。");
+    const formats = pdfPython === null ? "Word" : "Word 与 PDF";
+    console.log(`\n全部 ${String(sources.length)} 份 Markdown 已重新导出为 ${formats}。`);
   }
 }

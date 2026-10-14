@@ -1,8 +1,8 @@
 {
-  "name": "libellum",
+  "name": "libevra",
   "version": "0.1.0",
   "private": true,
-  "description": "Libellum - the free, open ledger",
+  "description": "Libevra - the free, open ledger (formerly Libellum)",
   "license": "AGPL-3.0-only",
   "type": "module",
   "packageManager": "pnpm@12.10.1",
@@ -16,6 +16,8 @@
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "check:build": "node tools/check-build.mjs",
+    "check:docs": "node tools/check-links.mjs && node tools/doc-audit.mjs",
+    "check:links": "node tools/check-links.mjs",
     "test": "pnpm -r test",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
@@ -25,6 +27,12 @@
     "dev:cert": "node tools/make-dev-cert.mjs",
     "invite:create": "pnpm --filter @libellum/api invite:create",
     "invite:batch": "pnpm --filter @libellum/api invite:batch",
+    "admin:grant": "pnpm --filter @libellum/api admin:grant",
+    "admin:revoke": "pnpm --filter @libellum/api admin:revoke",
+    "admin:list": "pnpm --filter @libellum/api admin:list",
+    "admin:allow": "pnpm --filter @libellum/api admin:allow",
+    "admin:disallow": "pnpm --filter @libellum/api admin:disallow",
+    "check:db": "pnpm --filter @libellum/api check:db",
     "docs:build": "node tools/build-docs.mjs"
   },
   "devDependencies": {

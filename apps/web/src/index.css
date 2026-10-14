@@ -27,7 +27,13 @@
 }
 
 /*
- * Libellum theme — the blocks the whole interface is built from.
+ * Libevra theme — the blocks the whole interface is built from.
+ *
+ * ⚠️ **The name in this comment is the product's, not a technical identifier** (2026-10-14,
+ * Libellum → Libevra). Nothing here is keyed by it, so it follows the brand. The things that
+ * are keyed by the old name — the `libellum-*` keyframes below, the IndexedDB database, the
+ * `x-libellum-*` request headers — are deliberately left alone; see
+ * `docs/Libevra品牌迁移记录.md` for which names are which and why.
  *
  * Light, calm and friendly: a near-white canvas, one low-saturation green as the
  * only accent, soft corners and generous spacing. Nothing shouts.
@@ -57,6 +63,7 @@
  * describes a job, and only the second one survives a change of mind.
  */
 @theme {
+  --color-category-ink: #3f7059;
   /* ---- Base set: lightness ------------------------------------------- */
   /* The page behind everything, and the cards on it. */
   --color-canvas: #fafcfb;
@@ -64,7 +71,7 @@
 
   /* Text, in two weights, plus the hairlines that separate things. */
   --color-ink: #24312b;
-  --color-muted: #6b7f76;
+  --color-muted: #60726a;
   --color-line: #e3ede7;
 
   /* ---- Accent block: hue --------------------------------------------- */
@@ -74,11 +81,30 @@
    * readable-on-light text tone, which the charts use for small labels so that
    * a chart's grey does not have to borrow the muted text colour — the two have
    * different jobs and different contrast requirements.
+   *
+   * ⚠️ **`accent-ink` was `#8fa39a`, which measured 2.67:1 on white — about half the AA
+   * requirement, on text that carries real values.** Axis ticks and legend names are *read*, not
+   * decoration, so the token is now `#5f7268` (4.55:1).
+   *
+   * ⚠️ **But the same token was also drawing the rules** — grid lines and the baseline — and those
+   * must NOT darken with it: `strokeOpacity` 0.22 on a darker grey makes **the grid louder than the
+   * bars it sits behind**, which is the opposite of what a chart needs. So the line work keeps the old
+   * value under its own name. **One token was doing two jobs with opposite requirements; splitting it
+   * is the fix, and neither half changes the other.**
    */
   --color-brand: #55997a;
   --color-brand-dark: #447d63;
   --color-brand-soft: #edf5f0;
-  --color-accent-ink: #8fa39a;
+  /** 图表里的**文字**：坐标轴刻度、图例名。为可读性调深。 */
+  --color-accent-ink: #5f7268;
+  /**
+   * 图表里的**线条**：网格线与基线。保持原来的浅色。
+   *
+   * ⚠️ **Deliberately lighter than `accent-ink`.** A grid is a reference, not a value: it should be
+   * findable when looked for and invisible when not. Using the darker text tone here would put a
+   * 0.22-opacity dark grey grid **in front of** the data in reading order.
+   */
+  --color-chart-rule: #8fa39a;
 
   /* ---- Status block: meaning ----------------------------------------- */
   /* Not derived from the accent: a failure is red in every theme. */
@@ -100,6 +126,44 @@
   --color-warn: #b07d2b;
   --color-warn-dark: #8f6420;
   --color-warn-soft: #fdf6e7;
+
+  /* ---- Interaction states --------------------------------------------
+   *
+   * ⚠️ **These exist because the audit found the states were the one thing with no token at all.**
+   * Colours had been thought about; *states* had not. The result was measurable:
+   *
+   *  * **Focus had no rule.** `focus:ring-4 focus:ring-brand-soft` was written out per component, so
+   *    **whether a control showed a focus ring depended on who wrote it** — and `Button`, the most
+   *    used control in the app, **had none at all** until this round.
+   *  * **The overlay had no name.** `bg-ink/25` and `bg-ink/35` both meant "dim what is behind this",
+   *    at two strengths with nothing to say which is which.
+   *  * **Shadows were two anonymous `rgba()` literals** — the only colour values in the app that no
+   *    token described, and therefore the only ones that would not follow a theme change.
+   *
+   * ⚠️ **The focus ring is `brand-soft`, not `brand`.** A ring in the accent colour at full strength
+   * reads as *part of the button*; the pale green halo reads as *"this is where the keyboard is"* —
+   * and it is the value the ten existing fields already used, so naming it changed nothing.
+   *
+   * ⚠️ **A token with no user is a token that will rot.** This round added exactly two overlays and
+   * two shadows, because those are the ones the app actually has; `bg-ink/75` on the scan page was
+   * **deliberately not** made a third — it is a dark ✕ *badge* on a photo, not a dimming layer, and
+   * calling it an overlay would have been a name that lies. Adding a token "in case" is how a palette
+   * fills up with colours nobody can explain.
+   * -------------------------------------------------------------------- */
+
+  /** 遮罩（对话框 / 底部面板后面的变暗层）。 */
+  --color-overlay-soft: rgb(36 49 43 / 0.25);
+  --color-overlay: rgb(36 49 43 / 0.35);
+
+  /*
+    ⚠️ **Shadows are the ink colour at low alpha, and that is the point.**
+    A shadow tinted with the text colour reads as *the same light* as everything else, where a neutral
+    black shadow reads as grey. Both literals below were `rgba(36,49,43,…)` already — **the value was
+    right and only the naming was missing** — so these two tokens change nothing on screen and make the
+    next shadow a decision instead of a copy-paste.
+  */
+  --shadow-card: 0 1px 2px rgb(36 49 43 / 0.04);
+  --shadow-sheet: 0 -8px 30px rgb(36 49 43 / 0.14);
 
   /*
     ⚠️ **The refresh icon turns one whole circle, then stops where it started.**
@@ -144,16 +208,152 @@
   --radius-card: 1.25rem;
   --radius-field: 0.875rem;
 
+  /*
+    ⚠️ **A bottom sheet is not a big card, and that is why it has its own radius.**
+
+    The owner's ruling (2026-10-14): *"底部面板属于大型浮起式交互容器，与普通卡片不是同一种组件……
+    未来修改底部面板圆角时，不应该连普通信息卡片的圆角一起改变."*
+
+    ⚠️ **The two numbers are close on purpose and still worth separating.** 24px against the card's
+    20px is a 4px difference — small enough to look like an accident, which is exactly why the audit
+    found one sheet at each value. **The reason to name it is not the 4px; it is that the next change
+    to either one must not silently drag the other along.** `--radius-card` also draws every
+    information card and the month picker's *content*, so binding the sheet to it would make "make the
+    panel rounder" and "make the cards rounder" the same edit forever.
+
+    ⚠️ **Top corners only.** A sheet rises from the bottom edge, so its lower corners are off-screen;
+    rounding them would be invisible at best and would show a sliver of background at worst if the
+    safe-area inset ever exceeds the radius. **Use `rounded-t-sheet`; never `rounded-sheet` here.**
+  */
+  --radius-sheet: 1.5rem;
+
+  /* ---- Typography ------------------------------------------------------
+   *
+   * ⚠️ **Semantic names, not size names.** `--text-helper` says what the text *is for*;
+   * `text-xs` says what it looks like. Only the first survives a change of mind about the size —
+   * and changing a size is the whole reason this block exists.
+   *
+   * ⚠️ **Size and line-height are bound in one token.** That is deliberate and it fixes a real
+   * defect found in the S11 audit: `text-xs` was used **186 times, 53 of them with an extra
+   * `leading-relaxed`** — so the same 12px rendered at **16px or 19.5px** depending on whether the
+   * author happened to add a class. **Two answers to one question cannot both be right**, and
+   * pairing them makes the second answer unexpressible.
+   *
+   * ⚠️ **Tailwind's `@theme` generates a utility from each token**: `--text-helper` → `text-helper`.
+   * So this is the *existing* system extended, not a parallel one — see the long note below about
+   * what may and may not live in this block.
+   *
+   * ⚠️ **These values are the audit's recommendation: they match what the app already renders.**
+   * Adopting a token must not change a pixel — that is what makes the migration reviewable. The one
+   * deliberate exception is `--text-section-title`, which is the size experiment this round is
+   * about; it is applied **only** on 分析 and 账本／协作 for now.
+   * -------------------------------------------------------------------- */
+
+  /** 页面标题 —— 一级页（绿头）与二级页（`InnerPage`）。20/600，负字距。 */
+  --text-page-title: 1.25rem;
+  --text-page-title--line-height: 1.75rem;
+  --text-page-title--letter-spacing: -0.025em;
+  --text-page-title--font-weight: 600;
+
+  /**
+   * 正式功能区标题 —— 「收支趋势」「分类占比」「编辑记录」「留言」这一层。
+   *
+   * ⚠️ **16px/600 is the experiment** (owner, 2026-10-13). The auditing round recommended keeping
+   * the old 14px/500 and *naming* it, because raising it changes how the whole app reads. The owner
+   * chose to raise it — **so it is done as an experiment on two pages first**, exactly as he asked:
+   * *"本轮允许实际修改代码，但先只在「分析」和「账本／协作」两个一级页面进行视觉试验."*
+   */
+  --text-section-title: 1rem;
+  --text-section-title--line-height: 1.5rem;
+  --text-section-title--font-weight: 600;
+
+  /** 卡片标题 / 强调正文 —— 账本名称、卡片内的重点信息。 */
+  --text-card-title: 0.875rem;
+  --text-card-title--line-height: 1.25rem;
+  --text-card-title--font-weight: 500;
+
+  /** 普通正文 —— 交易说明、记录内容、一般信息。 */
+  --text-body: 0.875rem;
+  --text-body--line-height: 1.25rem;
+
+  /** 普通正文·宽松 —— 多行说明段落。**同一个 14px，另一种阅读方式。** */
+  --text-body-relaxed: 0.875rem;
+  --text-body-relaxed--line-height: 1.4375rem;
+
+  /** 辅助说明 / 小分组标签 —— 单行：日期、编号、成员数量、设置分组标签。 */
+  --text-helper: 0.75rem;
+  --text-helper--line-height: 1rem;
+
+  /** 辅助说明·宽松 —— 多行：错误提示、说明段落。 */
+  --text-helper-relaxed: 0.75rem;
+  --text-helper-relaxed--line-height: 1.25rem;
+
+  /**
+   * 微型文字 —— 底部导航、空间受限的状态徽标。
+   *
+   * ⚠️ **`0.6875rem` is 11px, and it exists because `text-[11px]` was already used 24 times.** An
+   * arbitrary value is invisible to a search and cannot be adjusted; a token can. **This does not
+   * make the text any bigger** — the owner was explicit: *"不要把这些技术或视觉例外强行放大到
+   * 12px."*
+   */
+  --text-micro: 0.6875rem;
+  --text-micro--line-height: 1rem;
+
+  /** 次级文字操作 —— 「查看全部 ›」「展开完整对话 ›」这类绿色文字入口。 */
+  --text-link: 0.75rem;
+  --text-link--line-height: 1rem;
+  --text-link--font-weight: 400;
+
+  /** 按钮文字（大）—— `Button.tsx` 的主/次按钮。 */
+  --text-button-lg: 0.9375rem;
+  --text-button-lg--line-height: 1.40625rem;
+  --text-button-lg--font-weight: 500;
+
+  /** 按钮文字（常规）—— 页面内的局部按钮。 */
+  --text-button: 0.875rem;
+  --text-button--line-height: 1.25rem;
+  --text-button--font-weight: 500;
+
   --font-sans:
     system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+/*
+  ⚠️ **正式功能区标题 —— 一个类，一个来源。**
+
+  ⚠️ **It started as an experiment.** The owner scoped the 16px change to two pages first, so a second
+  class (`.section-title-legacy`, 14px) existed to hold the other callers still. **He approved the
+  rollout on 2026-10-13, and the legacy class is gone** — every caller now resolves to
+  `--text-section-title`, which is written **once**.
+
+  ⚠️ **Why a class rather than a Tailwind string repeated in each page.** The heading is used through
+  `Section` / `SectionFrame`, so its typography has exactly one author. **A page that hand-writes
+  `text-base font-semibold` would be a second author**, and the two would drift — which is the defect
+  the typography audit opened with (`text-xs` used at two different line-heights, 53 times).
+*/
+@layer components {
+  /** 正式功能区标题（现规格）—— 试验之外的所有页面继续用这个。 */
+  .section-title {
+    font-size: var(--text-section-title);
+    line-height: var(--text-section-title--line-height);
+    /*
+      ⚠️ **The weight is written out, not read from `--text-section-title--font-weight`.** Tailwind's
+      own `text-*` utility reads it through `var(--tw-font-weight, …)` — a variable it registers with
+      `@property` — and **a hand-written class has no business depending on another system's internal
+      variable.** A literal here cannot be broken by a Tailwind upgrade.
+    */
+    font-weight: 600;
+    color: var(--color-ink);
+  }
+
 }
 
 /*
   ⚠️ **The rule that uses the keyframes lives out here, and putting it inside `@theme` broke the whole app.**
  *
   Tailwind's `@theme` accepts **only custom properties and `@keyframes`** — so a plain class rule inside it fails the
-  build, and Vite shows its error overlay **instead of the application**. The symptom the owner saw was "程序出错了，
-  突然登录不上去", which is what a CSS compile failure looks like from outside: **every route, including the login
+  build, and Vite shows its error overlay **instead of the application**. The symptom the owner saw was 「程序出错了，
+  突然登录不上去」, which is what a CSS compile failure looks like from outside: **every route, including the login
   page, is replaced by the error.**
  *
   ⚠️ **And my own change did it** — the keyframes were placed correctly and the class came along with them.
@@ -185,6 +385,48 @@
   .section-in {
     animation: none;
   }
+
+  /* ⚠️ The bottom sheet is the other short vertical movement in the app — same rule, same reason. */
+  .sheet-in,
+  .backdrop-in {
+    animation: none;
+  }
+}
+
+/*
+  ⚠️ **The per-ledger management sheet, rising from the bottom** (1.10.08). The owner asked for a
+  Bottom Sheet: *"从屏幕底部弹出针对**该账本**的管理面板……采用移动端常见的 Bottom Sheet 交互."*
+
+  ⚠️ **It enters from below rather than fading in place**, because the direction *is* the message on a
+  phone: a panel that appears from the edge it can be pushed back to says how to dismiss it, and one
+  that fades in the middle says nothing. **Nothing slides it out again** — the drag handler in
+  `BookManageSheet` moves it under the finger, and the close is immediate, which reads as 「it left
+  the way it came」 without a second animation to keep in step.
+*/
+@keyframes libellum-sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes libellum-backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.sheet-in {
+  animation: libellum-sheet-in 260ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.backdrop-in {
+  animation: libellum-backdrop-in 180ms ease-out;
 }
 
 
@@ -236,10 +478,26 @@ textarea {
   background: var(--color-canvas);
 }
 .space-ocean { position: relative; flex: none; height: var(--sea-h); z-index: 2; pointer-events: none; }
+
+/*
+  ⚠️ **The ocean can carry a real control, and this is the one thing that changes when it does.**
+
+  `.space-ocean` is `pointer-events: none` because it is a drawing that must not swallow taps meant for
+  the list. **The account button inside it is a genuine target**, so it has to opt back in — and the
+  wave SVG has to opt back *out*, or a tap on the sea would land on the water instead of the list.
+
+  ⚠️ **Deliberately not `pointer-events: auto` on the whole ocean.** That would make the entire green
+  band a tap target for the drag gesture's own `touchstart`… which is harmless, but it also means the
+  band swallows taps at the expanded end where there is nothing under it to reach. **One element opts
+  in, by name.**
+*/
+.space-ocean-live .space-account { pointer-events: auto; }
+.space-ocean-live { pointer-events: none; }
+.space-ocean-live .space-waves { pointer-events: none; }
 .space-waves { position: absolute; width: 100%; height: 110%; inset: 0; overflow: visible; }
 .space-brand {
   position: absolute;
-  left: calc(50% * (1 - var(--p)) + (20px + env(safe-area-inset-left, 0px)) * var(--p));
+  left: calc(50% * (1 - var(--p)) + var(--space-content-left, 24px) * var(--p));
   top: calc(var(--sea-h) * 0.34 * (1 - var(--p)) + (14px + env(safe-area-inset-top, 0px)) * var(--p));
   transform: translate(calc(-50% * (1 - var(--p))), calc(-50% * (1 - var(--p))));
   color: white;
@@ -247,8 +505,114 @@ textarea {
 }
 .space-brand-name { font-size: calc(2.1rem - 0.7rem * var(--p)); font-weight: 600; letter-spacing: 0.16em; line-height: 1.3; }
 .space-brand-tagline { margin-top: calc(10px - 7px * var(--p)); font-size: calc(14px - 4px * var(--p)); line-height: 1.5; letter-spacing: 0.08em; }
-.space-cue-window { height: calc(20dvh * (1 - var(--p))); flex: none; overflow: hidden; position: relative; }
-.space-cue { position: absolute; inset: 0; width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--color-muted); font-size: 12px; letter-spacing: 0.12em; padding-bottom: env(safe-area-inset-bottom, 0px); }
+
+/*
+  ⚠️ **The account avatar, in the green band's top-right (1.10.08).**
+
+  It lives inside `.space-ocean`, which is `position: relative` and whose height is `var(--sea-h)` —
+  **so it is always inside the green**, at both ends of the transition, with no extra height added
+  (the owner required that: *"不应为了添加头像而大幅增加收缩态海浪高度"*).
+
+  ⚠️ **Its opacity is a function of `--p`, the same number the sea is drawn from** — the owner asked
+  for exactly that: *"请优先复用现有海浪过渡进度，避免独立计时器导致动画不同步."* There is no timer
+  and no second animation, so **it cannot drift from a dragged sea.**
+
+  | `--p` | 头像 | 对应他的要求 |
+  |---|---|---|
+  | 0（海浪完全展开） | 0 | *"海浪完全展开时：头像不可见，也不可点击"* |
+  | 0.72 | 0 | 展开过程中一直不出现 |
+  | 0.72 → 0.92 | 淡入 | *"向收缩态过渡时：头像逐渐显示"* |
+  | 1（收缩态） | 1 | 正常显示 |
+
+  ⚠️ **A slightly earlier ramp than the tip's**, on purpose: the tip is a full-screen brand element
+  that should wait for the sea to finish, while the avatar is a small corner control somebody may
+  already be reaching for. **Both still come from `--p`.**
+
+  ⚠️ **`visibility` follows opacity**, so a fully transparent avatar cannot be tapped *or* focused.
+  An invisible target in the corner would swallow taps aimed at the sea — and unlike the tip, this
+  one is inside the ocean's own stacking context, so there is no separate element to mark `inert`.
+*/
+.space-account {
+  position: absolute;
+  /**
+    * ⚠️ **Centred on the wordmark's own line, at both ends of the drag.**
+    *
+    * The owner: *"纵轴方向上跟左边的 logo 对齐."* `.space-brand` sits at
+    * `calc(var(--sea-h) * 0.34 * (1 - var(--p)) + (14px + inset) * var(--p))` with a `translateY(-50%)`,
+    * and `.space-brand-name` is `2.1rem * 1.3` tall — so its centre line is
+    * `var(--sea-h) * 0.34 + 1.365rem` when expanded, and `14px + inset + 1.365rem` when collapsed.
+    *
+    * ⚠️ **The same interpolation, so the two stay level *during* the drag rather than only at the
+    * ends.** A fixed offset would line up in the collapsed state and drift apart on the way there —
+    * which is the moment somebody is looking at both of them.
+    *
+    * ⚠️ **`translateY(-50%)`, the same device the brand uses**, so the 44 px button is centred on that
+    * line instead of hanging below it.
+    */
+  top: calc(
+    var(--sea-h) * 0.34 * (1 - var(--p)) + (14px + env(safe-area-inset-top, 0px)) * var(--p) + 1.365rem
+  );
+  transform: translateY(-50%);
+  right: calc(20px + env(safe-area-inset-right, 0px));
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /**
+    * ⚠️ **44 px, for the owner's *"圆形按钮拥有足够的触摸区域"*.** The portrait is drawn at 26 px inside
+    * it, so the touch target and the visual stay separable — a 44 px portrait would dominate the band.
+    */
+  width: 44px;
+  height: 44px;
+  border-radius: 9999px;
+  opacity: clamp(0, calc(var(--p) * 5 - 3.6), 1);
+  visibility: clamp(0, calc(var(--p) * 5 - 3.6), 1);
+  pointer-events: none;
+  transition: box-shadow 160ms ease-out;
+}
+
+/* Avatar input eligibility still uses the settled React state.
+   The cue below instead follows live progress, including its inert threshold. */
+/* p=0: full presentation; p=1: ledger list. The cue is outside the sea clip. */
+.space-cue-window {
+  position: absolute;
+  inset: 80dvh 0 0;
+  z-index: 3;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.space-cue {
+  pointer-events: auto;
+  opacity: clamp(0, calc(1 - var(--p) / 0.18), 1);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 20px;
+  color: var(--color-muted);
+  font-size: 12px;
+  letter-spacing: 0.12em;
+}
+.space-cue[inert] { pointer-events: none; }
 .space-cue:focus-visible { outline: 2px solid var(--color-brand); outline-offset: -8px; }
-.space-scroll { min-height: 0; flex: 1; overflow-y: auto; overscroll-behavior-y: none; overflow-anchor: none; }
-.space-content { padding-top: max(24px, calc(var(--sea-h) * 0.07)); padding-bottom: calc(4rem + env(safe-area-inset-bottom, 0px)); }
+/* Reserve the presentation's bottom fifth; it recedes with the same progress. */
+.space-scroll {
+  min-height: 0;
+  flex: 1;
+  margin-top: calc(20dvh * (1 - clamp(0, var(--p), 1)));
+  overflow-y: auto;
+  overscroll-behavior-y: none;
+  overflow-anchor: none;
+  display: flex;
+  flex-direction: column;
+}
+.space-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1 0 auto;
+  padding-top: max(24px, calc(var(--sea-h) * 0.07));
+  padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+}

@@ -69,7 +69,7 @@ export function SoftwareUpdatePage(): React.JSX.Element {
   }, [load]);
 
   const summary = [
-    `Libellum ${APP_VERSION}`,
+    `Libevra ${APP_VERSION}`,
     `构建时间（本机）：${buildStampLocal()}`,
     `构建时间（UTC）：${buildStamp()}`,
     `Service Worker：${workerState}`,
@@ -102,7 +102,7 @@ export function SoftwareUpdatePage(): React.JSX.Element {
       <section className="flex flex-col gap-2 rounded-card border border-line bg-surface px-4 py-3">
         <p className="text-2xl font-semibold tracking-tight text-ink">{APP_VERSION}</p>
 
-        <dl className="flex flex-col gap-1 text-[11px] text-muted">
+        <dl className="flex flex-col gap-1 text-micro text-muted">
           <div className="flex justify-between gap-3">
             <dt>构建时间</dt>
             <dd className="text-right font-mono text-ink">{buildStampLocal()}</dd>

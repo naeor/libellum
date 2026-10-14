@@ -39,7 +39,8 @@ import { readTrace, traceLine, readValue } from "../lib/offline/storage.js";
  * How many storage-trace steps the full report keeps.
  *
  * ⚠️ **Twenty, because the trace is a sequence of *steps*, not a log** - what matters is the run-up to whatever
- * went wrong, and ninety lines of ead query-cache push that run-up off the top of a phone screen.
+ * went wrong, and ninety lines of 
+ead query-cache push that run-up off the top of a phone screen.
  */
 const TRACE_LINES = 20;
 
@@ -132,7 +133,7 @@ export function DownloadMorePage(): React.JSX.Element {
 
   /** Everything a developer would need, as plain text. */
   const report = [
-    "Libellum · 离线诊断",
+    "Libevra · 离线诊断",
     /**
      * ⚠️ **The build first, and it is not decoration.**
      *
@@ -189,7 +190,7 @@ export function DownloadMorePage(): React.JSX.Element {
    * the full report long, and they are only needed once the short one has narrowed it down.
    */
   const shortReport = [
-    `Libellum · 离线诊断（简版）`,
+    `Libevra · 离线诊断（简版）`,
     `构建：${__BUILD_STAMP__}`,
     `页面：${window.location.href}`,
     `网络：${navigator.onLine ? "在线" : "离线"}`,
@@ -254,7 +255,7 @@ export function DownloadMorePage(): React.JSX.Element {
           hint="完整的，包含存储追踪与全部运行记录。"
         />
 
-        <p className="text-xs leading-relaxed text-muted">
+        <p className="text-helper-relaxed text-muted">
           服务器上的账目不受影响；这里只是本机的副本。
         </p>
       </section>
@@ -269,7 +270,7 @@ export function DownloadMorePage(): React.JSX.Element {
           清除本应用的全部本地数据
         </Button>
 
-        <p className="text-xs leading-relaxed text-muted">
+        <p className="text-helper-relaxed text-muted">
           会删掉本机上的账本副本、应用缓存和离线记录，然后重新加载。
           服务器上的数据不受影响，联网后可以重新下载。
         </p>
@@ -292,9 +293,9 @@ export function DownloadMorePage(): React.JSX.Element {
 
       {storage === null ? null : (
         <section className="flex flex-col gap-1.5 rounded-card border border-line bg-surface px-4 py-3 text-sm">
-          <h2 className="text-xs text-muted">占用构成</h2>
+          <h2 className="text-helper text-muted">占用构成</h2>
           <p className="text-ink">总计 {formatBytes(storage.totalBytes)}</p>
-          <ul className="flex flex-col gap-0.5 text-[11px] text-muted">
+          <ul className="flex flex-col gap-0.5 text-micro text-muted">
             <li>账本数据 {formatBytes(storage.queryCacheBytes)}</li>
             <li>应用本体（HTML / JS / CSS）{formatBytes(storage.shellCacheBytes)}</li>
             <li>运行记录 {formatBytes(storage.diagnosticsBytes)}</li>
@@ -308,7 +309,7 @@ export function DownloadMorePage(): React.JSX.Element {
             before writing it to disk. Saying what it is stops the ledger taking the blame,
             and stops a "free up space" button being expected where none can exist.
           */}
-          <p className="text-[11px] leading-relaxed text-muted">
+          <p className="text-micro leading-relaxed text-muted">
             「浏览器其它」由浏览器自己记账，可能包含还没写到磁盘的数据，应用无法直接清除。
           </p>
         </section>
@@ -316,11 +317,11 @@ export function DownloadMorePage(): React.JSX.Element {
 
       {footprint === null ? null : (
         <section className="flex flex-col gap-1.5 rounded-card border border-line bg-surface px-4 py-3 text-sm">
-          <h2 className="text-xs text-muted">缓存条目</h2>
+          <h2 className="text-helper text-muted">缓存条目</h2>
           <p className="text-ink">
             共 {footprint.queryCount} 条，其中 {footprint.liveQueryCount} 条当前版本会读取
           </p>
-          <ul className="flex flex-col gap-0.5 text-[11px] text-muted">
+          <ul className="flex flex-col gap-0.5 text-micro text-muted">
             {footprint.heaviest.map((entry) => (
               <li key={entry.label} className="flex justify-between gap-3">
                 <span className="min-w-0 truncate font-mono">{entry.label}</span>
@@ -333,28 +334,28 @@ export function DownloadMorePage(): React.JSX.Element {
 
       <section className="flex flex-col gap-2">
         <div className="flex items-center justify-between">
-          <h2 className="text-xs text-muted">运行记录（{log.length} 条）</h2>
+          <h2 className="text-helper text-muted">运行记录（{log.length} 条）</h2>
           <button
             type="button"
             onClick={() => {
               void clearOfflineLog().then(() => load());
             }}
-            className="text-[11px] text-muted underline"
+            className="text-micro text-muted underline"
           >
             清空
           </button>
         </div>
 
         {loading ? (
-          <p className="text-sm text-muted">正在读取…</p>
+          <p className="text-body text-muted">正在读取…</p>
         ) : log.length === 0 ? (
-          <p className="text-sm text-muted">还没有记录。</p>
+          <p className="text-body text-muted">还没有记录。</p>
         ) : (
           <ul className="flex flex-col gap-1 rounded-card border border-line bg-surface px-4 py-3">
             {log.map((entry, index) => (
               <li
                 key={`${String(entry.at)}-${String(index)}`}
-                className="text-[11px] leading-relaxed"
+                className="text-micro leading-relaxed"
               >
                 <span className="font-mono text-muted">{new Date(entry.at).toLocaleTimeString()}</span>{" "}
                 <span className="text-ink">{entry.what}</span>

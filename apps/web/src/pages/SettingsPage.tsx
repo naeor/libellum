@@ -33,9 +33,9 @@ function RowList({ rows, onNavigate }: { readonly rows: readonly Row[]; readonly
               <span className={`text-sm ${row.to === undefined ? "text-muted" : "text-ink"}`}>
                 {row.label}
               </span>
-              {row.hint ? <span className="text-xs text-muted">{row.hint}</span> : null}
+              {row.hint ? <span className="text-helper text-muted">{row.hint}</span> : null}
             </span>
-            <span className="shrink-0 text-xs text-muted">
+            <span className="shrink-0 text-helper text-muted">
               {row.to === undefined ? "后续开放" : "›"}
             </span>
           </button>
@@ -66,12 +66,12 @@ export function SettingsPage(): React.JSX.Element {
   return (
     <InnerPage title="设置" backTo="/me">
       <section className="flex flex-col gap-2">
-        <h2 className="px-1 text-xs text-muted">记账偏好</h2>
+        <h2 className="px-1 text-helper text-muted">记账偏好</h2>
 
         <div className="flex flex-col gap-3 rounded-card border border-line bg-surface p-5">
           <div className="flex flex-col gap-1">
-            <span className="text-sm text-ink">默认币种</span>
-            <span className="text-xs leading-relaxed text-muted">
+            <span className="text-body text-ink">默认币种</span>
+            <span className="text-helper-relaxed text-muted">
               该币种将排在所有币种列表的最前。汇率折算功能开放后，其它币种默认折算为该币种。
             </span>
           </div>
@@ -89,7 +89,7 @@ export function SettingsPage(): React.JSX.Element {
                     { onSuccess: () => { setSaved(true); } },
                   );
                 }}
-                className={`rounded-full px-4 py-2 text-sm transition disabled:opacity-60 ${
+                className={`rounded-full px-4 py-2 text-sm transition disabled:opacity-45 ${
                   current === option ? "bg-brand text-white" : "bg-canvas text-muted hover:text-ink"
                 }`}
               >
@@ -100,7 +100,7 @@ export function SettingsPage(): React.JSX.Element {
 
           {preferences.isError ? <Alert tone="error">{errorMessage(preferences.error)}</Alert> : null}
           {saved && !preferences.isPending ? (
-            <p className="text-xs text-brand-dark">已保存。</p>
+            <p className="text-helper text-brand-dark">已保存。</p>
           ) : null}
         </div>
 
@@ -117,7 +117,7 @@ export function SettingsPage(): React.JSX.Element {
       </section>
 
       <section className="flex flex-col gap-2">
-        <h2 className="px-1 text-xs text-muted">显示与数据</h2>
+        <h2 className="px-1 text-helper text-muted">显示与数据</h2>
         <RowList
           rows={[
             { label: "语言", hint: "中文 / English" },
@@ -131,19 +131,33 @@ export function SettingsPage(): React.JSX.Element {
       </section>
 
       <section className="flex flex-col gap-2">
-        <h2 className="px-1 text-xs text-muted">账号安全</h2>
+        <h2 className="px-1 text-helper text-muted">账号安全</h2>
         <RowList
           rows={[
             { label: "更改密码", hint: "修改后，其它设备上的登录状态将失效", to: "/settings/password" },
             { label: "生成新的恢复码", hint: "生成后，原有恢复码将立即失效", to: "/settings/recovery-code" },
+            /**
+             * ⚠️ **The owner asked for the referral code to become an entry of its own here**
+             * (2026-10-13): *"账户里边生成邀请码单独包装成一个入口，放到设置-账号安全里面."*
+             *
+             * ⚠️ **It belongs in this section rather than under 显示与数据 or 记账偏好**, because it
+             * is about **the account** — like 密码 and 恢复码 — and about no ledger and no preference.
+             * The hint keeps the distinction the owner drew visible at the point of choice: a code
+             * **注册账号**, it does not put anybody into a ledger.
+             */
+            {
+              label: "邀请码",
+              hint: "让别人注册 Libevra 账号，与你的账本无关",
+              to: "/settings/referral-codes",
+            },
           ]}
           onNavigate={go}
         />
       </section>
 
       <section className="flex flex-col gap-2">
-        <h2 className="px-1 text-xs text-muted">关于</h2>
-        <RowList rows={[{ label: "关于 Libellum", hint: "开源协议与隐私说明", to: "/about" }]} onNavigate={go} />
+        <h2 className="px-1 text-helper text-muted">关于</h2>
+        <RowList rows={[{ label: "关于 Libevra", hint: "开源协议与隐私说明", to: "/about" }]} onNavigate={go} />
       </section>
     </InnerPage>
   );
