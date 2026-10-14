@@ -1,0 +1,143 @@
+# Libevra — Caddy configuration for a single server.
+#
+# ⚠️ **Why Caddy and not nginx.** Certificates. Caddy obtains and renews a Let's Encrypt
+# certificate on its own, which for a one-person project is the difference between "HTTPS is
+# configured" and "HTTPS is configured and will still be configured in ninety days". The
+# plan has said Caddy since `PLAN.md` was written; this is that plan, written down.
+#
+# ⚠️ **The domain is not in this file.** It arrives as `{$LIBEVRA_DOMAIN}`, substituted by
+# Caddy from the environment. A domain hard-coded here would have to be edited to change and
+# would end up committed as a placeholder that somebody forgets to replace — and this
+# project has already had one domain plan die, which is why it is now Libevra.
+#
+# ⚠️ **No CORS, deliberately — and that is not an omission.**
+# The browser only ever talks to one origin: Caddy serves the app and proxies `/api` on the
+# same host. The API therefore sees same-origin requests and its own same-origin check
+# passes. `apps/api/src/app.ts` has no CORS configuration because it has never needed one,
+# and adding permissive headers "to be safe" would remove a protection that currently costs
+# nothing.
+
+{
+	# ⚠️ **`admin off` closes Caddy's own admin API.** It listens on localhost:2019 and can
+	# rewrite the running configuration; inside a container that is reachable by anything else
+	# sharing the network. The configuration is a mounted file and is reloaded with a signal,
+	# so the API is not needed.
+	admin off
+
+	# ⚠️ **`email` is optional but should be set.** Let's Encrypt uses it for expiry warnings,
+	# which are the difference between a renewal you hear about and an outage you discover.
+	email {$ACME_EMAIL}
+
+	# ⚠️ Bounded, so a misconfigured proxy cannot fill the disk with a debug log.
+	log {
+		output stderr
+		level ERROR
+	}
+}
+
+# ---------------------------------------------------------------------------
+# The site
+# ---------------------------------------------------------------------------
+{$LIBEVRA_DOMAIN} {
+	encode zstd gzip
+
+	# ---------------------------------------------------------------------------
+	# Security headers
+	# ---------------------------------------------------------------------------
+	header {
+		# ⚠️ **HSTS is set with a short max-age and no `preload`.**
+		# `preload` is effectively irreversible for the domain and belongs to a project that
+		# has finished deploying; two years is the usual value and there is no reason to take
+		# it on the first day. Raise it once the site has been up for a while.
+		Strict-Transport-Security "max-age=86400"
+
+		# ⚠️ `X-Content-Type-Options: nosniff` and a referrer policy are the two cheapest
+		# headers in existence and both are pure gain here: the app serves no user-uploaded
+		# content of its own, and it would rather not leak ledger URLs to third parties
+		# through the Referer of an outbound link.
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+
+		# ⚠️ **These two are off by default in every browser and the app uses neither.**
+		Permissions-Policy is how that gets said out loud rather than assumed.
+		Permissions-Policy "geolocation=(), camera=(), payment=(), usb=()"
+
+		# ⚠️ **`X-Frame-Options: DENY`, not SAMEORIGIN.** Nothing in this project frames it,
+		# and clickjacking a ledger app means tricking somebody into confirming an entry.
+		X-Frame-Options "DENY"
+
+		# ⚠️ **A Content-Security-Policy, written to match what the app actually does.**
+		#
+		#   * `default-src 'self'` — everything comes from this origin. The app loads no
+		#     fonts, scripts, styles or images from anywhere else; the OCR and speech models
+		#     run on this server, which is the whole point of the project.
+		#   * `style-src 'self' 'unsafe-inline'` — ⚠️ **`unsafe-inline` for styles only, and
+		#     it is required.** React sets inline `style` attributes for the ledger screen's
+		#     animation (`--p` is written to the DOM every frame by design — see
+		#     `detail-motion.css`), and the CSP `style-src-attr` directive covers those.
+		#     Without it the whole transition system stops.
+		#   * `script-src 'self'` — **no `unsafe-inline` and no `unsafe-eval`.** The bundle is
+		#     built by Vite and contains no inline script; if a future change needs one, the
+		#     right fix is a hash or a nonce, not a relaxation.
+		#   * `connect-src 'self'` — the app talks only to its own `/api`.
+		#   * `img-src 'self' data: blob:` — `data:`/`blob:` are needed for the screenshot
+		#     preview and the QR code, which are generated in the browser.
+		#   * `frame-ancestors 'none'` — the modern half of `X-Frame-Options`.
+		#   * `base-uri 'none'`, `form-action 'self'`, `object-src 'none'` — nothing in the
+		#     app needs any of them, and each closes a known class of injection.
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'"
+
+		-Server
+	}
+
+	# ---------------------------------------------------------------------------
+	# The API
+	# ---------------------------------------------------------------------------
+	handle /api/* {
+		reverse_proxy api:3000 {
+			# ⚠️ **The original Host is forwarded, and `changeOrigin` has no equivalent here
+			# for the same reason the dev proxy leaves it off.** The API checks that writes
+			# come from its own origin; rewriting the Host would make that check compare two
+			# different names and refuse every write as cross-site.
+			header_up X-Real-IP {remote_host}
+		}
+	}
+
+	# ---------------------------------------------------------------------------
+	# Health, for the container healthcheck and for a person with curl
+	# ---------------------------------------------------------------------------
+	handle /healthz {
+		respond "ok" 200
+	}
+
+	# ---------------------------------------------------------------------------
+	# The application — a single-page app, so unknown paths are the shell
+	# ---------------------------------------------------------------------------
+	handle {
+		root * /srv
+		# ⚠️ `try_files` falls back to `index.html` so a deep link like `/settings/account`
+		# works on a fresh load. The service worker gives the same answer offline; this is
+		# the online half of it.
+		try_files {path} /index.html
+		file_server
+	}
+}
+
+# ---------------------------------------------------------------------------
+# ⚠️ **There is deliberately no catch-all site block here, and that is a correction rather
+# than an omission.**
+#
+# The first version of this file ended with `:80, :443 { respond 421 }`, intending to refuse
+# any hostname that is not the configured domain. Caddy would not accept it: a wildcard
+# address and a named site both bind 443, so the two definitions conflict and the config fails
+# to load.
+#
+# The right answer is also the simpler one — **Caddy already refuses unknown hosts.** It only
+# obtains a certificate for `{$LIBEVRA_DOMAIN}` and only matches that name; a request for a
+# bare IP or somebody else's hostname, pointed at this server by a stray DNS record, gets a
+# TLS failure because no certificate matches. Nothing needs to be written to achieve it, and
+# a second block claiming to do it would only have been a comment pretending to be a rule.
+#
+# If a refusal page is ever wanted for a specific second hostname, add a site block naming
+# that hostname explicitly rather than a wildcard.
+# ---------------------------------------------------------------------------

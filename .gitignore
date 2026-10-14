@@ -1,4 +1,4 @@
-﻿# ---- 依赖 ----
+# ---- 依赖 ----
 node_modules/
 .pnpm-store/
 
@@ -35,7 +35,10 @@ uploads/
 # ---- OCR 服务：Python 虚拟环境与模型（本地安装，约 260MB）----
 # 依赖由 requirements.txt 声明；虚拟环境本身永远不进仓库。
 apps/ocr/.venv/
-apps/ocr/__pycache__/
+# ⚠️ 一律用通配的 `__pycache__/`，不要按目录逐个写。
+# `tools/md2docx.py` 与 `tools/md2pdf.py` 每次 `pnpm docs:build` 都会生成
+# `tools/__pycache__/`，而只忽略 `apps/ocr/__pycache__/` 时它会被带进提交。
+__pycache__/
 # 测试用的仿真截图由 make_samples.py 生成，不必提交。
 # 真实截图绝不允许提交——那是别人的付款凭证。
 apps/ocr/samples/
@@ -100,3 +103,24 @@ docs/邀请码-*.md
 
 # ---- 开发用 HTTPS 证书（私钥不进仓库，哪怕是自签的）----
 apps/web/.certs/
+
+# ---- ⚠️ 生产部署的秘密（S12-A 加入）----
+#
+# `deploy/.env` 由 `deploy/.env.production.example` 复制而来，里面是**生产库口令**、
+# `SESSION_SECRET` 和域名。
+#
+# ⚠️ **不要写 `deploy/*`。** 它看起来是"放回目录"，实际是"忽略这个目录里的所有东西"，
+# 于是除模板之外**一个文件都不会进仓库**——而 `git status` 只会安静地什么都不显示。
+# 这一条是实测出来的：先写了 `deploy/*` 再写 `!` 例外，结果 Caddyfile、两个 Dockerfile、
+# compose、三个脚本**全部被静默忽略**，而当时的验证恰好因为文件已在暂存区而**误判为通过**。
+# **验证 `.gitignore` 必须在"文件未被跟踪"的状态下做，否则测的是暂存区。**
+#
+# 所以这里只列出要忽略的**具体路径**：
+deploy/.env
+deploy/backups/
+deploy/.last-deployed
+#
+# ⚠️ **上面那条 `deploy/.env` 是必需的**，因为第 15 行的 `.env.*` 只看文件名部分
+# （`*` 不跨 `/`），匹配不到 `deploy/.env.production.example`——
+# 它落进 `.env.*` 被忽略，模板从此进不了仓库。所以需要一条 `!` 把它放回来：
+!deploy/.env.production.example

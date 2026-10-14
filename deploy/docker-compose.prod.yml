@@ -1,0 +1,170 @@
+# Libevra — the single-server production stack.
+#
+# ⚠️ **What this file is for, and what it is not.**
+#
+# It is the *shape* of a production deployment: which containers exist, which of them can be
+# reached from the internet, where state lives, and what has to be true before the API is
+# allowed to start. It is **not** a deployment that has been run — S12-A prepares it, S12-B
+# executes it. Nothing here has touched the purchased server.
+#
+# ⚠️ **Exactly one service publishes a port to the outside world.** Caddy, on 80 and 443.
+# PostgreSQL, the API and the sidecars are all on the internal network and publish nothing:
+#
+#   * **The database is not reachable from the internet.** It has no `ports:` entry, so the
+#     only thing that can open a connection is another container on this network. *"生产
+#     PostgreSQL 不暴露公网端口."*
+#   * **The API is not reachable from the internet either.** It is reached through Caddy on
+#     the same origin, which is also how the development setup works (Vite proxies `/api`),
+#     so **there is no CORS configuration anywhere in this project and there does not need to
+#     be one.**
+#
+# ⚠️ **Every secret comes from `.env` and none of them has a default.** `${VAR:?message}`
+# makes compose refuse to start rather than silently boot with an empty password. A
+# deployment that starts with sane-looking defaults is a deployment whose secrets nobody set.
+#
+# ⚠️ **The database volume is separate from the images, and `down` never touches it.**
+# `docker compose down` removes containers and networks; `down -v` removes volumes and would
+# take the ledger with it. The backup script exists so that the second command is never the
+# answer to anything.
+
+services:
+  # ---------------------------------------------------------------------------
+  # PostgreSQL — the ledger itself
+  # ---------------------------------------------------------------------------
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    # ⚠️ Deliberately no `ports:`. See the note at the top.
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in .env}
+      # ⚠️ The image's default locale is `en_US.utf8`, which is fine, but being explicit
+      # means a restore into a fresh volume sorts the same way the original did.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    volumes:
+      # ⚠️ A named volume, not a bind mount. A bind mount would be a directory on the host
+      # whose ownership has to be fixed by hand after every reinstall; a named volume
+      # inherits the image's ownership and survives `docker compose up --build`.
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      # ⚠️ The API waits on this (`depends_on.condition`), so it has to test the actual
+      # database rather than the container's liveness.
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks: [internal]
+
+  # ---------------------------------------------------------------------------
+  # Migrations — runs once, exits, and the API waits for it to succeed
+  # ---------------------------------------------------------------------------
+  #
+  # ⚠️ **`prisma migrate deploy`, never `migrate dev` and never `migrate reset`.**
+  # `deploy` applies the migrations in the repository and nothing else. `dev` would offer to
+  # create migrations at start-up, and **`reset` would drop the database** — the one command
+  # that must never appear in a production compose file.
+  #
+  # ⚠️ **It is a separate service rather than a step inside the API's start-up**, for two
+  # reasons: a crash-looping API would otherwise re-run migrations on every restart, and
+  # `depends_on: service_completed_successfully` gives the ordering for free.
+  migrate:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.api
+    restart: "no"
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL in .env}
+    command: ["pnpm", "db:deploy"]
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [internal]
+
+  # ---------------------------------------------------------------------------
+  # API — Fastify, Prisma, and the two Python sidecars as child processes
+  # ---------------------------------------------------------------------------
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.api
+    restart: unless-stopped
+    # ⚠️ No `ports:`. Reached only through Caddy.
+    env_file:
+      # ⚠️ `.env` is git-ignored and is the only place these values exist. There is no
+      # `environment:` block here restating secrets, because a second copy is a second thing
+      # to keep in step — the failure this project keeps writing down.
+      - .env
+    environment:
+      NODE_ENV: production
+      API_HOST: 0.0.0.0
+      API_PORT: "3000"
+      # ⚠️ `db` is the service name, which is how the container resolves it. The value in
+      # `.env` therefore has to name `db` as the host — see `deploy/README.md`.
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL in .env}
+      WEB_ORIGIN: ${WEB_ORIGIN:?set WEB_ORIGIN in .env}
+      SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET in .env}
+      UPLOAD_DIR: /data/uploads
+    volumes:
+      # ⚠️ The whisper model (~488 MB) and the upload scratch directory. Named volumes so
+      # they survive a rebuild of the image.
+      - api-data:/data
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        # ⚠️ **The API must not start before the schema is in place.** Without this the API
+        # comes up against an empty database and answers 500s to everything until the
+        # migration finishes — which reads like a broken deployment rather than a race.
+        condition: service_completed_successfully
+    networks: [internal]
+
+  # ---------------------------------------------------------------------------
+  # Web — Caddy serving the static bundle, terminating TLS, and proxying /api
+  # ---------------------------------------------------------------------------
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.web
+    restart: unless-stopped
+    ports:
+      # ⚠️ The only published ports in the stack.
+      - "80:80"
+      - "443:443"
+      # ⚠️ 443/udp is HTTP/3. It is optional; leaving it out costs a little latency on
+      # modern clients and nothing else.
+      - "443:443/udp"
+    environment:
+      # ⚠️ The domain is a **deployment decision**, supplied here rather than baked into the
+      # Caddyfile. A domain compiled into an image has to be rebuilt to change, which is how
+      # a placeholder ends up live.
+      LIBEVRA_DOMAIN: ${LIBEVRA_DOMAIN:?set LIBEVRA_DOMAIN in .env}
+      # ⚠️ Where certificate renewal notices should go. Optional; empty disables ACME email.
+      ACME_EMAIL: ${ACME_EMAIL:-}
+    volumes:
+      # ⚠️ **Caddy's own state: the certificates and the ACME account key.** Losing this
+      # volume means re-issuing certificates, and Let's Encrypt rate-limits issuance — so it
+      # is mounted, not left in the container.
+      - caddy-data:/data
+      - caddy-config:/config
+      # The Caddyfile is mounted rather than copied, so tightening the configuration is a
+      # file edit plus a reload instead of an image build.
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      api:
+        # ⚠️ Caddy will start without this, but it would answer 502 on `/api` until the API
+        # is ready. Waiting for the API's healthcheck means the first request a person makes
+        # is served by a working stack.
+        condition: service_healthy
+    networks: [internal]
+
+volumes:
+  db-data:
+  api-data:
+  caddy-data:
+  caddy-config:
+
+networks:
+  internal:
+    driver: bridge

@@ -1,0 +1,72 @@
+# Libevra — the web client, and the Caddy that serves it.
+#
+# ⚠️ **One image, two jobs, and they are both about the same files.**
+#
+# The frontend is a static bundle, so something has to serve it. That something is Caddy,
+# and Caddy is also what terminates TLS — so putting the bundle *inside* Caddy's image keeps
+# the number of moving containers down and, more importantly, means **the site and its
+# certificate are configured in one place**. The alternative — an `nginx` container plus a
+# separate `caddy` container — is two proxies to keep in step for no gain on one server.
+#
+# ⚠️ **The build stage installs from the pnpm workspace, not from `apps/web` alone.**
+# `apps/web` imports `@libellum/shared` (a workspace package), so installing inside
+# `apps/web` would fail to resolve it. The whole workspace is copied and the filter does the
+# narrowing.
+#
+# ⚠️ **`--frozen-lockfile` and the same pnpm version as CI.** A production image that resolved
+# its own dependency versions would be a build nobody had tested; the lockfile is the thing
+# CI validated.
+
+# ---------------------------------------------------------------------------
+# Stage 1 — build the static bundle
+# ---------------------------------------------------------------------------
+FROM node:24-alpine AS build
+
+# Pinned to the version in package.json (`packageManager`), so the image and CI agree.
+RUN corepack enable && corepack prepare pnpm@12.10.1 --activate
+
+WORKDIR /repo
+
+# The workspace manifests and the lockfile first, so a source-only change does not reinstall.
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/web/package.json apps/web/
+COPY apps/api/package.json apps/api/
+COPY packages/shared/package.json packages/shared/
+
+RUN pnpm install --frozen-lockfile
+
+# Then the sources. `apps/api` is copied because the workspace install expects the directory
+# to exist, but nothing from it is built here.
+COPY tsconfig.base.json ./
+COPY packages/shared packages/shared
+COPY apps/web apps/web
+COPY apps/api apps/api
+
+# ⚠️ **The web build needs no backend and no database** — Vite resolves imports at build
+# time and the API base URL is same-origin. That is why this stage can run with no secrets.
+RUN pnpm --filter @libellum/web build
+
+# ---------------------------------------------------------------------------
+# Stage 2 — Caddy, with the bundle and the config
+# ---------------------------------------------------------------------------
+FROM caddy:2-alpine
+
+# ⚠️ **The banner is generated, not copied.** Debian's Caddy image has no `figlet` need, but
+# carrying a favicon-less static site means Caddy has nothing to say on start-up; the label
+# below is what identifies the image.
+LABEL org.opencontainers.image.title="libevra-web" \
+      org.opencontainers.image.description="Libevra web client, served by Caddy" \
+      org.opencontainers.image.licenses="AGPL-3.0-only"
+
+COPY --from=build /repo/apps/web/dist /srv
+
+# Sites are mounted read-only at run time (`/etc/caddy/Caddyfile`), so nothing is baked in:
+# the domain is a deployment decision, and a domain baked into an image is a domain that has
+# to be rebuilt to change — which is exactly the sort of thing that ends up hard-coded.
+
+EXPOSE 80 443
+
+# ⚠️ **The healthcheck asks Caddy, not the network.** A container that cannot answer on its
+# own loopback is not serving, regardless of what the host firewall thinks.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget -q --spider http://127.0.0.1:80/healthz || exit 1

@@ -1,0 +1,149 @@
+# Libevra — the API, and the two Python sidecars it spawns.
+#
+# ⚠️ **One image, because the sidecars are child processes rather than services.**
+#
+# `apps/api/src/ocr/client.ts` and `voice/client.ts` each `spawn` a Python process and talk
+# to it over stdin/stdout JSON — deliberately, so no recogniser ever listens on a port. A
+# sidecar in its own container would have to be reachable over the network, which means
+# writing a protocol the design went out of its way to avoid, or binding a socket nobody can
+# secure as easily as "no socket". So the API and its two Python environments ship together.
+#
+# ⚠️ **The Python environment lives at a fixed path, and the API is told where it is.**
+#
+# The clients search relative to `process.cwd()` (`apps/ocr/.venv`, `../ocr/.venv`, …), which
+# is right on a development machine and wrong in an image. Rather than teach them a second
+# search path, the deployment sets the two documented overrides — `LIBELLUM_OCR_PYTHON` and
+# `LIBELLUM_VOICE_PYTHON` — which exist for exactly this. **The code stays as it is; the
+# environment does the adapting.**
+#
+# ⚠️ **Voice and OCR share one interpreter, and that is intentional.** They are both Python
+# 3.12 packages with no conflicting pins (`rapidocr-onnxruntime`, `Pillow`, `av`,
+# `numpy`, `pywhispercpp`), so one virtualenv is smaller and simpler than two. If a future
+# pin conflicts, split them into two paths and point the two variables at different ones —
+# the override mechanism already allows it.
+
+# ---------------------------------------------------------------------------
+# Stage 1 — build the workspace (TypeScript is run through tsx, but shared must resolve)
+# ---------------------------------------------------------------------------
+FROM node:24-bookworm-slim AS build
+
+RUN corepack enable && corepack prepare pnpm@12.10.1 --activate
+
+WORKDIR /repo
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/web/package.json apps/web/
+COPY apps/api/package.json apps/api/
+COPY packages/shared/package.json packages/shared/
+
+# ⚠️ `--frozen-lockfile`: the versions CI validated, not versions resolved afresh.
+RUN pnpm install --frozen-lockfile
+
+COPY tsconfig.base.json ./
+COPY packages/shared packages/shared
+COPY apps/api apps/api
+COPY apps/web/package.json apps/web/
+
+# ⚠️ **`prisma generate` runs here rather than at start-up.** The generated client is a build
+# artefact of the schema, and generating it on every container start would make boot time
+# depend on a command that cannot change without a new image.
+RUN pnpm db:generate
+
+# ---------------------------------------------------------------------------
+# Stage 2 — the runtime
+# ---------------------------------------------------------------------------
+FROM node:24-bookworm-slim
+
+# Python for the sidecars. `python3-venv` is a separate package on Debian, and its absence is
+# the classic "works on my machine" failure for this kind of image.
+RUN apt-get update \
+ && apt-get install --no-install-recommends -y python3 python3-venv python3-pip ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+RUN corepack enable && corepack prepare pnpm@12.10.1 --activate
+
+LABEL org.opencontainers.image.title="libevra-api" \
+      org.opencontainers.image.description="Libevra API (Fastify + Prisma) with local OCR and speech sidecars" \
+      org.opencontainers.image.licenses="AGPL-3.0-only"
+
+WORKDIR /repo
+
+# ---------------------------------------------------------------------------
+# ⚠️ The non-root user, created before anything is copied into place.
+#
+# `oven/bun`-style images aside, running an application as root inside a container is the
+# single easiest hardening win available: a compromise in the API process then cannot write
+# to the image's own files, and cannot touch the mounted volumes it was not given.
+#
+# The uid/gid are fixed (10001) so a bind mount on the host can be chowned to match. A
+# *named* volume inherits the image's ownership and needs no host-side work at all — which is
+# why the compose file uses named volumes.
+# ---------------------------------------------------------------------------
+RUN groupadd --gid 10001 libevra \
+ && useradd --uid 10001 --gid 10001 --create-home --home-dir /home/libevra --shell /usr/sbin/nologin libevra
+
+# ---------------------------------------------------------------------------
+# The Python sidecars' interpreter, shared by both services.
+# ⚠️ Installed as a layer of its own, so changing application code does not re-download
+#    ~260 MB of ONNX wheels.
+# ---------------------------------------------------------------------------
+COPY apps/ocr/requirements.txt /tmp/ocr-requirements.txt
+
+RUN python3 -m venv /opt/libevra/python \
+ && /opt/libevra/python/bin/pip install --no-cache-dir --upgrade pip \
+ && /opt/libevra/python/bin/pip install --no-cache-dir -r /tmp/ocr-requirements.txt \
+ # ⚠️ The speech recogniser. `pywhispercpp` builds against ggml and needs a compiler and
+ #    cmake ONLY while building the wheel; the build dependencies are removed in the same
+ #    layer so they do not ship in the final image.
+ && apt-get update \
+ && apt-get install --no-install-recommends -y build-essential cmake \
+ && /opt/libevra/python/bin/pip install --no-cache-dir pywhispercpp av \
+ && apt-get purge -y --auto-remove build-essential cmake \
+ && rm -rf /var/lib/apt/lists/* /tmp/ocr-requirements.txt
+
+# The application.
+COPY --from=build /repo/node_modules /repo/node_modules
+COPY --from=build /repo/package.json /repo/pnpm-lock.yaml /repo/pnpm-workspace.yaml /repo/tsconfig.base.json ./
+COPY --from=build /repo/packages/shared /repo/packages/shared
+COPY --from=build /repo/apps/api /repo/apps/api
+COPY --from=build /repo/apps/web/package.json /repo/apps/web/package.json
+COPY apps/ocr /repo/apps/ocr
+COPY apps/voice /repo/apps/voice
+
+# ---------------------------------------------------------------------------
+# ⚠️ Writable state, and only these three paths.
+#
+#   /data/models   — the whisper model, downloaded on first use (~488 MB for `small`)
+#   /data/uploads  — a scratch directory the API may use for multipart work
+#   /home/libevra  — so anything that writes a dotfile has somewhere to do it
+#
+# Pointing `HOME` at `/data` is what makes `pywhispercpp` cache the model inside the volume
+# rather than in the image: a model inside the image would be re-downloaded on every deploy.
+# ---------------------------------------------------------------------------
+RUN mkdir -p /data/models /data/uploads \
+ && chown -R 10001:10001 /data /home/libevra /repo/apps
+
+ENV NODE_ENV=production \
+    HOME=/data \
+    LIBELLUM_OCR_PYTHON=/opt/libevra/python/bin/python \
+    LIBELLUM_VOICE_PYTHON=/opt/libevra/python/bin/python \
+    LIBELLUM_WHISPER_MODEL=small \
+    LIBELLUM_WHISPER_THREADS=2 \
+    API_HOST=0.0.0.0 \
+    API_PORT=3000
+
+USER libevra
+
+EXPOSE 3000
+
+# ⚠️ **`/api/v1/health` checks the database too** — it answers `database: "up"` only when a
+# query succeeds, so this healthcheck fails when the API is up but cannot reach PostgreSQL.
+# The compose file uses it as the dependency condition for the web container, which is what
+# stops Caddy from fronting an API that is not ready.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:'+(process.env.API_PORT||3000)+'/api/v1/health').then(r=>r.json()).then(j=>process.exit(j.ok&&j.database==='up'?0:1)).catch(()=>process.exit(1))"
+
+# ⚠️ **`pnpm start`, not `node src/server.ts` directly** — the package script is where the
+# `.env` loading and the tsx loader live, so invoking the file by hand would quietly drop
+# both. See `apps/api/package.json`.
+CMD ["pnpm", "--filter", "@libellum/api", "start"]
