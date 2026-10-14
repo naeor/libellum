@@ -323,21 +323,27 @@ export function ScanPage(): React.JSX.Element {
     const occurredAt = new Date(`${draft.date}T${draft.time === "" ? "12:00" : draft.time}:00`);
 
     try {
+      /**
+       * `uuidV7()`, not `crypto.randomUUID()`.
+       *
+       * `randomUUID` is a secure-context API: over plain `http://` — which is
+       * exactly how the app is reached from a phone on the LAN, at
+       * `http://192.168.0.184:5173` — Safari does not define it, and the save
+       * fails with "crypto.randomUUID is not a function". `getRandomValues`,
+       * which `uuidV7` uses, has been available in every context for years.
+       *
+       * ⚠️ **`idempotencyKey` is the same value as `id`, and that is the point.**
+       * It used to be a second, independent `uuidV7()`, which silently disabled the
+       * server's de-duplication: that guard keys off `idempotency_key`, so a
+       * resent request produced a *second* entry. Every other write path
+       * (`AddEntryPage`, `lib/offline/sync.ts`) has always used `idempotencyKey = id`;
+       * this file and `VoiceReviewPage` were the only two that did not.
+       */
+      const id = uuidV7();
+
       const entry = await createEntry.mutateAsync({
-        /**
-         * `uuidV7()`, not `crypto.randomUUID()`.
-         *
-         * `randomUUID` is a secure-context API: over plain `http://` — which is
-         * exactly how the app is reached from a phone on the LAN, at
-         * `http://192.168.0.184:5173` — Safari does not define it, and the save
-         * fails with "crypto.randomUUID is not a function". `getRandomValues`,
-         * which `uuidV7` uses, has been available in every context for years.
-         *
-         * This is the only place the two were mixed up; `AddEntryPage` has always
-         * used `uuidV7`.
-         */
-        id: uuidV7(),
-        idempotencyKey: uuidV7(),
+        id,
+        idempotencyKey: id,
         kind: draft.kind,
         amountCents,
         currency: draft.currency,
@@ -695,8 +701,8 @@ function PickStep({
         {/* An SVG with no size fills its container, which is how this ended up
             the size of the whole drop zone. */}
         <CameraIcon className="size-8 text-muted" />
-        <span className="text-sm text-ink">选择截图</span>
-        <span className="text-xs text-muted">
+        <span className="text-body text-ink">选择截图</span>
+        <span className="text-helper text-muted">
           微信 / 支付宝 / 银行的付款截图，最多 {MAX_RECOGNIZE_IMAGES} 张
         </span>
       </button>
@@ -743,7 +749,7 @@ function PickStep({
       */}
       {files.length > 1 ? (
         <section className="flex flex-col gap-2">
-          <h2 className="text-xs text-muted">这些截图怎么算</h2>
+          <h2 className="text-helper text-muted">这些截图怎么算</h2>
           <div className="flex flex-col gap-2">
             <ModeOption
               mode="single"
@@ -778,7 +784,7 @@ function PickStep({
             so one deliberate confirmation is cheap; the saving was never worth
             the uncertainty. Now the choice is visible, and 开始识别 confirms it.
           */}
-          <p className="text-xs text-muted">选好后点下面的「开始识别」。</p>
+          <p className="text-helper text-muted">选好后点下面的「开始识别」。</p>
         </section>
       ) : null}
 
@@ -786,7 +792,7 @@ function PickStep({
         开始识别
       </Button>
 
-      <button type="button" onClick={onManual} className="text-xs text-muted underline">
+      <button type="button" onClick={onManual} className="text-helper text-muted underline">
         识别不方便？直接手动记账
       </button>
 
@@ -821,8 +827,8 @@ function ModeOption({
         selected ? "border-brand bg-brand-soft" : "border-line bg-surface"
       }`}
     >
-      <span className="text-sm text-ink">{title}</span>
-      <span className="text-xs text-muted">{hint}</span>
+      <span className="text-body text-ink">{title}</span>
+      <span className="text-helper text-muted">{hint}</span>
     </button>
   );
 }
@@ -831,8 +837,8 @@ function WorkingStep({ total }: { readonly total: number }): React.JSX.Element {
   return (
     <div className="flex flex-col items-center gap-4 py-10">
       <div className="size-10 animate-spin rounded-full border-3 border-brand-soft border-t-brand" />
-      <p className="text-sm text-ink">正在识别…</p>
-      <p className="text-xs text-muted">
+      <p className="text-body text-ink">正在识别…</p>
+      <p className="text-helper text-muted">
         共 {total} 张，每张约需 1.5 秒。截图识别完成后即被丢弃。
       </p>
     </div>

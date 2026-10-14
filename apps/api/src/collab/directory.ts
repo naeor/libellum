@@ -2,37 +2,39 @@ import type { PrismaClient } from "../db.js";
 import { badRequest, notFound } from "../lib/errors.js";
 
 /**
- * Finding somebody by their account number, so a request can be sent to them.
+ * Finding somebody, so they can be invited into a ledger.
  *
- * ⚠️ **This is the one endpoint that answers a question about another account, and it is
- * deliberately the narrowest one possible**: it takes a *whole eight-digit number*, returns
- * exactly one match or none, and reveals only what somebody needs in order to recognise who they
- * are about to invite — the display name, the username, and the number they already typed.
+ * ⚠️ **This is the one place that answers a question about another account, and it is deliberately
+ * the narrowest question possible**: it takes **one whole identifier** — an 8-digit account number,
+ * or an exact username — and returns exactly one match or none. What it reveals is what somebody
+ * needs in order to recognise who they are about to invite: the display name, the username, and the
+ * number.
  *
- * ⚠️ **Why a whole number and not a prefix.** Numbers are allocated in sequence, so a prefix
- * search would let anybody **enumerate the user base** one keystroke at a time. The full-number
- * requirement turns that into guessing a specific person's number, which is the risk the owner
- * already accepted when he chose sequential numbers — and `requireAuth` plus the rate limiter are
- * what keep the guessing slow. **Nothing else may ever be searchable here** (no display names, no
- * usernames): a name is not unique, and searching by it turns "find your friend" into "list
- * everybody".
+ * ⚠️ **⚠️ Prefix search is refused for both, and that is the whole security property.**
+ * Account numbers are allocated in sequence, so a prefix search would let anybody **enumerate the
+ * user base one keystroke at a time**; the same is true of a name. Requiring the whole value turns
+ * that back into guessing one specific person's identifier — the risk the owner already accepted
+ * when he chose sequential numbers — and `requireAuth`, the rate limiter, and this endpoint's own
+ * tighter limit are what keep the guessing slow.
+ *
+ * ⚠️ **Nothing else may ever be searchable here** (no email, no display-name substring): a display
+ * name is not unique, so searching by it turns "find your friend" into "list everybody".
  */
-
 export interface FoundAccount {
   readonly id: string;
   readonly displayName: string;
   readonly username: string;
   readonly accountNumber: string;
-  /** True when this account is already one of mine — the screen then says so instead of offering. */
-  readonly isCollaborator: boolean;
-  /** True when I already have a request waiting for them, so it is not sent twice. */
-  readonly hasPendingRequest: boolean;
 }
 
 /**
- * ⚠️ **The number is validated by shape before it is looked up.** A malformed value is a 400 and
- * not an empty result, because "no such user" and "you typed six digits" are different answers and
- * the screen says different things for each.
+ * ⚠️ **The identifier is validated by shape before it is looked up.** A malformed value is a `400`
+ * and not an empty result, because *"no such user"* and *"you typed six digits"* are different
+ * answers and the screen says different things for each.
+ *
+ * ⚠️ **⚠️ Looking yourself up is refused rather than returned flagged.** Somebody searching their
+ * own identifier is either confused or testing, and either way the useful answer is to say so
+ * plainly — the alternative is a card offering to invite yourself into your own ledger.
  */
 export async function findByAccountNumber(
   prisma: PrismaClient,
@@ -50,45 +52,55 @@ export async function findByAccountNumber(
     select: { id: true, displayName: true, username: true, accountNumber: true },
   });
 
-  if (!found || found.accountNumber === null) {
-    throw notFound("account_not_found", "没有找到这个编号对应的账号。");
+  return finish(found, searcherId);
+}
+
+/**
+ * The same question, asked with a username instead of a number.
+ *
+ * ⚠️ **Exact match only.** `findUnique` on a unique column, not `contains` / `startsWith` — see the
+ * file header for why a partial match on a name is an enumeration primitive.
+ *
+ * ⚠️ **Usernames are stored as typed and are unique**, so this needs no normalisation and cannot
+ * match two accounts. (Postgres is case-sensitive here; two accounts could differ only in case.
+ * That is pre-existing and true of login as well, so changing it here alone would make the two
+ * disagree about who a string refers to.)
+ */
+export async function findByUsername(
+  prisma: PrismaClient,
+  searcherId: string,
+  raw: string,
+): Promise<FoundAccount> {
+  const username = raw.trim();
+
+  if (username === "") {
+    throw badRequest("username_shape", "请输入完整的用户名。");
   }
 
-  /**
-   * ⚠️ **Looking yourself up is refused rather than returned flagged.** Somebody searching their
-   * own number is either confused or testing, and either way the useful answer is to say so
-   * plainly — the alternative is a card offering to invite yourself.
-   */
+  const found = await prisma.user.findUnique({
+    where: { username },
+    select: { id: true, displayName: true, username: true, accountNumber: true },
+  });
+
+  return finish(found, searcherId);
+}
+
+function finish(
+  found: { id: string; displayName: string; username: string; accountNumber: string } | null,
+  searcherId: string,
+): FoundAccount {
+  if (!found) {
+    throw notFound("account_not_found", "没有找到这个账号。");
+  }
+
   if (found.id === searcherId) {
-    throw badRequest("account_is_self", "这是你自己的账号编号。");
+    throw badRequest("account_is_self", "这是你自己的账号。");
   }
-
-  const [orderedA, orderedB] =
-    searcherId < found.id ? [searcherId, found.id] : [found.id, searcherId];
-
-  const [relationship, pending] = await Promise.all([
-    prisma.collaborator.findUnique({
-      where: { userA_userB: { userA: orderedA, userB: orderedB } },
-      select: { userA: true },
-    }),
-    prisma.notification.findFirst({
-      where: {
-        senderId: searcherId,
-        recipientId: found.id,
-        kind: "collaborator_request",
-        status: "pending",
-        expiresAt: { gt: new Date() },
-      },
-      select: { id: true },
-    }),
-  ]);
 
   return {
     id: found.id,
     displayName: found.displayName,
     username: found.username,
     accountNumber: found.accountNumber,
-    isCollaborator: relationship !== null,
-    hasPendingRequest: pending !== null,
   };
 }

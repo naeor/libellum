@@ -97,7 +97,7 @@ export function EntrySaved({
         {formatMoney(entry.amountCents, entry.currency)}
       </p>
 
-      {detail === "" ? null : <p className="text-sm text-muted">{detail}</p>}
+      {detail === "" ? null : <p className="text-body text-muted">{detail}</p>}
 
       <div className="mt-7 flex w-full max-w-xs flex-col gap-3">
         <Button onClick={onAgain}>
@@ -131,7 +131,7 @@ export function EntrySaved({
           <button
             type="button"
             onClick={onUndo}
-            className="mt-1 text-xs text-muted underline transition hover:text-ink"
+            className="mt-1 text-helper text-muted underline transition hover:text-ink"
           >
             撤销这次记账
           </button>

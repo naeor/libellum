@@ -132,7 +132,7 @@ export function DownloadManagerPage(): React.JSX.Element {
         </p>
 
         {fillRunning ? (
-          <p className="text-xs text-muted">
+          <p className="text-helper text-muted">
             正在下载（{fill?.done ?? 0}/{fill?.total ?? 0} 个月）…可以离开这一页，下载会在后台继续。
           </p>
         ) : (
@@ -197,7 +197,7 @@ export function DownloadManagerPage(): React.JSX.Element {
       />
 
       {loading ? (
-        <p className="text-sm text-muted">正在读取…</p>
+        <p className="text-body text-muted">正在读取…</p>
       ) : (
         <ul className="flex flex-col overflow-hidden rounded-card border border-line bg-surface">
           {rows.map((row) => (
@@ -209,8 +209,8 @@ export function DownloadManagerPage(): React.JSX.Element {
                 className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
               >
                 <span className="flex min-w-0 flex-col gap-0.5">
-                  <span className="text-sm text-ink">{row.label}</span>
-                  <span className="text-[11px] text-muted">
+                  <span className="text-body text-ink">{row.label}</span>
+                  <span className="text-micro text-muted">
                     {row.state === "stored"
                       ? `已下载 · ${String(row.entryCount)} 笔 · ${formatBytes(row.bytes)}`
                       : row.state === "never"

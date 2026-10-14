@@ -11,38 +11,12 @@ import type { SVGProps } from "react";
  * `currentColor`, `aria-hidden`, and a size the caller gives it.
  */
 
-/**
- * A cogwheel, for "settings for this row".
- *
- * ⚠️ **The first version was a sun**, and the owner identified it immediately: "你画的
- * 图标实际上是小太阳，而非小齿轮——这显然不合适，小太阳不会被当成设置."
- *
- * He is right, and the reason is worth writing down, because the two are one shape
- * apart: **a disc with eight evenly spaced rays is a sun.** A gear is not a disc with
- * spikes — its teeth are **trapezoids joined to the rim**, and it has **a hole in the
- * middle**. Both of those are what make it read as machinery rather than as weather.
- *
- * So this path was computed rather than drawn by eye: eight trapezoids on a rim of
- * radius 6.2 reaching to 9.2, joined by arcs along the rim, with a hole at the centre.
- * At 16 px a hand-written squiggle loses the teeth; this keeps them, because they are
- * wide at the base and short.
- */
+/** Small outlined gear, with explicit dimensions independent of SVG defaults. */
 export function GearIcon(props: SVGProps<SVGSVGElement>): React.JSX.Element {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={1.6}
-      strokeLinejoin="round"
-      aria-hidden="true"
-      {...props}
-    >
-      <path d="M17.78 9.75 L20.98 10.01 L20.98 13.99 L17.78 14.25 A6.2 6.2 0 0 1 17.67 14.50 L19.76 16.94 L16.94 19.76 L14.50 17.67 A6.2 6.2 0 0 1 14.25 17.78 L13.99 20.98 L10.01 20.98 L9.75 17.78 A6.2 6.2 0 0 1 9.50 17.67 L7.06 19.76 L4.24 16.94 L6.33 14.50 A6.2 6.2 0 0 1 6.22 14.25 L3.02 13.99 L3.02 10.01 L6.22 9.75 A6.2 6.2 0 0 1 6.33 9.50 L4.24 7.06 L7.06 4.24 L9.50 6.33 A6.2 6.2 0 0 1 9.75 6.22 L10.01 3.02 L13.99 3.02 L14.25 6.22 A6.2 6.2 0 0 1 14.50 6.33 L16.94 4.24 L19.76 7.06 L17.67 9.50 A6.2 6.2 0 0 1 17.78 9.75 Z" />
-      {/* The hole — the other half of reading as a gear rather than a sun. */}
-      <circle cx="12" cy="12" r="3.1" />
-    </svg>
-  );
+  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>
+    <path d="m9 3-.6 2.1-1.7 1L4.6 6l-2 3.5 1.5 1.6v1.8l-1.5 1.6 2 3.5 2.1-.1 1.7 1L9 21h4l.6-2.1 1.7-1 2.1.1 2-3.5-1.5-1.6v-1.8l1.5-1.6-2-3.5-2.1.1-1.7-1L13 3Z" transform="translate(1)" />
+    <circle cx="12" cy="12" r="3" />
+  </svg>;
 }
 
 /**
@@ -62,6 +36,80 @@ export function MoreIcon(props: SVGProps<SVGSVGElement>): React.JSX.Element {
       <circle cx="5" cy="12" r="1.9" />
       <circle cx="12" cy="12" r="1.9" />
       <circle cx="19" cy="12" r="1.9" />
+    </svg>
+  );
+}
+
+/**
+ * A plus, for "make another one".
+ *
+ * ⚠️ **This is the second `PlusIcon` in the project and they are different drawings.**
+ * `BottomNav` has one at 24 px with `strokeWidth` heavy enough for the raised centre button —
+ * it is part of that button's look, not a general icon. **Moving it here would have been the
+ * wrong repair**: the recording button needs its own weight, and changing it to share with a
+ * text-sized plus would have altered the bar to serve a list.
+ *
+ * ⚠️ **So the duplication is deliberate, and the comment at the top of this file is what
+ * covers it** — *"The project's older icons live beside the component that first needed them
+ * …… That was fine while each had one home."* The start page's 新建账本 is the second home,
+ * which is the condition that file names for moving in here.
+ *
+ * Sized to sit beside `text-sm` text without changing the line height.
+ */
+export function PlusIcon(props: SVGProps<SVGSVGElement>): React.JSX.Element {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      aria-hidden="true"
+      className="size-4"
+      {...props}
+    >
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+
+/**
+ * **The account avatar: a portrait silhouette, which is the convention everybody already knows.**
+ *
+ * ⚠️ **The owner asked for exactly this** (2026-10-13): *"图标是那种一个灰色的默认头像半身像那样的样子.
+ * 你可以上网搜一下."* A search confirms it is the standard placeholder — a bust in a circle, drawn flat —
+ * as used by essentially every account system
+ * ([example](https://clipart-library.com/clipart/avatar-cliparts-17.htm)).
+ *
+ * ⚠️ **⚠️ This replaces `DefaultAvatar` *in this position*, and it is not a redrawing of it.** That
+ * component is a **six-petal flower** — the project's own mark, and a deliberate placeholder for a
+ * user-chosen picture. **The owner is not asking for the flower to change**; he is asking for the green
+ * band's corner control to read as *an account*, which a flower does not. **Both now exist, each with
+ * one home**: the flower where somebody's own avatar would go, this where the app must say "this is you".
+ *
+ * ⚠️ **Grey by construction, not by a literal.** The silhouette is `currentColor`, so it takes the
+ * colour of whatever holds it, and the corner button sets that to the muted token. **`colors.test.ts`
+ * forbids hex literals outside the token files**, and this is the better shape anyway: a grey written
+ * down once is a grey that cannot follow the theme.
+ *
+ * ⚠️ **The disc is tinted from the same colour rather than white.** The button sits on the green band,
+ * where a white disc would be a bright dot competing with the wordmark — the opposite of the
+ * "柔和、安静" this screen is meant to have.
+ */
+export function AvatarIcon(props: SVGProps<SVGSVGElement>): React.JSX.Element {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" {...props}>
+      {/* The disc the portrait sits in. */}
+      <circle cx="12" cy="12" r="12" fill="currentColor" opacity={0.16} />
+      {/*
+        ⚠️ **Head and shoulders, filled as one silhouette, and they overlap on purpose.** Drawing them
+        as two outlines leaves a gap at the neck, and at 22 px the whole point of the convention is that
+        the shape is recognised instantly rather than studied.
+      */}
+      <g fill="currentColor">
+        <circle cx="12" cy="9.7" r="4" />
+        <path d="M12 15.2c-4.1 0-7.1 2.5-7.8 6A12 12 0 0 0 12 24a12 12 0 0 0 7.8-2.8c-.7-3.5-3.7-6-7.8-6Z" />
+      </g>
     </svg>
   );
 }

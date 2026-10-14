@@ -1,9 +1,8 @@
-﻿import { useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router";
 
 import { useAuth } from "../auth/AuthProvider.js";
 import { ConfirmDialog } from "../components/ConfirmDialog.js";
-import { ReferralCodeSection } from "../components/ReferralCodeSection.js";
 import { DefaultAvatar } from "../components/DefaultAvatar.js";
 import { TabPage } from "../components/Layouts.js";
 import { APP_VERSION } from "../lib/version.js";
@@ -60,23 +59,35 @@ export function MePage(): React.JSX.Element {
       */}
       <header className="flex min-h-64 flex-col items-center justify-center gap-3 bg-brand px-6 py-10 text-white">
         <DefaultAvatar />
-        <p className="mt-1 truncate text-xl font-semibold tracking-tight">{user.displayName}</p>
+        <p className="mt-1 truncate text-page-title">{user.displayName}</p>
         <p className="text-xs text-white/75">@{user.username}</p>
       </header>
 
       <nav className="px-6 pt-5">
+        {/**
+          * ⚠️ **The row padding is `px-5`, and that is the list convention, not a preference.**
+          *
+          * The owner's ruling (2026-10-14): *"外层容器不额外设置水平内边距；每一行自行管理内边距；
+          * 水平内边距原则上为 20px；分隔线自然贯通列表容器."*
+          *
+          * ⚠️ **This list was the last one still on `px-6`.** Settings and the category manager had
+          * already settled on `px-5`, and the markup here is otherwise *identical* to theirs — same
+          * `<ul>` inside the same `rounded-card` frame, same `<li>` → `<button>` → label + hint + `›`.
+          * **Two lists with the same job and different padding is the defect**, and the fix is one
+          * class rather than a new component.
+          */}
         <ul className="overflow-hidden rounded-card border border-line bg-surface">
           {links.map((link) => (
             <li key={link.to}>
               <button
                 type="button"
                 onClick={() => void navigate(link.to)}
-                className="flex w-full items-center justify-between gap-4 border-b border-line px-6 py-4 text-left transition last:border-b-0 hover:bg-canvas"
+                className="flex w-full items-center justify-between gap-4 border-b border-line px-5 py-4 text-left transition last:border-b-0 hover:bg-canvas"
               >
                 <span className="flex flex-col gap-0.5">
-                  <span className="text-sm text-ink">{link.label}</span>
+                  <span className="text-body text-ink">{link.label}</span>
                   {link.hint === undefined ? null : (
-                    <span className="text-xs text-muted">{link.hint}</span>
+                    <span className="text-helper text-muted">{link.hint}</span>
                   )}
                 </span>
                 <span className="shrink-0 text-base text-brand">›</span>
@@ -87,14 +98,20 @@ export function MePage(): React.JSX.Element {
       </nav>
 
       {/**
-        * ⚠️ **The account-level invitation code lives here, not on the ledger's collaboration
-        * screen** — the owner moved it: *"前者属于账号级功能，适合放在「账户」的相关设置中，
-        * 不需要占据当前账本的协作页面."* See `ReferralCodeSection` for why the two must never be
-        * confused with one another: one creates an account, the other joins a ledger.
+        * ⚠️ **The account-level referral code used to be rendered right here, and it moved again
+        * (2026-10-13).** The owner's instruction: *"账户里边生成邀请码单独包装成一个入口，放到
+        * 设置-账号安全里面."*
+        *
+        * ⚠️ **So it is now a row in 设置 → 账号安全, and the page behind it is `ReferralCodePage`.**
+        * Its history is worth keeping in view, because each move was the same correction: it started
+        * on the **ledger's collaboration screen** (wrong — it joins nobody to a ledger), then on
+        * **账户** as an inline block (right category, wrong weight — it competed with this screen's
+        * own list), and now **beside 密码 and 恢复码**, which are the other things that are about the
+        * account itself.
+        *
+        * ⚠️ **The 设置 row names it, so this screen must not grow a second copy.** Two entry points
+        * to one quota is how a screen ends up showing a number nothing maintains (`教训.md` §8.12).
         */}
-      <div className="px-6 pt-6">
-        <ReferralCodeSection />
-      </div>
 
       <div className="px-6 py-8">
         <button
@@ -102,7 +119,7 @@ export function MePage(): React.JSX.Element {
           onClick={() => {
             setConfirmSignOut(true);
           }}
-          className="w-full rounded-field bg-danger py-3.5 text-[15px] font-medium text-white shadow-sm transition hover:bg-danger-dark"
+          className="w-full rounded-field bg-danger py-3.5 text-button-lg font-medium text-white shadow-sm transition hover:bg-danger-dark"
         >
           退出登录
         </button>

@@ -74,13 +74,13 @@ export function ReviewStep({
       )}
 
       {remaining > 1 ? (
-        <p className="text-xs text-muted">还有 {remaining} 张需要核对</p>
+        <p className="text-helper text-muted">还有 {remaining} 张需要核对</p>
       ) : null}
 
       {/* The amount is the thing being checked, so it is the largest control
           on the screen and the first thing the eye lands on. */}
       <section className="flex flex-col gap-2">
-        <label htmlFor="scan-amount" className="text-xs text-muted">
+        <label htmlFor="scan-amount" className="text-helper text-muted">
           金额
         </label>
         <div className="flex items-baseline gap-2 rounded-card border border-line bg-surface px-5 py-4">
@@ -209,7 +209,7 @@ export function ReviewStep({
           onChange={(event) => {
             patch({ note: event.target.value });
           }}
-          className="w-full rounded-field border border-line bg-surface px-3 py-2.5 text-base text-ink outline-none placeholder:text-muted/60 focus:border-brand"
+          className="w-full rounded-field border border-line bg-surface px-3 py-2.5 text-base text-ink outline-none placeholder:text-muted/80 focus:border-brand"
         />
       </Field>
 
@@ -222,7 +222,7 @@ export function ReviewStep({
         {busy ? "保存中…" : "确认并保存"}
       </Button>
 
-      <button type="button" onClick={onManual} className="text-xs text-muted underline">
+      <button type="button" onClick={onManual} className="text-helper text-muted underline">
         识别得不对？改成手动记账
       </button>
     </div>
@@ -249,7 +249,7 @@ function Field({
 }): React.JSX.Element {
   return (
     <label className={`flex min-w-0 flex-col gap-1.5 ${className}`}>
-      <span className="text-xs text-muted">{label}</span>
+      <span className="text-helper text-muted">{label}</span>
       {children}
     </label>
   );

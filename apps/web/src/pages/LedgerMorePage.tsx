@@ -40,8 +40,8 @@ export function LedgerMorePage(): React.JSX.Element {
     <InnerPage title="明细 · 更多">
       <div className="flex flex-col gap-5 px-6 py-5">
         <section className="flex flex-col gap-1">
-          <h2 className="text-xs text-muted">这台设备</h2>
-          <p className="text-sm text-ink">
+          <h2 className="text-helper text-muted">这台设备</h2>
+          <p className="text-body text-ink">
             {counts === null
               ? "正在读取…"
               : `本机存着 ${String(counts.months)} 个月、${String(counts.entries)} 条账目。`}
@@ -67,7 +67,7 @@ export function LedgerMorePage(): React.JSX.Element {
             {cleared ? "已清空待同步印记" : "清空「待同步」印记"}
           </Button>
 
-          <p className="text-xs leading-relaxed text-muted">
+          <p className="text-helper-relaxed text-muted">
             停止把这些账目当作「还没同步」「还没删除」或「等你要选」来提醒。
             不会发送任何请求，也不会删掉服务器或本机上的任何账目 —— 只是让它们不再带颜色。
             服务器上确实已经删掉的，本机下次取回列表时会照常消失。

@@ -82,7 +82,7 @@ export function ChoiceDialog<Id extends string>({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/25 px-5 backdrop-blur-[2px]"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-overlay-soft px-5 backdrop-blur-[2px]"
       onClick={(event) => {
         if (event.target !== event.currentTarget) return;
         if (dismiss !== undefined) onChoose(dismiss.id);
@@ -98,7 +98,7 @@ export function ChoiceDialog<Id extends string>({
         <h2 id="choice-title" className="text-base font-semibold text-ink">
           {title}
         </h2>
-        <p id="choice-description" className="mt-2 text-sm leading-relaxed text-muted">
+        <p id="choice-description" className="mt-2 text-body-relaxed text-muted">
           {description}
         </p>
 
@@ -117,7 +117,7 @@ export function ChoiceDialog<Id extends string>({
                   : "bg-brand-soft text-brand-dark hover:bg-brand-soft/70"
               }`}
             >
-              <span className="block text-[15px] font-medium">{choice.label}</span>
+              <span className="block text-button-lg font-medium">{choice.label}</span>
               {choice.hint === undefined ? null : (
                 <span
                   className={`mt-0.5 block text-xs ${

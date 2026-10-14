@@ -4,7 +4,11 @@ import { z } from "zod";
 
 import type { PrismaClient } from "../db.js";
 import { badRequest, forbidden, notFound } from "../lib/errors.js";
+import { findByAccountNumber, findByUsername } from "../collab/directory.js";
+import { sendNotification } from "../collab/notify.js";
+import { requireBookForWrite } from "../ledger/access.js";
 import { createDefaultLedger } from "../ledger/bootstrap.js";
+import { recordEvent } from "../ledger/events.js";
 import { DEFAULT_BOOK_NAME } from "../ledger/presets.js";
 
 /**
@@ -275,5 +279,190 @@ export function registerBooksRoutes(app: FastifyInstance, options: BooksRouteOpt
     await prisma.book.update({ where: { id: bookId }, data: { disposedAt: null } });
 
     return { ok: true, alreadyOpen: false };
+  });
+
+  // ---------------------------------------------------------------------------
+  // PATCH /api/v1/books/:bookId — rename a ledger
+  // ---------------------------------------------------------------------------
+  /**
+   * **Rename one ledger.**
+   *
+   * ⚠️ **This did not exist until 1.10.08**, and the owner asked for it as part of the start page's
+   * per-ledger management panel — *"如果项目目前没有正式的重命名能力，不要擅自设计未经确认的后端权限规则。
+   * 先核实现有模型，说明缺失部分."* So the model was checked first and the rule below follows the
+   * one already in place rather than inventing a new one.
+   *
+   * ⚠️ **The rule is `requireBookForWrite`, which is the same guard `invite` uses.** Renaming changes
+   * what everybody in the ledger sees, so it is a **write**: a viewer is refused, an editor and the
+   * creator are not. **That is the existing model, not a new one** — `book_members.role` already says
+   * who may change shared things, and `books.ts` has no separate "creator only" concept except where
+   * the owner drew it explicitly (dispose, and leaving).
+   *
+   * ⚠️ **Why not creator-only.** Disposing is creator-only because it affects *everybody* and cannot
+   * be undone from inside the ledger; a name is the opposite — it is cosmetic, reversible, and the
+   * ledger's own history records who changed it. Tying it to the creator would mean **a ledger whose
+   * creator has gone quiet can never be renamed by the people still using it.**
+   *
+   * ⚠️ **`1`–`40`, trimmed — the same bounds as creation.** A second set of numbers here would let a
+   * name be legal at creation and illegal on rename, which reads as a bug rather than a rule.
+   */
+  app.patch("/api/v1/books/:bookId", { preHandler: requireAuth }, async (request) => {
+    const userId = request.currentUser!.id;
+    const { bookId } = request.params as { bookId: string };
+
+    const body = z
+      .object({ name: z.string().trim().min(1).max(40) })
+      .parse(request.body ?? {});
+
+    /**
+     * ⚠️ **The ledger is named in the *path*, and the permission still comes from the header.**
+     *
+     * This is the one route where those two could disagree, and the owner called that risk out: the
+     * management panel must act on **the ledger whose gear was tapped, never the current one.**
+     * `requireBookForWrite` reads the header, so the route checks the **path** id explicitly as well
+     * — **if they differ, nothing happens.** Otherwise a client could rename a ledger it can write in
+     * while claiming a different one, or worse, rename the wrong one while the header said something
+     * else.
+     */
+    const book = await requireBookForWrite(prisma, request, userId);
+
+    if (book.bookId !== bookId) {
+      throw badRequest(
+        "book_mismatch",
+        "这次请求说的账本和当前账本不一致，没有改动任何东西。",
+      );
+    }
+
+    /**
+     * ⚠️ **The name *before* the change is read here**, because after the update it is gone — and the
+     * history line is *"名称：（旧）→（新）"*, which needs both ends. `BookContext` carries only the id
+     * and the role, deliberately: it answers "may I", not "what is it".
+     */
+    const before = await prisma.book.findUniqueOrThrow({
+      where: { id: bookId },
+      select: { name: true },
+    });
+
+    const updated = await prisma.book.update({
+      where: { id: bookId },
+      data: { name: body.name },
+      select: { id: true, name: true, bookNumber: true },
+    });
+
+    /**
+     * ⚠️ **Recorded in the ledger's own history.** The owner asked for member and ledger changes to
+     * be visible there — *"也可以适当展示成员加入、退出……等重要协作事件"* — and a rename is exactly the
+     * kind of shared change somebody later asks "who did that, and when" about.
+     */
+    await recordEvent(prisma, {
+      bookId,
+      actorId: userId,
+      actorName: request.currentUser!.displayName,
+      kind: "book_changed",
+      changes: { name: { from: before.name, to: body.name } },
+    });
+
+    return { ok: true, book: updated };
+  });
+
+  // ---------------------------------------------------------------------------
+  // POST /api/v1/books/invite — invite somebody into *this* ledger
+  // ---------------------------------------------------------------------------
+  /**
+   * **The one invitation flow, and it is one step: invite → they accept → they are a member.**
+   *
+   * ⚠️ **This replaced a two-step flow, on the owner's decision** (2026-10-13):
+   *
+   * > *"不再要求用户先发送「添加协作者申请」、等待对方同意，然后才能发送账本邀请。"*
+   *
+   * ⚠️ **What makes one step enough is that the invitation itself is the consent request.** The
+   * invitee still has to accept it (`decideNotification` → `book_members`); what is gone is the
+   * *additional* account-level relationship that used to have to exist first. **The owner's reason
+   * was cost, not safety**: for two people who simply want to keep a ledger together, the old flow
+   * asked them to confirm the same intention twice.
+   *
+   * ⚠️ **⚠️ Nothing about permission changed.** This is guarded as a **write** — inviting somebody
+   * changes who can see the ledger's entries, so **a viewer must not be able to do it** — and the
+   * membership row is created only by the invitee's own acceptance.
+   */
+  app.post("/api/v1/books/invite", { preHandler: requireAuth }, async (request, reply) => {
+    const userId = request.currentUser!.id;
+
+    /**
+     * ⚠️ **Either identifier, and exactly one of them.** Both are whole values (an 8-digit number,
+     * or an exact username) — see `collab/directory.ts` for why a prefix is refused and why that
+     * refusal is the security property rather than a convenience choice.
+     */
+    const body = z
+      .object({
+        accountNumber: z.string().optional(),
+        username: z.string().optional(),
+        /** ⚠️ From the client, so it is a **request**, not an instruction — see below. */
+        role: z.enum(["editor", "viewer"]).optional(),
+        message: z.string().trim().max(200).optional(),
+      })
+      .refine(
+        (value) => (value.accountNumber === undefined) !== (value.username === undefined),
+        { message: "给账号编号或用户名，二选一。" },
+      )
+      .parse(request.body ?? {});
+
+    /**
+     * ⚠️ **The ledger comes from the header and is checked as a *write* operation.** That is what
+     * `requireBookForWrite` decides, and it is why this route resolves the ledger itself instead of
+     * relying on the plain auth guard.
+     */
+    const book = await requireBookForWrite(prisma, request, userId);
+
+    /**
+     * ⚠️ **Located through the same functions the lookup screen uses**, so "you cannot search by
+     * prefix" and "you cannot invite yourself" are enforced in one place rather than restated here.
+     */
+    const target =
+      body.accountNumber !== undefined
+        ? await findByAccountNumber(prisma, userId, body.accountNumber)
+        : await findByUsername(prisma, userId, body.username ?? "");
+
+    /**
+     * ⚠️ **Already a member is refused here, before a notification is sent.** Without this the
+     * invitee would get a notification that, when accepted, either does nothing or silently changes
+     * their existing role — and the sender would have spent quota learning that.
+     *
+     * ⚠️ **`leftAt: null` is part of the test**: a row stays behind when somebody leaves, so a
+     * membership that exists is not the same as one that is current.
+     */
+    const existing = await prisma.bookMember.findUnique({
+      where: { bookId_userId: { bookId: book.bookId, userId: target.id } },
+      select: { leftAt: true },
+    });
+
+    if (existing !== null && existing.leftAt === null) {
+      throw badRequest("already_member", "这个人已经在这本账里了。");
+    }
+
+    const requested = body.role ?? "editor";
+    const role = book.role === "editor" && requested === "editor" ? "editor" : requested;
+
+    const sent = await sendNotification(prisma, {
+      senderId: userId,
+      recipientId: target.id,
+      kind: "book_invite",
+      bookId: book.bookId,
+      message: body.message ?? null,
+      /**
+       * ⚠️ **The role travels with the invitation.** Without this the acceptance step would have
+       * nothing to grant but a guess — see the migration that added `notifications.payload`.
+       */
+      payload: { role },
+    });
+
+    void reply.code(201);
+    return {
+      ok: true,
+      notificationId: sent.id,
+      refreshed: sent.refreshed,
+      /** What will be granted if they accept — stated so the screen can show it before they do. */
+      role,
+    };
   });
 }

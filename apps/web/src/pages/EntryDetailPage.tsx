@@ -431,7 +431,7 @@ export function EntryDetailPage(): React.JSX.Element {
             type="button"
             disabled={update.isPending}
             onClick={() => void save()}
-            className="w-full rounded-field bg-brand py-3.5 text-[15px] font-medium text-white transition hover:bg-brand-dark disabled:opacity-50"
+            className="w-full rounded-field bg-brand py-3.5 text-button-lg font-medium text-white transition hover:bg-brand-dark disabled:opacity-45"
           >
             {update.isPending ? "保存中…" : "保存修改"}
           </button>
@@ -514,7 +514,7 @@ export function EntryDetailPage(): React.JSX.Element {
             onClick={() => {
               setConfirmDelete(true);
             }}
-            className="w-full rounded-field bg-danger py-3.5 text-[15px] font-medium text-white transition hover:bg-danger-dark"
+            className="w-full rounded-field bg-danger py-3.5 text-button-lg font-medium text-white transition hover:bg-danger-dark"
           >
             删除这笔记账
           </button>

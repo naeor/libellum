@@ -123,25 +123,17 @@ export async function decideNotification(
       return { bookId: null, joined: false };
     }
 
-    if (notification.kind === "collaborator_request") {
-      /**
-       * ⚠️ **The ordered pair is computed here, not trusted from anywhere.** `user_a < user_b` is
-       * enforced by a CHECK, so getting the order wrong is a failed insert rather than a silently
-       * missing relationship — but computing it in one place keeps that from happening at all.
-       */
-      const [a, b] =
-        notification.senderId < notification.recipientId
-          ? [notification.senderId, notification.recipientId]
-          : [notification.recipientId, notification.senderId];
-
-      await tx.collaborator.upsert({
-        where: { userA_userB: { userA: a, userB: b } },
-        create: { userA: a, userB: b },
-        update: {},
-      });
-
-      return { bookId: null, joined: false };
-    }
+    /**
+     * ⚠️ **`collaborator_request` is gone (1.10.05).** Accepting it used to create the account-level
+     * relationship that a ledger invitation required first. That relationship no longer exists — a
+     * ledger is like a group chat, so the invitation *is* the consent request — and the migration
+     * `remove_account_level_collaborators` deletes any that were still pending, **so this branch
+     * cannot be reached by a row that still exists.**
+     *
+     * ⚠️ **It is not silently ignored, though.** A `collaborator_request` row arriving here means an
+     * old client is still sending them, and answering "done" would be a lie about a relationship
+     * that was never created. The kind is refused as unknown below.
+     */
 
     if (notification.kind === "book_invite") {
       if (notification.bookId === null) {
@@ -209,10 +201,9 @@ export async function decideNotification(
     }
 
     /**
-     * `referral_reminder` has no side effect on acceptance: it says "this account invited you and
-     * you may add them as a collaborator", and the relationship itself is still a request the other
-     * side has to accept. **That is the owner's design** — the reminder is a convenience, not a
-     * grant.
+     * `referral_reminder` has no side effect on acceptance, and that was the owner's design: the
+     * reminder is a convenience, not a grant. ⚠️ **Its wording no longer mentions collaborators** —
+     * it points at inviting somebody into a ledger, which is the action that exists.
      */
     return { bookId: null, joined: false };
   });

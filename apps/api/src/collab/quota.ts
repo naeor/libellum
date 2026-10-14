@@ -1,4 +1,4 @@
-﻿import type { Prisma } from "../generated/prisma/client.js";
+import type { Prisma } from "../generated/prisma/client.js";
 import { tooManyRequests } from "../lib/errors.js";
 
 /**
@@ -27,6 +27,52 @@ type Client = Prisma.TransactionClient;
  */
 export const PER_SUBJECT_DAILY_LIMIT = 5;
 export const TOTAL_DAILY_LIMIT = 20;
+
+/**
+ * The account numbers that are **not** held to either ceiling.
+ *
+ * ⚠️ **The owner's instruction, 2026-10-13**:
+ *
+ * > *"对于编号前一百（一直到 1000099）的用户取消限制，只跳过限制仍然计数。
+ * > 注意其他所有账号都保持不变"*
+ *
+ * He then confirmed the range as **`10000000`–`10000099`**, which is this project's
+ * **first hundred accounts** — his own, his family's, and the 98 codes already minted
+ * with reserved numbers (`10000002`–`10000099`, see `docs/邀请码-示例.md` and
+ * `pnpm invite:batch`). Everyone else keeps both ceilings exactly as before.
+ *
+ * ⚠️ **Account numbers are `text` in the database** (`users.account_number` is
+ * `@db.VarChar`-free `String`), and the range is compared as numbers here. That is safe
+ * and deliberate: the column carries a CHECK constraint pinning it to **eight digits**,
+ * so `Number()` cannot lose precision (8 digits is far below `2^53`) and cannot see a
+ * leading zero. Comparing the strings instead would have been correct too, but would have
+ * married this rule to the width of the field — and the width is the database's business.
+ *
+ * ⚠️ **This is a range of account numbers, not `users.is_admin`.** The two coincide today
+ * (the reserved codes grant admin, and both live accounts are inside the range), and the
+ * owner was offered the `is_admin` route and did not take it. Keeping them separate means
+ * promoting somebody to admin later does not silently lift their notification ceiling.
+ * **Do not "simplify" this to `isAdmin`.**
+ */
+const EXEMPT_ACCOUNT_NUMBER_FROM = 10_000_000;
+const EXEMPT_ACCOUNT_NUMBER_TO = 10_000_099;
+
+/**
+ * Is this account number inside the exempt range?
+ *
+ * ⚠️ **An unrecognisable number is not exempt.** The column is constrained to eight digits,
+ * so a value that does not parse means something is structurally wrong — and the safe
+ * direction for a **ceiling** is to keep it. The same reasoning as `BookMember.role`
+ * defaulting to `viewer`: an error should fail towards less power, not more.
+ */
+export function isQuotaExempt(accountNumber: string | null | undefined): boolean {
+  if (accountNumber === null || accountNumber === undefined) return false;
+
+  if (!/^\d{8}$/.test(accountNumber)) return false;
+
+  const value = Number(accountNumber);
+  return value >= EXEMPT_ACCOUNT_NUMBER_FROM && value <= EXEMPT_ACCOUNT_NUMBER_TO;
+}
 
 /**
  * The subject id that means "the total across everybody".
@@ -71,6 +117,16 @@ export interface QuotaReservation {
  * ⚠️ **Both counters are reserved together or neither is.** Incrementing the subject counter and
  * then failing the total would leave the subject counter spent on a notification that was never
  * sent — a person could be locked out of messaging somebody by attempts that all failed.
+ *
+ * ⚠️ **⚠️ The first hundred accounts skip both ceilings** (`isQuotaExempt`), and the two halves of
+ * that exception are worth separating:
+ *
+ * * the **counting still happens** — the owner asked for *"只跳过限制仍然计数"*, so the counters
+ *   climb past the limit and the diagnostics screen keeps telling the truth about how much was
+ *   actually sent;
+ * * only the **refusal** is skipped, and the ceiling is dropped from the `where` clause rather
+ *   than compared against: `UPDATE ... WHERE used < limit` is what makes the check atomic, so
+ *   removing the predicate is the whole change and there is no second code path to keep in step.
  */
 export async function reserveNotificationQuota(
   prisma: Client,
@@ -93,15 +149,35 @@ export async function reserveNotificationQuota(
       });
     }
 
+    /**
+     * ⚠️ **Read inside the transaction, so one send cannot see another's state halfway.** The
+     * lookup is on the primary key of `users` and happens once per notification.
+     */
+    const sender = await tx.user.findUnique({
+      where: { id: senderId },
+      select: { accountNumber: true },
+    });
+
+    const exempt = isQuotaExempt(sender?.accountNumber);
+
+    /**
+     * ⚠️ **An empty `where` matches every row** — that is the exemption. `{}` rather than a
+     * limit of `Infinity`, because "no ceiling" is the thing being expressed and a very large
+     * number would just be a ceiling nobody has reached yet.
+     */
     const perSubject = await tx.notificationQuota.updateMany({
-      where: { userId: senderId, subjectId, day, used: { lt: PER_SUBJECT_DAILY_LIMIT } },
+      where: exempt
+        ? { userId: senderId, subjectId, day }
+        : { userId: senderId, subjectId, day, used: { lt: PER_SUBJECT_DAILY_LIMIT } },
       data: { used: { increment: 1 }, updatedAt: now },
     });
 
     if (perSubject.count !== 1) return "per_subject" satisfies QuotaRefusal;
 
     const total = await tx.notificationQuota.updateMany({
-      where: { userId: senderId, subjectId: TOTAL_SUBJECT, day, used: { lt: TOTAL_DAILY_LIMIT } },
+      where: exempt
+        ? { userId: senderId, subjectId: TOTAL_SUBJECT, day }
+        : { userId: senderId, subjectId: TOTAL_SUBJECT, day, used: { lt: TOTAL_DAILY_LIMIT } },
       data: { used: { increment: 1 }, updatedAt: now },
     });
 

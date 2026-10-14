@@ -1,10 +1,10 @@
 @echo off
-title Libellum local dev server
+title Libevra local dev server
 cd /d "%~dp0"
 
 echo.
 echo   ================================================================
-echo     Libellum local development server
+echo     Libevra local development server
 echo   ================================================================
 echo.
 echo     Web    http://localhost:5173

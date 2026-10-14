@@ -124,7 +124,13 @@ describe("EntrySaved", () => {
     const html = render({ onUndo: () => undefined });
 
     expect(html.indexOf("返回主页")).toBeLessThan(html.indexOf("撤销这次记账"));
-    expect(html).toContain("text-xs text-muted underline");
+    /**
+      * ⚠️ **The token, not the literal classes it replaced.** This used to assert `text-xs text-muted
+      * underline`; the typography rollout moved the size onto the semantic token, so **the assertion
+      * follows the spec's current spelling rather than its old wording.** What it guards is unchanged:
+      * the undo is the quiet one.
+      */
+    expect(html).toContain("text-helper text-muted underline");
   });
 
   it("announces itself to a screen reader", () => {

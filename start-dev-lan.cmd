@@ -1,5 +1,5 @@
 @echo off
-title Libellum dev server (LAN - phone testing)
+title Libevra dev server (LAN - phone testing)
 cd /d "%~dp0"
 
 rem Makes the web dev server listen on every interface so a phone on the same
@@ -56,7 +56,7 @@ if not exist "apps\web\.certs\dev-cert.pem" (
 
 echo.
 echo   ================================================================
-echo     Libellum - LAN mode (for testing on your phone)
+echo     Libevra - LAN mode (for testing on your phone)
 echo   ================================================================
 echo.
 echo     On this computer:      https://localhost:5173

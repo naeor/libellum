@@ -74,7 +74,7 @@ export function ConfirmDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/25 px-5 backdrop-blur-[2px]"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-overlay-soft px-5 backdrop-blur-[2px]"
       onClick={(event) => {
         if (event.target === event.currentTarget) onCancel();
       }}
@@ -89,12 +89,12 @@ export function ConfirmDialog({
         <h2 id="confirm-title" className="text-base font-semibold text-ink">
           {title}
         </h2>
-        <p id="confirm-description" className="mt-2 text-sm leading-relaxed text-muted">
+        <p id="confirm-description" className="mt-2 text-body-relaxed text-muted">
           {description}
         </p>
 
         {consequences.length > 0 ? (
-          <ul className="mt-4 flex flex-col gap-1.5 rounded-field bg-canvas px-4 py-3 text-xs leading-relaxed text-muted">
+          <ul className="mt-4 flex flex-col gap-1.5 rounded-field bg-canvas px-4 py-3 text-helper-relaxed text-muted">
             {consequences.map((item) => (
               <li key={item} className="flex gap-2">
                 <span aria-hidden="true">·</span>
@@ -109,7 +109,7 @@ export function ConfirmDialog({
             ref={cancelRef}
             type="button"
             onClick={onCancel}
-            className="flex-1 rounded-field bg-brand-soft px-4 py-3 text-[15px] font-medium text-brand-dark transition hover:bg-brand-soft/70"
+            className="flex-1 rounded-field bg-brand-soft px-4 py-3 text-button-lg font-medium text-brand-dark transition hover:bg-brand-soft/70"
           >
             {cancelLabel}
           </button>
@@ -118,7 +118,7 @@ export function ConfirmDialog({
             type="button"
             disabled={busy}
             onClick={onConfirm}
-            className={`flex-1 rounded-field px-4 py-3 text-[15px] font-medium text-white transition disabled:opacity-50 ${
+            className={`flex-1 rounded-field px-4 py-3 text-button-lg font-medium text-white transition disabled:opacity-45 ${
               tone === "danger" ? "bg-danger hover:bg-danger-dark" : "bg-brand hover:bg-brand-dark"
             }`}
           >

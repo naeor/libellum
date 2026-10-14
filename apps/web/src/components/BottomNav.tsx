@@ -324,7 +324,7 @@ export function BottomNav({
                       className={`${shape} active:bg-brand-soft/70`}
                     >
                       {action.icon}
-                      <span className="text-[11px]">{action.label}</span>
+                      <span className="text-micro">{action.label}</span>
                     </button>
                   </li>
                 );
@@ -339,7 +339,7 @@ export function BottomNav({
                   <li key={action.label}>
                     <Link to={action.to} aria-label={`${action.label}记账`} className={`${shape} active:bg-brand-soft/70`}>
                       {action.icon}
-                      <span className="text-[11px]">{action.label}</span>
+                      <span className="text-micro">{action.label}</span>
                     </Link>
                   </li>
                 );
@@ -355,7 +355,7 @@ export function BottomNav({
                     className={`${shape} opacity-60`}
                   >
                     {action.icon}
-                    <span className="text-[11px]">{action.label}</span>
+                    <span className="text-micro">{action.label}</span>
                   </button>
                 </li>
               );
@@ -410,7 +410,7 @@ export function BottomNav({
                   onNavigate(tab.to);
                 }}
                 aria-current={isActive ? "page" : undefined}
-                className={`flex w-full flex-col items-center gap-1 py-2.5 text-[11px] transition ${
+                className={`flex w-full flex-col items-center gap-1 py-2.5 text-micro transition ${
                   isActive ? "text-brand-dark" : "text-muted"
                 }`}
               >

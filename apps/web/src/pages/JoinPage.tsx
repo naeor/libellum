@@ -41,10 +41,10 @@ export function JoinPage(): React.JSX.Element {
     return (
       <InnerPage title="加入账本" subtitle="这个链接不能用了。" backTo="/">
         <div className="rounded-card border border-line bg-surface p-5">
-          <p className="text-sm leading-relaxed text-muted">
+          <p className="text-body-relaxed text-muted">
             这个分享链接**无效或已被撤销**。请让邀请你的人重新生成一条。
           </p>
-          <p className="mt-4 text-xs text-muted">
+          <p className="mt-4 text-helper text-muted">
             （链接只能被生成它的那个人撤销。撤销之后，手上的旧链接都会失效。）
           </p>
         </div>
@@ -58,8 +58,8 @@ export function JoinPage(): React.JSX.Element {
     return (
       <InnerPage title="加入账本" subtitle="你已经在这本账里了。" backTo="/">
         <div className="rounded-card border border-line bg-surface p-5">
-          <p className="text-sm text-ink">「{data.bookName}」</p>
-          <p className="mt-2 text-xs leading-relaxed text-muted">
+          <p className="text-body text-ink">「{data.bookName}」</p>
+          <p className="mt-2 text-helper-relaxed text-muted">
             你已经在这本账里，不需要再加入一次。
           </p>
           <div className="mt-4">
@@ -79,7 +79,7 @@ export function JoinPage(): React.JSX.Element {
   return (
     <InnerPage title="加入账本" subtitle="请确认之后才会加入。" backTo="/">
       {error !== null ? (
-        <p role="alert" className="mb-4 rounded-field bg-danger-soft px-4 py-3 text-sm text-danger">
+        <p role="alert" className="mb-4 rounded-field bg-danger-soft px-4 py-3 text-body text-danger">
           {error}
         </p>
       ) : null}
@@ -99,7 +99,7 @@ export function JoinPage(): React.JSX.Element {
           <dd className="text-right text-ink">{data.role === "editor" ? "可编辑" : "仅查看"}</dd>
         </dl>
 
-        <p className="mt-5 border-t border-line pt-4 text-xs leading-relaxed text-muted">
+        <p className="mt-5 border-t border-line pt-4 text-helper-relaxed text-muted">
           {data.role === "editor"
             ? "加入后你可以记帐、改帐目。"
             : "加入后你可以看到这本账的全部账目，但不能修改。"}

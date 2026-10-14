@@ -18,7 +18,14 @@ import { trackedFieldLabel } from "./events.js";
 
 export interface HistoryEntry {
   readonly id: string;
-  readonly kind: "created" | "updated" | "deleted" | "restored" | "member_changed";
+  readonly kind:
+    | "created"
+    | "updated"
+    | "deleted"
+    | "restored"
+    | "member_changed"
+    /** ⚠️ About the ledger itself — see `EventKind` in `events.ts`. */
+    | "book_changed";
   readonly occurredAt: string;
   readonly actorName: string | null;
   readonly transactionId: string | null;
@@ -35,6 +42,18 @@ const KIND_VERB: Record<HistoryEntry["kind"], string> = {
   deleted: "删除了",
   restored: "恢复了",
   member_changed: "变更了成员",
+  /**
+    * ⚠️ **`"改了"`, not `"变更了这本账"`, and the live smoke test is what caught it.**
+    *
+    * The sentence is assembled as `${who} ${verb} ${subject}`, and the subject for a ledger-level
+    * event is already 「这本账」 — so the first version read **"naeor 变更了这本账 这本账"**, with the
+    * noun twice. **The unit test asserted `summary` contains 「这本账」 and is not 「一笔账目」, which
+    * both passed** — it checked the thing that was broken without checking the thing that was wrong.
+    *
+    * ⚠️ **A verb that reads correctly with this subject is the fix, not a special case in the
+    * assembler.** The other four kinds keep their verbs because their subjects are entries.
+    */
+  book_changed: "改了",
 };
 
 export async function readHistory(
@@ -70,7 +89,23 @@ export async function readHistory(
      * the join quietly returns nothing).
      */
     const label = row.transaction?.note ?? row.transaction?.category.name ?? null;
-    const subject = number === null ? "一笔账目" : label === null ? `记录 ${number}` : `${number} ${label}`;
+
+    /**
+     * ⚠️ **An event about the ledger has no entry to name, so it names the ledger.**
+     *
+     * `member_changed` and `book_changed` both carry `transactionId: null`, and **the `number ===
+     * null` fallback below says "一笔账目"** — right for a deleted entry whose number was lost, and
+     * plainly wrong here: *"naeor 变更了这本账 一笔账目"* is nonsense. Renaming is where that showed
+     * up (1.10.08), because before it every event happened to be about an entry.
+     */
+    const subject =
+      kind === "member_changed" || kind === "book_changed"
+        ? "这本账"
+        : number === null
+          ? "一笔账目"
+          : label === null
+            ? `记录 ${number}`
+            : `${number} ${label}`;
 
     const changes = (row.changes ?? {}) as Record<string, { from?: unknown; to?: unknown }>;
 

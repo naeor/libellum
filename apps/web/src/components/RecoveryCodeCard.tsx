@@ -44,7 +44,7 @@ export function RecoveryCodeCard({
         {copied ? "已复制" : "复制恢复码"}
       </Button>
 
-      <label className="flex items-start gap-3 rounded-field border border-line px-4 py-3 text-sm text-ink">
+      <label className="flex items-start gap-3 rounded-field border border-line px-4 py-3 text-body text-ink">
         <input
           type="checkbox"
           checked={confirmed}

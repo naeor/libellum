@@ -120,7 +120,7 @@ export function ConflictScreen({ conflict, onResolve, onLater, categories, payme
 
   return (
     <div className="flex flex-col gap-5 px-6 py-5">
-        <p className="text-sm leading-relaxed text-muted">
+        <p className="text-body-relaxed text-muted">
           不同设备提交了不同的修改。下面列出服务器保存的候选值，选择后会同步到其他设备。
         </p>
 
@@ -134,7 +134,7 @@ export function ConflictScreen({ conflict, onResolve, onLater, categories, payme
         */}
         {merged.automatic.length > 0 ? (
           <section className="flex flex-col gap-2">
-            <h2 className="text-xs text-muted">已经自动合好的地方（{merged.automatic.length} 处）</h2>
+            <h2 className="text-helper text-muted">已经自动合好的地方（{merged.automatic.length} 处）</h2>
 
             <ul className="overflow-hidden rounded-card border border-line bg-surface">
               {merged.automatic.map((pick: AutomaticPick) => (
@@ -150,18 +150,18 @@ export function ConflictScreen({ conflict, onResolve, onLater, categories, payme
                       unable to tell whether their edit survived — **and that question is the whole reason this
                       list exists.**
                     */}
-                    <span className="ml-2 text-xs text-muted">{sideLabel(pick.from)}</span>
+                    <span className="ml-2 text-helper text-muted">{sideLabel(pick.from)}</span>
                   </span>
                 </li>
               ))}
             </ul>
           </section>
         ) : (
-          <p className="text-xs text-muted">没有需要自动合并的字段。</p>
+          <p className="text-helper text-muted">没有需要自动合并的字段。</p>
         )}
 
         <section className="flex flex-col gap-2">
-          <h2 className="text-xs text-muted">需要你选的地方（{questions.length} 处）</h2>
+          <h2 className="text-helper text-muted">需要你选的地方（{questions.length} 处）</h2>
 
           {questions.map((field) => {
             const chosen = answers.get(field.field);
@@ -169,7 +169,7 @@ export function ConflictScreen({ conflict, onResolve, onLater, categories, payme
 
             return (
               <div key={field.field} className="rounded-card border border-line bg-surface px-4 py-3">
-                <p className="text-sm text-ink">{field.label}</p>
+                <p className="text-body text-ink">{field.label}</p>
 
                 <div className="mt-2 flex flex-col gap-2">
                   {options.map((option, index) => (
@@ -202,7 +202,7 @@ export function ConflictScreen({ conflict, onResolve, onLater, categories, payme
                   value, and the user is told so instead of discovering it in the result.
                 */}
                 {chosen === undefined ? (
-                  <p className="mt-2 text-xs text-muted">选一个；不选就先用服务器上的。</p>
+                  <p className="mt-2 text-helper text-muted">选一个；不选就先用服务器上的。</p>
                 ) : null}
               </div>
             );
@@ -210,7 +210,7 @@ export function ConflictScreen({ conflict, onResolve, onLater, categories, payme
         </section>
 
         <section className="flex flex-col gap-2">
-          {questions.length === 0 ? <p className="text-sm text-muted">当前没有不同的候选值。保存将采用服务器值并关闭遗留冲突。</p> : null}
+          {questions.length === 0 ? <p className="text-body text-muted">当前没有不同的候选值。保存将采用服务器值并关闭遗留冲突。</p> : null}
           {error !== null ? <p role="alert" className="text-sm">{error}</p> : null}
           <Button
             disabled={unanswered > 0 || saving}
@@ -234,7 +234,7 @@ export function ConflictScreen({ conflict, onResolve, onLater, categories, payme
             稍后再处理
           </Button>
 
-          <p className="text-xs leading-relaxed text-muted">
+          <p className="text-helper-relaxed text-muted">
             保存后这笔记账会按上面的结果重新送到服务器。
             「稍后再处理」不会丢东西——两份都留着，下次打开还会问你。
           </p>

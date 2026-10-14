@@ -131,7 +131,7 @@ export function VoiceReviewPage(): React.JSX.Element {
         <button
           type="button"
           onClick={() => void navigate("/record")}
-          className="text-sm text-brand-dark underline"
+          className="text-body text-brand-dark underline"
         >
           去录音
         </button>
@@ -217,7 +217,7 @@ export function VoiceReviewPage(): React.JSX.Element {
         latched onto turns it into something checkable at a glance.
       */}
       {categoryReason === null ? null : (
-        <p className="text-xs text-muted">
+        <p className="text-helper text-muted">
           听到「{categoryReason}」，已把分类选为
           <span className="text-ink">
             {" "}
@@ -268,15 +268,21 @@ export function VoiceReviewPage(): React.JSX.Element {
             `${edited.date}T${edited.time === "" ? "12:00" : edited.time}:00`,
           );
 
+          /**
+           * `uuidV7()`, not `crypto.randomUUID()`: the latter is a
+           * secure-context API and is undefined over plain `http://`, which
+           * is how a phone on the LAN used to reach this app.
+           *
+           * ⚠️ **`idempotencyKey` is the same value as `id`** — see the longer
+           * note in `ScanPage.tsx`. Two independent ids turned the server's
+           * `idempotency_key` de-duplication into a no-op on this path.
+           */
+          const id = uuidV7();
+
           void createEntry
             .mutateAsync({
-              /**
-               * `uuidV7()`, not `crypto.randomUUID()`: the latter is a
-               * secure-context API and is undefined over plain `http://`, which
-               * is how a phone on the LAN used to reach this app.
-               */
-              id: uuidV7(),
-              idempotencyKey: uuidV7(),
+              id,
+              idempotencyKey: id,
               kind: edited.kind,
               amountCents,
               currency: edited.currency,

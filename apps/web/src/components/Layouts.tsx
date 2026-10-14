@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router";
 
+import { CurrentBookCaption } from "./CurrentBookCaption.js";
 import { BottomNav, type EntryCards } from "./BottomNav.js";
 import { OfflineStatus } from "./OfflineStatus.js";
 import { SyncBanner } from "./SyncBanner.js";
@@ -132,6 +133,7 @@ export function TabPage({
   scrollRef,
   rootRef,
   rootClassName = "",
+  currentBookName,
 }: {
   readonly active: string;
   readonly onNavigate: (to: string) => void;
@@ -145,6 +147,7 @@ export function TabPage({
   /** The outermost element, for a screen that drives its own animation. */
   readonly rootRef?: React.RefObject<HTMLDivElement | null>;
   readonly rootClassName?: string;
+  readonly currentBookName?: string | undefined;
 }): React.JSX.Element {
   const menu = useEntryMenu();
 
@@ -159,6 +162,7 @@ export function TabPage({
         <div className={`mx-auto flex w-full max-w-md flex-col pb-24 ${className}`}>{children}</div>
       </div>
 
+      <CurrentBookCaption name={currentBookName} hidden={menu.open} />
       {/*
         Real space for the cards, not a floating layer over the list.
         The scroll region shrinks by this much while they are out, so nothing
@@ -247,8 +251,8 @@ export function InnerPage({
         </div>
 
         <header>
-          <h1 className="text-xl font-semibold tracking-tight text-ink">{title}</h1>
-          {subtitle ? <p className="mt-1.5 text-sm leading-relaxed text-muted">{subtitle}</p> : null}
+          <h1 className="text-page-title text-ink">{title}</h1>
+          {subtitle ? <p className="mt-1.5 text-body-relaxed text-muted">{subtitle}</p> : null}
         </header>
 
         {children}

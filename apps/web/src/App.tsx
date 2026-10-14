@@ -1,4 +1,4 @@
-﻿import { QueryClient } from "@tanstack/react-query";
+import { QueryClient } from "@tanstack/react-query";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { Suspense, lazy, useEffect } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router";
@@ -27,16 +27,20 @@ import { ImportPage } from "./pages/ImportPage.js";
 import { LoginPage } from "./pages/LoginPage.js";
 import { CategoriesPage, PaymentMethodsPage, TagsPage } from "./pages/ManagePages.js";
 import { MePage } from "./pages/MePage.js";
-import { CollaboratorsPage } from "./pages/CollaboratorsPage.js";
+import { LedgerInvitePage } from "./pages/LedgerInvitePage.js";
+import { MessageBoardPage } from "./pages/MessageBoardPage.js";
 import { JoinPage } from "./pages/JoinPage.js";
 import { LedgerHistoryPage } from "./pages/LedgerHistoryPage.js";
-import { LedgerInfoPage, LedgerInvitePage, LedgerMembersPage } from "./pages/LedgerSubPages.js";
+import { LedgerInfoPage, LedgerMembersPage } from "./pages/LedgerSubPages.js";
 import { LedgerPage } from "./pages/LedgerPage.js";
 import { ProfilePage } from "./pages/ProfilePage.js";
 import { LedgerSpacePage } from "./pages/LedgerSpacePage.js";
 import { StatsPage } from "./pages/StatsPage.js";
 import { RecoverPage } from "./pages/RecoverPage.js";
 import { RegisterPage } from "./pages/RegisterPage.js";
+import { LegalPage } from "./pages/LegalPage.js";
+import { StartBookInfoPage, StartBookMembersPage, StartBookSharePage } from "./pages/StartBookPages.js";
+import { ReferralCodePage } from "./pages/ReferralCodePage.js";
 import { RegenerateRecoveryCodePage } from "./pages/RegenerateRecoveryCodePage.js";
 import { RecordPage } from "./pages/RecordPage.js";
 import { ScanPage } from "./pages/ScanPage.js";
@@ -94,7 +98,7 @@ const queryClient = new QueryClient({
 
 function Splash(): React.JSX.Element {
   return (
-    <main className="flex min-h-full items-center justify-center text-sm text-muted">载入中…</main>
+    <main className="flex min-h-full items-center justify-center text-body text-muted">载入中…</main>
   );
 }
 
@@ -188,14 +192,6 @@ function AppRoutes(): React.JSX.Element {
         }
       />
       <Route
-        path="/collaborators"
-        element={
-          <RequireAuth>
-            <CollaboratorsPage />
-          </RequireAuth>
-        }
-      />
-      <Route
         path="/me"
         element={
           <RequireAuth>
@@ -226,6 +222,12 @@ function AppRoutes(): React.JSX.Element {
         <Route path="/downloads/:month" element={<RequireAuth><MonthDownloadPage /></RequireAuth>} />
         <Route path="/settings" element={<RequireAuth><SettingsPage /></RequireAuth>} />
       <Route path="/settings/password" element={<RequireAuth><ChangePasswordPage /></RequireAuth>} />
+      {/**
+        * ⚠️ **邀请码现在是一页，入口在设置-账号安全。** 所有者 2026-10-13：
+        * *"账户里边生成邀请码单独包装成一个入口，放到设置-账号安全里面."*
+        * 它与 更改密码、生成新的恢复码 并列——三者都是**关于账号本身**的。
+        */}
+      <Route path="/settings/referral-codes" element={<RequireAuth><ReferralCodePage /></RequireAuth>} />
       <Route
         path="/settings/recovery-code"
         element={
@@ -249,6 +251,24 @@ function AppRoutes(): React.JSX.Element {
       <Route path="/ledger/members" element={<RequireAuth><LedgerMembersPage /></RequireAuth>} />
       <Route path="/ledger/invite" element={<RequireAuth><LedgerInvitePage /></RequireAuth>} />
       {/**
+        * ⚠️ **留言的完整对话是一个独立路由，而不是弹层。** 所有者明确要求全屏：
+        * *"点击「展开」后，进入独立的全屏留言界面，而不是弹窗或半屏抽屉."*
+        * 独立路由的意义是**手机返回手势与浏览器返回键都能关掉它**——弹层得自己实现这两件事，
+        * 并且总会在某个人的手机上做错一个。
+        */}
+      <Route path="/ledger/messages" element={<RequireAuth><MessageBoardPage /></RequireAuth>} />
+      {/**
+        * ⚠️ **一本账的目标页面 —— 齿轮面板打开的二级页（1.10.08）。**
+        *
+        * 三条路由都以**账本 id 在 URL 里**为共同点，因为齿轮面板管理的**可以不是当前账本**。
+        * 页内所有请求都把那个 id 放进请求头（用 `apiFetch` 已有的单次覆盖机制），
+        * **所以全局「当前账本」一动不动**——所有者明确禁止静默切换：
+        * *"不允许通过静默修改全局当前账本来实现这一点."*
+        */}
+      <Route path="/start/book/:bookId" element={<RequireAuth><StartBookInfoPage /></RequireAuth>} />
+      <Route path="/start/book/:bookId/members" element={<RequireAuth><StartBookMembersPage /></RequireAuth>} />
+      <Route path="/start/book/:bookId/share" element={<RequireAuth><StartBookSharePage /></RequireAuth>} />
+      {/**
         * ⚠️ **A share link must be reachable while signed out**, and must come back to itself after
         * signing in — that is why it uses the variant that keeps the path.
         */}
@@ -261,6 +281,13 @@ function AppRoutes(): React.JSX.Element {
         }
       />
       <Route path="/about" element={<RequireAuth><AboutPage /></RequireAuth>} />
+      {/**
+        * ⚠️ **两份法律文档各自有路由，内容明确写着"尚未编写"。** 所有者要求页脚三项都可点，
+        * 而**可点却无处可去比一个标签更糟**；同时他要求**不得编造条款**——
+        * 所以这两页的内容就是"这份文档还不存在"，外加一份上线前必须写清楚的清单。
+        */}
+      <Route path="/legal/privacy" element={<RequireAuth><LegalPage kind="privacy" /></RequireAuth>} />
+      <Route path="/legal/terms" element={<RequireAuth><LegalPage kind="terms" /></RequireAuth>} />
 
       {ChartLabPage === null ? null : (
         <Route

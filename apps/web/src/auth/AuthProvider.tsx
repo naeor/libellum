@@ -34,9 +34,16 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 /**
  * How often an open tab asks the server whether its session is still valid.
  *
- * Only one session per account is allowed, so signing in on another device
- * silently ends this one. Without a check, this tab would keep showing a
- * signed-in interface until the user happened to reload.
+ * ⚠️ **"Only one session per account is allowed" used to be true and is not any more.** The owner
+ * removed that rule once the offline design needed two devices holding two copies of one ledger —
+ * see the note on `issueSession` in `apps/api/src/routes/auth.ts`. What survives is the reason for
+ * this timer: **this tab has to find out that its session ended**, and without the check it would
+ * keep showing a signed-in interface until the user happened to reload.
+ *
+ * ⚠️ **And when it does find out, the cleanup must be the same as a sign-out.** That is the bug
+ * this file was fixed for in 1.10.02: the expiry path signed the user out but kept the previous
+ * account's ledger, so the next account to sign in on this device saw *somebody else's* ledger
+ * number on screen. See `forgetLocalState`.
  */
 const REVALIDATE_INTERVAL_MS = 60_000;
 
@@ -74,6 +81,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
   const [status, setStatus] = useState<"loading" | "ready">("loading");
   const [sessionRevoked, setSessionRevoked] = useState(false);
 
+  /**
+   * Drop everything on this device that belongs to the account being left behind.
+   *
+   * ⚠️ **This was extracted because a second path needed it and had been missing it.**
+   *
+   * Before this, only `logout()` cleaned up. **A session that ended any other way left the
+   * device pointing at the previous account's ledger**, and the owner found it by using the
+   * app: he signed in as another account and saw *his own* ledger number on screen.
+   *
+   * What happened, step by step:
+   *
+   *  1. the session expired, so `reload()` got a 401 — which is *"only the server may end a
+   *     session"*, and correctly signs the user out;
+   *  2. but that path only called `forgetUser()` and `setSessionRevoked(true)`. It did **not**
+   *     call `forgetCurrentBook()`, unlike `logout()`;
+   *  3. the app landed on the login page with `current-book` still set to the previous
+   *     account's book id, kept in memory **and** on the device;
+   *  4. signing in as somebody else set the new user but left that id alone, so the very next
+   *     request declared a book the new account is not a member of;
+   *  5. the server refused it — 403, permission is still decided by `book_members` and nothing
+   *     leaked — but the cached metadata for that book was still on screen, so the ledger label
+   *     read as the **other account's** number.
+   *
+   * ⚠️ **The order is load-bearing and is inherited from `logout()`**: the query cache is
+   * cleared *before* the scope collapses, because the cache lives under a scoped key. Clearing
+   * it after the scope had been emptied would delete the *unscoped* key and leave this account's
+   * cached responses behind under the scoped one — the opposite of the intent.
+   */
+  const forgetLocalState = useCallback(async () => {
+    await forgetUser();
+    await clearQueryCache();
+    /**
+     * ⚠️ **The remembered ledger goes with the account.** Inheriting it would aim the next
+     * person's requests at somebody else's book: the server would refuse, but the client should
+     * not ask, and it should not show the wrong ledger's cached copy on the way there.
+     */
+    forgetCurrentBook();
+    setOfflineAccount(null);
+  }, []);
+
   const reload = useCallback(async () => {
     try {
       const response = await apiFetch<unknown>("/auth/me");
@@ -88,7 +135,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
        * the server saying anything.
        */
       if (decideAuthOutcome(statusOf(error)) === "signed-out") {
-        await forgetUser();
+        /**
+         * ⚠️ **This is a sign-out, so it has to clean up like one.** Treating it as "just
+         * forget the user" is the defect described on `forgetLocalState`.
+         */
+        await forgetLocalState();
         setSessionRevoked(true);
         setUser(null);
       } else {
@@ -97,7 +148,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
     } finally {
       setStatus("ready");
     }
-  }, []);
+  }, [forgetLocalState]);
 
   useEffect(() => {
     void reload();
@@ -157,14 +208,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
     };
   }, [user]);
 
-  const login = useCallback(async (username: string, password: string) => {
-    const response = authResponseSchema.parse(
-      await apiFetch<unknown>("/auth/login", { method: "POST", body: { username, password } }),
-    );
-    setSessionRevoked(false);
-    setUser(response.user);
-    await rememberUser(response.user);
-  }, []);
+  const login = useCallback(
+    async (username: string, password: string) => {
+      /**
+       * ⚠️ **Who was here before, captured before the request replaces them.**
+       *
+       * This is the second half of the fix for "signing in as another account shows the previous
+       * account's ledger". `forgetLocalState` covers the session-expiry path; this covers the
+       * case where the app reached the login screen some other way and the device still holds
+       * the earlier account's book id and cached responses.
+       *
+       * It is also **cheap where it matters most**: signing back in as *yourself* keeps the
+       * offline copy, and only a genuine change of account clears it. A blanket wipe on every
+       * sign-in would throw away the ledger copy of someone who was simply logged out.
+       */
+      const previous = await readRememberedUser();
+
+      const response = authResponseSchema.parse(
+        await apiFetch<unknown>("/auth/login", { method: "POST", body: { username, password } }),
+      );
+
+      if (previous !== null && previous.id !== response.user.id) {
+        await forgetLocalState();
+      }
+
+      setSessionRevoked(false);
+      setUser(response.user);
+      await rememberUser(response.user);
+    },
+    [forgetLocalState],
+  );
 
   const register = useCallback(async (input: RegisterInput) => {
     const response = authResponseSchema.parse(
@@ -185,49 +258,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
      * find somebody's ledger on it. The offline feature must not become the reason
      * that happens.
      *
-     * `forgetUser` before `clearQueryCache`, because a crash between the two would
-     * leave a signed-out app that still believes it knows who was here.
-     *
      * The server call is attempted but not required: a logout that only works with
      * a network is not a logout.
-     */
-    await forgetUser();
-    /**
-     * ⚠️ **The remembered ledger goes with the account.**
      *
-     * The next person to sign in on this device is a different person, and inheriting the last
-     * one's ledger would aim their requests at somebody else's book. The server would refuse —
-     * permission comes from membership, never from a header — but the client should not ask,
-     * and it should not show the wrong ledger's cached data on the way there either.
+     * ⚠️ **The cleanup itself moved into `forgetLocalState`, which the session-expiry path now
+     * calls as well.** Leaving it inline here is what let that path sign the user out without
+     * letting go of their ledger — see the long note on `forgetLocalState`.
      */
-    forgetCurrentBook();
-    /**
-     * ⚠️ **The query cache is cleared *before* the scope, and the order is load-bearing.**
-     *
-     * The cache lives under a scoped key, so clearing it after the scope had been emptied would
-     * delete the *unscoped* key — **leaving this account's cached responses on the device under
-     * the scoped one**, which is the opposite of what signing out is for. Clear first, then let
-     * the scope collapse.
-     */
-    await clearQueryCache();
-
-    /**
-     * ⚠️ **And the offline scope goes with the account.**
-     *
-     * The scope is what the stored ledger copy is keyed by. Leaving it set after signing out would
-     * let the next person to sign in on this device read the previous person's ledger out of
-     * IndexedDB — **with no server involved to refuse it**, because the data never leaves the
-     * device. The owner named this risk when he asked for the account half of the key:
-     * *"退出登录和身份失效时仍可能出现数据暴露或混用风险."*
-     */
-    /**
-     * ⚠️ **Cleared here as well as in the effect above, and the duplication is on purpose.**
-     *
-     * The effect runs after the state change; this runs *before* anything else in the sign-out
-     * path, so no read can slip through in between. The effect is what covers the other five
-     * paths that set `user`; this one covers the path where being late is a disclosure.
-     */
-    setOfflineAccount(null);
+    await forgetLocalState();
 
     try {
       await apiFetch<unknown>("/auth/logout", { method: "POST" });
@@ -236,7 +274,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
     }
 
     setUser(null);
-  }, []);
+  }, [forgetLocalState]);
 
   const value = useMemo<AuthContextValue>(
     () => ({ user, status, sessionRevoked, login, register, logout, reload }),

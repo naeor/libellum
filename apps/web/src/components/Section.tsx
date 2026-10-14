@@ -15,6 +15,7 @@ export function Section({
   action,
   children,
   animate = true,
+  titleClassName = "section-title",
 }: {
   readonly title: string;
   readonly action?: { readonly to: string; readonly label: string };
@@ -31,13 +32,25 @@ export function Section({
    * the two states feel like one page rather than two screens.
    */
   readonly animate?: boolean;
+  /**
+   * ⚠️ **The heading's typography, overridable so the 16px experiment stays inside its two pages.**
+   *
+   * The owner scoped the experiment: *"先只在「分析」和「账本／协作」两个一级页面进行视觉试验……
+   * 不要直接批量修改全站."* **`Section` is also used by 设置、关于 and others**, so changing its
+   * heading here would have moved several pages at once — the opposite of an experiment.
+   *
+   * ⚠️ **The default is the shared semantic token**, so a caller that passes nothing gets the real
+   * spec and no page has to restate it. **When the experiment is approved, the *token* moves and
+   * every caller follows** — which is the entire reason for naming the role rather than the size.
+   */
+  readonly titleClassName?: string;
 }): React.JSX.Element {
   return (
     <section className={`flex flex-col px-6 pt-7 ${animate ? "section-in" : ""}`}>
       <div className="mb-3 flex items-baseline justify-between gap-3">
-        <h2 className="text-sm font-medium text-ink">{title}</h2>
+        <h2 className={titleClassName}>{title}</h2>
         {action === undefined ? null : (
-          <Link to={action.to} className="text-xs text-brand transition hover:text-brand-dark">
+          <Link to={action.to} className="text-helper text-brand transition hover:text-brand-dark">
             {action.label} ›
           </Link>
         )}

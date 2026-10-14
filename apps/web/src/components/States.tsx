@@ -18,7 +18,7 @@ export function EmptyState({
   return (
     <div className="flex flex-col items-center gap-3 px-6 py-16 text-center">
       <p className="text-base font-medium text-ink">{title}</p>
-      <p className="max-w-xs text-sm leading-relaxed text-muted">{description}</p>
+      <p className="max-w-xs text-body-relaxed text-muted">{description}</p>
       {actionLabel && onAction ? (
         <button
           type="button"
@@ -61,7 +61,7 @@ export function ErrorState({
   return (
     <div className="flex flex-col items-center gap-3 px-6 py-16 text-center">
       <p className="text-base font-medium text-ink">加载失败</p>
-      <p className="max-w-xs text-sm leading-relaxed text-muted">{message}</p>
+      <p className="max-w-xs text-body-relaxed text-muted">{message}</p>
       <button
         type="button"
         onClick={onRetry}

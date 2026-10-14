@@ -1,6 +1,17 @@
 import type { ChartLayout } from "./ChartFrame.js";
 
 const LABEL_SIZE = 10;
+/**
+ * ⚠️ **Two colours, because these are two jobs.**
+ *
+ * `RULE_COLOR` draws the grid and the baseline — reference marks that must stay **behind** the data.
+ * `AXIS_COLOR` fills the tick and category labels, which are **read** and therefore have to reach AA.
+ *
+ * ⚠️ **They used to be one constant.** Darkening it for the sake of the labels also darkened the
+ * grid, and a 0.22-opacity dark grid reads as *in front of* the bars — so the fix for one job would
+ * have damaged the other. **A shared constant is not the same thing as a shared meaning.**
+ */
+const RULE_COLOR = "var(--color-chart-rule)";
 const AXIS_COLOR = "var(--color-accent-ink)";
 
 /**
@@ -49,7 +60,7 @@ export function YAxis({
                 x2={layout.padding.left + layout.innerWidth}
                 y1={y}
                 y2={y}
-                stroke={AXIS_COLOR}
+                stroke={RULE_COLOR}
                 strokeOpacity={0.22}
                 strokeWidth={1}
               />
@@ -132,7 +143,7 @@ export function Baseline({
       x2={layout.padding.left + layout.innerWidth}
       y1={y}
       y2={y}
-      stroke={AXIS_COLOR}
+      stroke={RULE_COLOR}
       strokeOpacity={0.5}
       strokeWidth={1}
     />

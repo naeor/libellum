@@ -32,12 +32,12 @@ describe("referral codes", () => {
     return { cookie, userId: user.id, accountNumber: user.accountNumber ?? "" };
   }
 
-  function mint(cookie: string, allowsDirectCollaborator: boolean) {
+  function mint(cookie: string) {
     return app.inject({
       method: "POST",
-      url: "/api/v1/collaborators/referral-codes",
+      url: "/api/v1/referral-codes",
       headers: { cookie },
-      payload: { allowsDirectCollaborator },
+      payload: {},
     });
   }
 
@@ -76,7 +76,7 @@ describe("referral codes", () => {
 
   it("records who invited the newcomer, and gives them a reminder they can act on", async () => {
     const inviter = await account("ref_inviter");
-    const minted = await mint(inviter.cookie, true);
+    const minted = await mint(inviter.cookie);
     expect(minted.statusCode).toBe(201);
 
     const { code } = minted.json() as { code: string };
@@ -91,7 +91,7 @@ describe("referral codes", () => {
 
     /**
      * ⚠️ **"Who invited me" is a fact about the account**, so it is stored on the account — not
-     * derived by searching the code table every time the collaborator screen opens.
+     * derived by searching the code table every time the account screen opens.
      */
     expect(newcomer.referredByUserId).toBe(inviter.userId);
 
@@ -114,9 +114,20 @@ describe("referral codes", () => {
     expect(days).toBeLessThan(7.1);
   });
 
-  it("creates no reminder when the generator did not allow a direct add", async () => {
+  it("writes the reminder, and its wording no longer promises a collaborator", async () => {
+    /**
+     * ⚠️ **This test used to assert the opposite** — that no reminder was written when the generator
+     * had not opted in. **That flag is gone (1.10.05)**, because the thing it controlled
+     * ("add them as a collaborator") was the account-level system the owner removed. There is no
+     * longer a choice to make, so the reminder is always written.
+     *
+     * ⚠️ **And its wording had to change with the model.** It used to promise *"确认之后，他会成为你的
+     * 协作者"* — an account-level relationship that no longer exists, so **the card would have offered
+     * something the server cannot do**. A reminder that promises nothing actionable is worse than no
+     * reminder (`教训.md` §3.1), so it now points at the action that does exist.
+     */
     const inviter = await account("ref_inviter");
-    const { code } = (await mint(inviter.cookie, false)).json() as { code: string };
+    const { code } = (await mint(inviter.cookie)).json() as { code: string };
 
     await registerWith(code, "ref_newcomer");
 
@@ -125,21 +136,22 @@ describe("referral codes", () => {
       select: { id: true, referredByUserId: true },
     });
 
-    /**
-     * ⚠️ **The record is still written, but the card is not.** The inviter chose *not* to be added
-     * directly, so a card saying "you may add this person" would offer something the server then
-     * refuses — **worse than no card, because the user cannot tell whether they misunderstood.**
-     */
     expect(newcomer.referredByUserId).toBe(inviter.userId);
-    expect(
-      await prisma.notification.count({ where: { recipientId: newcomer.id, kind: "referral_reminder" } }),
-    ).toBe(0);
+
+    const reminder = await prisma.notification.findFirstOrThrow({
+      where: { recipientId: newcomer.id, kind: "referral_reminder" },
+      select: { message: true },
+    });
+
+    expect(reminder.message).not.toBeNull();
+    expect(reminder.message).not.toContain("协作者");
+    expect(reminder.message).toContain("账本");
   });
 
   it("does not spend the inviter's notification quota — twice the invites must not silence them", async () => {
     const inviter = await account("ref_inviter");
-    const { code: first } = (await mint(inviter.cookie, true)).json() as { code: string };
-    const { code: second } = (await mint(inviter.cookie, true)).json() as { code: string };
+    const { code: first } = (await mint(inviter.cookie)).json() as { code: string };
+    const { code: second } = (await mint(inviter.cookie)).json() as { code: string };
 
     await registerWith(first, "ref_one");
     await registerWith(second, "ref_two");
@@ -156,7 +168,7 @@ describe("referral codes", () => {
 
   it("refuses to let a referral-registered account mint another code", async () => {
     const inviter = await account("ref_inviter");
-    const { code } = (await mint(inviter.cookie, true)).json() as { code: string };
+    const { code } = (await mint(inviter.cookie)).json() as { code: string };
 
     await registerWith(code, "ref_newcomer");
     const newcomerCookie = await signInAs("ref_newcomer");
@@ -167,7 +179,7 @@ describe("referral codes", () => {
      * invited from a different parent. **A chain of referrals is a way of turning one invitation
      * into a hundred.**
      */
-    const refused = await mint(newcomerCookie, true);
+    const refused = await mint(newcomerCookie);
     expect(refused.statusCode).toBe(400);
     expect(refused.json().code).toBe("referral_not_allowed");
 
@@ -187,17 +199,21 @@ describe("referral codes", () => {
      * exists so that nobody needs an account of their own to look around — handing out registration
      * codes from it would turn "look around" into "create accounts from outside".
      */
-    const refused = await mint(demo.cookie, true);
+    const refused = await mint(demo.cookie);
     expect(refused.statusCode).toBe(400);
     expect(refused.json().code).toBe("referral_not_allowed");
   });
 
   it("grants no ledger access by itself", async () => {
     const inviter = await account("ref_inviter");
-    const { code } = (await mint(inviter.cookie, true)).json() as { code: string };
+    const { code } = (await mint(inviter.cookie)).json() as { code: string };
 
     await registerWith(code, "ref_newcomer");
     const newcomerCookie = await signInAs("ref_newcomer");
+    const newcomer = await prisma.user.findUniqueOrThrow({
+      where: { username: "ref_newcomer" },
+      select: { id: true },
+    });
 
     /**
      * ⚠️ **This is the sentence the whole feature rests on**: the code *"不与任何账本绑定"* and grants
@@ -218,7 +234,22 @@ describe("referral codes", () => {
     expect(refused.statusCode).toBe(403);
 
     // And the reminder does not create a relationship either — the inviter must still accept.
-    expect(await prisma.collaborator.count()).toBe(0);
+    /**
+     * ⚠️ **Registering with a referral code creates no ledger membership.** The account-level
+     * "collaborator" relationship this used to assert about is gone (1.10.05), and the property that
+     * matters is stronger and simpler: **a code makes an account, and grants access to nothing.**
+     */
+    expect(await prisma.bookMember.count({ where: { userId: newcomer.id } })).toBe(1);
+
+    /**
+     * ⚠️ **And the reminder is not an access grant either.** The inviter gets a notification saying
+     * who arrived; **nothing about it puts the newcomer into the inviter's ledger**, and nothing puts
+     * the inviter into the newcomer's. The only way either happens is an explicit ledger invitation
+     * that the other side accepts.
+     */
+    expect(
+      await prisma.bookMember.count({ where: { bookId: inviterBook.bookId, userId: newcomer.id } }),
+    ).toBe(0);
   });
 
   it("allows exactly three codes in a lifetime, and does not refill", async () => {
@@ -230,11 +261,11 @@ describe("referral codes", () => {
      * that was his to make.** This test exists so it cannot happen quietly again.
      */
     for (let i = 0; i < 3; i += 1) {
-      const minted = await mint(inviter.cookie, true);
+      const minted = await mint(inviter.cookie);
       expect(minted.statusCode).toBe(201);
     }
 
-    const fourth = await mint(inviter.cookie, true);
+    const fourth = await mint(inviter.cookie);
     expect(fourth.statusCode).toBe(400);
     expect(fourth.json().code).toBe("referral_limit_reached");
     expect(await prisma.registrationInvite.count({ where: { createdByUserId: inviter.userId } })).toBe(3);
@@ -249,7 +280,7 @@ describe("referral codes", () => {
       data: { revokedAt: new Date() },
     });
 
-    const afterRevoking = await mint(inviter.cookie, true);
+    const afterRevoking = await mint(inviter.cookie);
     expect(afterRevoking.statusCode).toBe(400);
     expect(afterRevoking.json().code).toBe("referral_limit_reached");
   });

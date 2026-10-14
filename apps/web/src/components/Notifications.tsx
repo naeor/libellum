@@ -26,7 +26,7 @@ import {
  * things read (the dot clears), but a notification stays in the pending list until it is answered —
  * **clearing a dot must never look like answering a question.**
  */
-export function NotificationBell(): React.JSX.Element {
+export function NotificationBell({ showHeading = true }: { readonly showHeading?: boolean } = {}): React.JSX.Element {
   const [open, setOpen] = useState(false);
   const inbox = useNotifications();
   const markRead = useMarkNotificationsRead();
@@ -35,8 +35,22 @@ export function NotificationBell(): React.JSX.Element {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="text-sm text-muted">提醒</h2>
+      <div
+        className={
+          /**
+           * ⚠️ **Two placements, one component.** It used to sit in a card with a 「提醒」 heading on
+           * its own row. In 1.10.05 the owner moved it into **the green header's top-right corner** —
+           * *"在账本／协作一级页面绿色顶部区域右上角直接提供通知铃铛"* — where a heading would be
+           * noise, and where the panel below needs to be full width rather than beside a label.
+           *
+           * ⚠️ **The heading is hidden rather than removed**, because the panel is shared: a second
+           * bell somewhere else can still ask for it, and **one component with a flag beats two
+           * copies that drift** (`教训.md` §8.12).
+           */
+          showHeading ? "flex items-center justify-between gap-3" : "flex justify-end"
+        }
+      >
+        {showHeading ? <h2 className="text-body text-muted">提醒</h2> : null}
 
         <button
           type="button"
@@ -77,27 +91,27 @@ function NotificationPanel(): React.JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
 
-  if (inbox.isPending) return <p className="text-sm text-muted">正在读取提醒……</p>;
-  if (!inbox.isSuccess) return <p className="text-sm text-danger">提醒读取失败。</p>;
+  if (inbox.isPending) return <p className="text-body text-muted">正在读取提醒……</p>;
+  if (!inbox.isSuccess) return <p className="text-body text-danger">提醒读取失败。</p>;
 
   const { notifications, pendingCount } = inbox.data;
 
   return (
     <div className="flex flex-col gap-3">
       {error !== null ? (
-        <p role="alert" className="rounded-field bg-danger-soft px-4 py-3 text-sm text-danger">
+        <p role="alert" className="rounded-field bg-danger-soft px-4 py-3 text-body text-danger">
           {error}
         </p>
       ) : null}
 
       {notifications.length === 0 ? (
-        <p className="rounded-card border border-line bg-surface px-5 py-4 text-sm text-muted">
+        <p className="rounded-card border border-line bg-surface px-5 py-4 text-body text-muted">
           现在没有需要你处理的事情。
         </p>
       ) : null}
 
       {pendingCount > 0 ? (
-        <p className="text-xs text-muted">
+        <p className="text-helper text-muted">
           有 {String(pendingCount)} 条等着你处理。不处理的话，七天后会自动失效。
         </p>
       ) : null}
@@ -158,24 +172,24 @@ function NotificationCard({
         aria-expanded={expanded}
         className="flex w-full flex-col gap-1 px-5 py-4 text-left"
       >
-        <span className="flex items-center gap-2 text-sm text-ink">
+        <span className="flex items-center gap-2 text-body text-ink">
           {titleOf(notification)}
           {statusBadge(notification)}
         </span>
 
-        <span className="text-xs text-muted">
+        <span className="text-helper text-muted">
           {notification.sender.displayName}（{notification.sender.accountNumber}）
         </span>
 
         {notification.message === null ? null : (
-          <span className="text-xs leading-relaxed text-muted">
+          <span className="text-helper-relaxed text-muted">
             {expanded ? notification.message : truncate(notification.message, 40)}
           </span>
         )}
       </button>
 
       {decided ? (
-        <p className="border-t border-line px-5 py-3 text-xs text-muted">
+        <p className="border-t border-line px-5 py-3 text-helper text-muted">
           {notification.status === "accepted" ? "你已经同意了这条邀请。" : "你已经拒绝了这条邀请。"}
         </p>
       ) : (
@@ -196,7 +210,7 @@ function NotificationCard({
             onClick={() => {
               onDecide("declined");
             }}
-            className="flex-1 rounded-field bg-canvas px-4 py-2 text-sm text-muted transition hover:text-ink disabled:opacity-45"
+            className="flex-1 rounded-field bg-canvas px-4 py-2 text-body text-muted transition hover:text-ink disabled:opacity-45"
           >
             拒绝
           </button>
@@ -208,7 +222,15 @@ function NotificationCard({
 
 /** The heading on one card. */
 function titleOf(notification: NotificationView): string {
-  if (notification.kind === "collaborator_request") return "协作者申请";
+  /**
+   * ⚠️ **There used to be a `collaborator_request` branch here, and it is gone (1.10.05)** — the
+   * account-level system it belonged to was removed, and the server stopped returning that kind.
+   *
+   * ⚠️ **Nothing was left behind for old rows, on purpose.** The migration deletes the ones that were
+   * still pending — *"不能让用户收到点击后无法完成的历史通知"* — and the ones already decided are kept as
+   * history but filtered out of this list by the server, so **a card for a retired kind can never
+   * reach this function.** A branch here would be dead code that implies the case still exists.
+   */
   if (notification.kind === "referral_reminder") return "邀请码提醒";
   return notification.book === null ? "账本邀请" : `邀请你加入「${notification.book.name}」`;
 }
@@ -216,11 +238,11 @@ function titleOf(notification: NotificationView): string {
 /** A decided card says so; a pending one says nothing, because the buttons already say it. */
 function statusBadge(notification: NotificationView): React.JSX.Element | null {
   if (notification.status === "accepted") {
-    return <span className="rounded-full bg-brand-soft px-2 py-0.5 text-[11px] text-brand-dark">已同意</span>;
+    return <span className="rounded-full bg-brand-soft px-2 py-0.5 text-micro text-brand-dark">已同意</span>;
   }
 
   if (notification.status === "declined") {
-    return <span className="rounded-full bg-canvas px-2 py-0.5 text-[11px] text-muted">已拒绝</span>;
+    return <span className="rounded-full bg-canvas px-2 py-0.5 text-micro text-muted">已拒绝</span>;
   }
 
   return null;

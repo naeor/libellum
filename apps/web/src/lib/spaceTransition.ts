@@ -114,6 +114,9 @@ export function useSpaceTransition(initial: number): SpaceTransition {
      * and showed up as a stall.
      */
     rootRef.current?.style.setProperty("--p", progress.current.toFixed(4));
+    // Visibility and input eligibility follow the same live presentation progress.
+    const cue = rootRef.current?.querySelector<HTMLButtonElement>(".space-cue");
+    if (cue) cue.inert = progress.current >= 0.18;
     if (scrollRef.current) {
       scrollRef.current.inert = progress.current <= 0.001;
       scrollRef.current.style.overflowY = progress.current >= 1 ? "auto" : "hidden";

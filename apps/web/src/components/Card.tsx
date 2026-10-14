@@ -7,7 +7,7 @@ export function Card({
 }): React.JSX.Element {
   return (
     <section
-      className={`rounded-card border border-line bg-surface p-6 shadow-[0_1px_2px_rgba(36,49,43,0.04)] ${className}`}
+      className={`rounded-card border border-line bg-surface p-6 shadow-card ${className}`}
     >
       {children}
     </section>

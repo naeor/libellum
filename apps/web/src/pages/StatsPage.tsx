@@ -1,4 +1,4 @@
-﻿import {
+import {
   CURRENCIES,
   RANGE_LABELS,
   STATS_RANGES,
@@ -18,6 +18,7 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 
 import { Alert } from "../components/Alert.js";
+import { TabPageHeader } from "../components/TabPageHeader.js";
 import { CalendarHeatmap } from "../components/charts/CalendarHeatmap.js";
 import { CategoryDonut } from "../components/charts/CategoryDonut.js";
 import { ComparisonPanel, YearOverview } from "../components/charts/SummaryPanel.js";
@@ -94,30 +95,31 @@ export function StatsPage(): React.JSX.Element {
   );
 
   return (
-    <TabPage active="stats" onNavigate={(to) => { navigate(to); }}>
-      <header className="bg-brand px-6 pt-8 pb-6 text-white">
-        <h1 className="text-xl font-semibold tracking-tight">分析</h1>
-        <p className="mt-1.5 text-sm leading-relaxed text-white/80">
-          以下结果由已记录的账目计算得出。
-        </p>
-        {/**
-          * ⚠️ **Which ledger these numbers are about** — and this is not decoration.
-          *
-          * Once an account can have several ledgers, **every figure on this screen is a claim about
-          * one of them.** The entries screen already carried the name; **without it here, two
-          * ledgers' charts look identical**, and the only way to tell them apart is to navigate
-          * somewhere else and come back.
-          *
-          * ⚠️ **The number is deliberately absent** — the owner's instruction: *"只显示名字就行……
-          * 一来那个编号太长，二来用户其实也用不着."* The name is what a person recognises; the number
-          * is what they read out loud, which happens on 账本信息, not here.
-          */}
-        {ledger.data === undefined ? null : (
-          <p className="mt-1.5 truncate text-xs text-white/70">当前账本：{ledger.data.book.name}</p>
-        )}
-      </header>
+    <TabPage currentBookName={ledger.data?.book.name} active="stats" onNavigate={(to) => { navigate(to); }}>
+      {/**
+        * ⚠️ **The green heading area is `TabPageHeader`, shared with 账本／协作** (1.10.10). The owner
+        * asked for the two to be aligned *by construction* rather than by eye: *"尽可能复用相同的标题区布局
+        * 规则或共享样式，保证以后修改时不会再次出现差异."* **The title and subtitle are now literally
+        * the same component**, so there is no second copy to drift.
+        *
+        * ⚠️ **⚠️ The 「当前账本：XXX」 row that used to sit here is gone, and that is the owner's
+        * instruction**: *"分析页底部 Tab 导航栏上方已经有相同的当前账本提示，没有必要在顶部重复展示."*
+        *
+        * ⚠️ **It is safe to remove because the bottom one is real and unaffected** — `TabPage` renders
+        * `CurrentBookCaption` from the `currentBookName` prop below, which is a **different element** at
+        * a different layer. The reason the row existed (two ledgers' charts look identical) is still
+        * answered, just once instead of twice.
+        */}
+      <TabPageHeader title="分析" subtitle="以下结果由已记录的账目计算得出。" />
 
-      <section className="flex flex-col gap-3 px-6 pt-5">
+      {/**
+        * ⚠️ **`pt-6`, to match the first block on 账本／协作** — the owner's 7th point:
+        * *"与下方第一个内容模块之间的间距."* This one was `pt-5` (20px) while the ledger tab's first
+        * card was `pt-6` (24px), so **the two headers ended 4 px apart even though the headers themselves
+        * matched exactly.** A difference that small is invisible in a code review and visible when
+        * switching tabs, which is precisely the kind the owner asked to be ruled out by construction.
+        */}
+        <section className="flex flex-col gap-3 px-6 pt-6">
         <div className="flex gap-2 overflow-x-auto pb-1">
           {STATS_RANGES.map((option) => (
             <button
@@ -152,7 +154,7 @@ export function StatsPage(): React.JSX.Element {
           ))}
         </div>
 
-        <p className="text-xs leading-relaxed text-muted">
+        <p className="text-helper-relaxed text-muted">
           {range.from} 至 {range.to}，币种为{currencyName(currencyInUse)}。
         </p>
       </section>
@@ -279,7 +281,7 @@ export function StatsPage(): React.JSX.Element {
 function Stat({ label, value }: { readonly label: string; readonly value: string }): React.JSX.Element {
   return (
     <div className="rounded-field bg-canvas px-4 py-3">
-      <dt className="text-xs text-muted">{label}</dt>
+      <dt className="text-helper text-muted">{label}</dt>
       <dd className="mt-1 text-base font-medium tabular-nums text-ink">{value}</dd>
     </div>
   );

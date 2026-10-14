@@ -44,11 +44,19 @@ export function currentBookId(): string | null {
  * ⚠️ **Notifies on every call, even when the value is unchanged**, because callers use it as
  * "the ledger is known now" rather than only as "the ledger changed" — and the request that
  * needs the header may be waiting on precisely that.
+ *
+ * ⚠️ **⚠️ Returns the write, and entering a ledger is why.** Changing ledgers ends in a full
+ * reload (`enterLedger`), and the value has to be on the device before the new document reads it
+ * back — **otherwise the reload restores the ledger that was just left.** `writeValue` only
+ * mirrors to memory *after* the IndexedDB put resolves, so an un-awaited write is a genuine race
+ * with `window.location.assign`, not a theoretical one. Callers that do not care may ignore the
+ * result; `useActivateBook` awaits it.
  */
-export function setCurrentBook(id: string | null): void {
+export function setCurrentBook(id: string | null): Promise<boolean> {
   current = id;
-  void writeValue(KEY, id);
+  const written = writeValue(KEY, id);
   for (const listener of listeners) listener();
+  return written;
 }
 
 /**

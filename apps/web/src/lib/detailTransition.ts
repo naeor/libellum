@@ -399,6 +399,13 @@ export function useDetailTransition(initial: number): DetailTransition {
     const WHEEL_SCALE = 2400;
 
     const onWheel = (event: WheelEvent): void => {
+      // Horizontal currency scrolling belongs to the card sequence, not the header transition.
+      if (
+        event.target instanceof Element &&
+        event.target.closest("[data-h-scroll]") !== null &&
+        (Math.abs(event.deltaX) > Math.abs(event.deltaY) || event.shiftKey)
+      ) return;
+
       // Only the pull past the top drives the reverse transition; everywhere
       // else the list scrolls normally and this stays out of the way.
       if (progress.current >= 1 && scroller.scrollTop > 0) return;

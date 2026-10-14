@@ -128,7 +128,7 @@ export function OfflineStatus(): React.JSX.Element | null {
   return (
     <div
       role="status"
-      className="flex flex-col gap-0.5 border-b border-line bg-canvas px-5 py-2 text-[11px] leading-relaxed text-muted"
+      className="flex flex-col gap-0.5 border-b border-line bg-canvas px-5 py-2 text-micro leading-relaxed text-muted"
     >
       {running ? (
         <>

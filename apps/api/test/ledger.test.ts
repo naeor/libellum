@@ -367,7 +367,26 @@ describe("account numbers", () => {
     expect(await numberOf(direct)).toBe("10000101");
   });
 
-  it("makes an administrator only when the code says so", async () => {
+  /**
+   * ⚠️ **This test used to assert the opposite, and it was right when it was written.**
+   *
+   * It read *"makes an administrator only when the code says so"* and checked that a code with
+   * `grantsAdmin: true` produced `isAdmin: true`. That was the deliberate behaviour the owner
+   * asked for on 2026-10-10: a privilege chosen by name rather than inferred from a reserved
+   * number.
+   *
+   * **On 2026-10-14 he changed it, and the reason is worth keeping next to the assertion.**
+   * 98 of those codes existed — never expiring, reserving `10000002`–`10000099` — and were
+   * meant to be handed out over months on printed cards. So the flag was **an automatic path
+   * to administrator**: redeeming one of those cards promoted whoever held it, without
+   * anybody deciding so at the moment it happened, which is the only moment a privilege
+   * should need. Administration is now an explicit, revocable `AdminGrant` row created by
+   * `pnpm admin:grant`, and **registration can no longer confer it at all**.
+   *
+   * ⚠️ **The reserved number is still honoured**, and that is asserted below: it was never
+   * the privilege. See `docs/管理员与权限边界-设计决定.md` §5.
+   */
+  it("gives the reserved number but not the administration", async () => {
     await prisma.registrationInvite.create({
       data: { code: "RESERVED-ADMIN", accountNumber: "10000060", grantsAdmin: true },
     });
@@ -386,10 +405,11 @@ describe("account numbers", () => {
     expect(response.statusCode, response.body).toBe(201);
     const row = await prisma.user.findUniqueOrThrow({
       where: { username: "reservedadmin" },
-      select: { isAdmin: true, accountNumber: true },
+      select: { id: true, isAdmin: true, accountNumber: true },
     });
     expect(row.accountNumber).toBe("10000060");
-    expect(row.isAdmin).toBe(true);
+    expect(row.isAdmin).toBe(false);
+    expect(await prisma.adminGrant.count({ where: { userId: row.id } })).toBe(0);
   });
 
   it("does not make a reserved number an administrator by itself", async () => {

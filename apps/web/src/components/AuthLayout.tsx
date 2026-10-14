@@ -19,7 +19,7 @@ export function AuthLayout({
     <main className="flex min-h-full items-center justify-center px-5 py-10">
       <div className="w-full max-w-sm">
         <header className="mb-8 text-center">
-          <p className="text-2xl font-semibold tracking-tight text-ink">Libellum</p>
+          <p className="text-2xl font-semibold tracking-tight text-ink">Libevra</p>
           <p className="mt-1 text-sm text-muted">the free, open ledger</p>
         </header>
 

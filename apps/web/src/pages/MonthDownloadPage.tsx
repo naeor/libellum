@@ -138,7 +138,7 @@ export function MonthDownloadPage(): React.JSX.Element {
         buttons on the right, one of them already chosen.
       */}
       <section className="flex items-center justify-between gap-3 rounded-card border border-line bg-surface px-4 py-3">
-        <span className="text-sm text-ink">联网时自动下载</span>
+        <span className="text-body text-ink">联网时自动下载</span>
 
         <span className="flex shrink-0 gap-2">
           {([true, false] as const).map((auto) => (
@@ -161,7 +161,7 @@ export function MonthDownloadPage(): React.JSX.Element {
         </span>
       </section>
 
-      <p className="text-xs leading-relaxed text-muted">
+      <p className="text-helper-relaxed text-muted">
         {never
           ? "这个月不会被自动取回。想离线看它的时候，改回「自动下载」再点下面的按钮即可。"
           : "联网时应用会自动把这个月取回到本机，离线时也能查看。"}
@@ -208,7 +208,7 @@ export function MonthDownloadPage(): React.JSX.Element {
           </Button>
         )}
 
-        <p className="text-xs leading-relaxed text-muted">
+        <p className="text-helper-relaxed text-muted">
           {stored
             ? "删除后空间会真正释放。如果这个月还是「自动下载」，下次联网时它会自己回来——不想让它回来，就先改成「永不下载」。"
             : "下载这个月之后，即使没有网络也能翻看它的每一笔。"}
@@ -218,7 +218,7 @@ export function MonthDownloadPage(): React.JSX.Element {
       <button
         type="button"
         onClick={() => void navigate("/downloads")}
-        className="text-xs text-muted underline"
+        className="text-helper text-muted underline"
       >
         返回下载管理
       </button>

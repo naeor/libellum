@@ -1,4 +1,4 @@
-﻿import { readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
@@ -13,6 +13,25 @@ import { describe, expect, it } from "vitest";
  */
 function source(relativePath: string): string {
   return readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), "utf8");
+}
+
+/**
+ * **Only the text a user can read.**
+ *
+ * ⚠️ **Comments are removed, and that is not a technicality.** The code in these files *quotes the
+ * owner's own instructions* — including the words of the flow that was removed — so that a reader can
+ * see why the code looks the way it does. A rule checked against raw source would forbid the code
+ * from explaining its own history, and **the honest fix would then be to delete the explanation**,
+ * which is the opposite of what the documentation rules ask for.
+ *
+ * So this strips comments and returns what is left: the strings, the JSX text, the attributes. **The
+ * register rules were always about the interface** — see the file header — and this is what makes the
+ * check mean that.
+ */
+function visibleText(relativePath: string): string {
+  return source(relativePath)
+    .replace(/\/\*[\s\S]*?\*\//g, "") // /* … */ and /** … */ blocks
+    .replace(/^\s*\/\/.*$/gm, ""); // whole-line // comments
 }
 
 describe("analysis screen copy", () => {
@@ -30,12 +49,49 @@ describe("analysis screen copy", () => {
   });
 });
 
-describe("collaborators copy", () => {
+describe("invitation copy", () => {
+  /**
+   * ⚠️ **`CollaboratorsPage.tsx` no longer exists (1.10.05), and this test is what would have
+   * noticed it silently.** The account-level collaborator screen was removed on the owner's
+   * instruction; its subject matter — inviting somebody into a ledger — moved to
+   * `LedgerInvitePage.tsx`. **What matters is the wording, not which file holds it**, and that is
+   * exactly what the old assertion said about the move before this one.
+   */
   it("invites rather than describes togetherness", () => {
-    // The screen used to be a placeholder; the sentence moved with it when the
-    // real page replaced it, and this test is what noticed.
-    expect(source("../pages/CollaboratorsPage.tsx")).toContain("邀请他人一同管理账目。");
-    expect(source("../pages/CollaboratorsPage.tsx")).not.toContain("和他人一起维护同一本账");
+    const invite = source("../pages/LedgerInvitePage.tsx");
+
+    // The screen says what pressing the button does, and to whom.
+    expect(invite).toContain("发送邀请");
+    expect(invite).toContain("接受之后才真正加入");
+  });
+
+  /**
+   * ⚠️ **⚠️ The old flow's instructions must not survive anywhere.** The owner's requirement is
+   * explicit: *"请检查所有因业务逻辑改变而过时的按钮、标题、提示和说明，不允许留下「必须先成为
+   * 协作者」之类已经不符合新规则的文案."*
+   *
+   * This is the assertion that keeps that true. The invite screen used to say *"在「协作者」页面按对方
+   * 账号编号找到他"* and its button pointed at `/collaborators` — a screen that no longer exists, so
+   * the sentence would have been a dead end.
+   *
+   * ⚠️ **Checked against `visibleText`, not raw source**, so these files may still explain the flow
+   * they replaced — see the note on that helper.
+   */
+  it("leaves no instruction to become a collaborator first", () => {
+    const screens = [
+      "../pages/LedgerPage.tsx",
+      "../pages/LedgerInvitePage.tsx",
+      "../pages/LedgerSubPages.tsx",
+      "../pages/MessageBoardPage.tsx",
+    ];
+
+    for (const file of screens) {
+      const text = visibleText(file);
+
+      for (const retired of ["协作者", "去邀请", "/collaborators"]) {
+        expect(text, `${file} shows 「${retired}」 to the user`).not.toContain(retired);
+      }
+    }
   });
 });
 
@@ -72,15 +128,26 @@ describe("register", () => {
       "../pages/MePage.tsx",
       "../pages/ProfilePage.tsx",
       "../pages/SettingsPage.tsx",
-      "../pages/CollaboratorsPage.tsx",
       "../pages/LedgerSpacePage.tsx",
+      /**
+       * ⚠️ **`LedgerInvitePage` replaces the removed `CollaboratorsPage` in this list (1.10.05)** —
+       * it is now the screen the invite wording lives on, so it inherits the same register rule.
+       */
+      "../pages/LedgerInvitePage.tsx",
     ];
 
     for (const file of screened) {
-      const text = source(file);
+      /**
+        * ⚠️ **`visibleText`, for the same reason the invitation check uses it** — see the note on that
+        * helper. These files legitimately *quote* the phrasing they are avoiding, so that the next
+        * reader can see what was rejected and why. Checking raw source would fail on the explanation
+        * and the fix would be to delete it, **which is the opposite of what the documentation rules
+        * ask for.** What the rule is actually about is what the user reads.
+        */
+      const text = visibleText(file);
 
       for (const colloquial of ["都是 0", "还没有", "没什么", "搞定", "挺好的"]) {
-        expect(text, `${file} contains 「${colloquial}」`).not.toContain(colloquial);
+        expect(text, `${file} shows 「${colloquial}」 to the user`).not.toContain(colloquial);
       }
     }
   });

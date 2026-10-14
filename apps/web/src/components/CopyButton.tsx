@@ -101,12 +101,12 @@ export function CopyButton({
       </Button>
 
       {phase === "manual" ? (
-        <p className="text-center text-xs leading-relaxed text-muted">
+        <p className="text-center text-helper-relaxed text-muted">
           这个浏览器不允许自动复制。下面就是全部内容，长按选择「复制」，或直接截图。
         </p>
       ) : null}
 
-      {hint === undefined ? null : <p className="text-xs text-muted">{hint}</p>}
+      {hint === undefined ? null : <p className="text-helper text-muted">{hint}</p>}
 
       {/*
         ⚠️ **Always rendered, not only on failure.**

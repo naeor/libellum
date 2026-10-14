@@ -1,4 +1,9 @@
-// Libellum database schema.
+// Libevra database schema (the project was called Libellum until 2026-10-14).
+//
+// ⚠️ **The rename stops at this comment line.** The PostgreSQL database name, every table
+// name, every column name and every migration are unbranded or deliberately unchanged, so
+// nothing in this schema is keyed by either product name — see
+// `docs/Libevra品牌迁移记录.md` §6.
 //
 // Design notes that matter (see docs/PLAN.md section 5):
 //  * money is stored as an integer number of cents, never as a float
@@ -105,8 +110,6 @@ model User {
   /// "the one I was last in", and a person can be in a book they did not create.
   lastBook Book? @relation("UserLastBook", fields: [lastBookId], references: [id], onDelete: SetNull)
 
-  collaboratorsAsA Collaborator[] @relation("CollaboratorA")
-  collaboratorsAsB Collaborator[] @relation("CollaboratorB")
   notificationsReceived Notification[] @relation("NotificationRecipient")
   notificationsSent     Notification[] @relation("NotificationSender")
   notificationQuotas    NotificationQuota[]
@@ -138,47 +141,38 @@ model User {
   /// The other side: accounts that arrived through one of my referral codes.
   invitedUsers     User[]  @relation("ReferralInvitee")
 
+  /// **Platform administration, explicitly granted to this account** — see `AdminGrant`.
+  ///
+  /// ⚠️ **`isAdmin` above is the marker; this row is the authorization.** They are two
+  /// different things on purpose: the boolean is a flag on the user, and the grant is a
+  /// dated record of a decision that can be revoked on its own. The admin guard requires
+  /// both, plus the account-number range, plus the user being on the allow list — see
+  /// `apps/api/src/admin/guard.ts`.
+  adminGrant AdminGrant?
+
+  /// **The second, independent half of the admin check** — see `AdminAllowEntry`.
+  ///
+  /// ⚠️ **A different table, not a different query.** An account must be *listed* here as
+  /// well as *granted* above; a grant alone is not enough, which is the whole point of the
+  /// second check. See `docs/管理员与权限边界-设计决定.md` §4.
+  adminAllowEntry AdminAllowEntry?
+
   @@map("users")
-}
-
-/// **A collaborator relationship between two accounts — not a membership of any ledger.**
-///
-/// ⚠️ **The owner's correction is what this table encodes**: *"好友指的就是一个账号所有协作者的集合"* —
-/// A sharing ledger 1 with B and ledger 2 with C has **{B, C}** as collaborators, and both appear on
-/// one list. So the relationship is between **accounts**, while the ledgers they share are separate
-/// rows in `book_members`.
-///
-/// ⚠️ **It grants nothing.** Ledger permission still comes from `book_members` alone. What this
-/// adds is *"who can I invite"* and *"who am I keeping books with"*.
-///
-/// ⚠️ **One row per relationship, not one per invitation.** The primary key orders the two ids
-/// (`userA < userB`, enforced by a CHECK), so "A added B" and "B added A" are the same row. A
-/// directed pair would allow half-relationships — his screen says friends, mine does not.
-///
-/// ⚠️ **Both sides must agree** (*"加为协作者需要对方同意"*), so a row exists only after the
-/// recipient accepted. **There is no pending row**: the undecided state lives in the notification,
-/// and storing it in both places is how the two come to disagree.
-model Collaborator {
-  userA     String   @map("user_a") @db.Uuid
-  userB     String   @map("user_b") @db.Uuid
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-
-  a User @relation("CollaboratorA", fields: [userA], references: [id], onDelete: Cascade)
-  b User @relation("CollaboratorB", fields: [userB], references: [id], onDelete: Cascade)
-
-  @@id([userA, userB])
-  @@index([userB])
-  @@map("collaborators")
 }
 
 /// **One message waiting for one person to decide.**
 ///
-/// Three kinds, from the owner's design: a request to become collaborators, an invitation into a
-/// ledger, and the seven-day reminder that follows using somebody's referral code.
+/// Two kinds remain: an invitation into a ledger, and the seven-day reminder that follows using
+/// somebody's referral code.
 ///
-/// ⚠️ **`bookId` is nullable and that is meaningful**: a collaborator request and a referral
-/// reminder belong to **no ledger**. Borrowing a fake one would make "which ledger is this about"
-/// a lie that has to be explained.
+/// ⚠️ **There used to be a third — a request to become an account-level "collaborator" — and it was
+/// removed in 1.10.05.** The owner's decision: a ledger is like a group chat, so an invitation
+/// belongs to the ledger and needs no account-level relationship in front of it. See the migration
+/// `remove_account_level_collaborators`.
+///
+/// ⚠️ **`bookId` is nullable and that is meaningful**: the referral reminder belongs to **no
+/// ledger**, and it is now the only kind that can say so. Borrowing a fake ledger would make
+/// "which ledger is this about" a lie that has to be explained.
 ///
 /// ⚠️ **There is no `expired` status.** Expiry is computed from `expiresAt`, never stored: a status
 /// that needs a scheduled job to become true is wrong on any day the job does not run.
@@ -288,21 +282,26 @@ model RegistrationInvite {
   /// Null for a code generated before numbers were pre-allocated.
   accountNumber String? @unique @map("account_number")
 
-  /// Whether redeeming this code produces an **administrator**.
+  /// Whether redeeming this code **reserves a first-batch account number**.
   ///
-  /// ⚠️ **This used to be inferred from `accountNumber !== null`, and that was
-  /// wrong** — the owner caught it. "The code reserved a number" and "this
-  /// person should be an administrator" are two different facts, and tying them
-  /// together meant **any invocation that reserved a number minted an
-  /// administrator**: `pnpm invite:create --reserved`, and the whole batch
-  /// generator, both of which are ordinary commands somebody might run for
-  /// somebody who should not have those powers at all.
+  /// ⚠️ **This column used to grant administration at registration, and it no longer does**
+  /// (2026-10-14, 1.10.22). Two separate problems met here:
   ///
-  /// A stored flag rather than an inference, because a privilege should be
-  /// granted deliberately. The two facts still travel together in practice —
-  /// the batch is admin and ordinary codes are not — but that is a *decision made
-  /// by the command that creates the code*, not a rule the registration path
-  /// derives from an unrelated column.
+  ///  * **It was an automatic path to administrator.** Anyone holding one of the 98 codes
+  ///    the owner had printed (numbers `10000002`–`10000099`) could register and become an
+  ///    administrator **without anybody deciding so at that moment** — and those codes never
+  ///    expire and were meant to be handed out over months. A privilege that a piece of paper
+  ///    confers is a privilege nobody is holding.
+  ///  * **Both facts are better expressed elsewhere now.** "This is a first-batch number" is
+  ///    the account-number range, and "this account administers the platform" is an
+  ///    `AdminGrant` row. Neither needs to be carried on the code.
+  ///
+  /// **The flag is kept because the numbers it reserved are still real** — clearing the
+  /// numbers would lose the reservation — but nothing reads it to decide a privilege.
+  /// The migration that made this change also cleared the unused rows, so the database no
+  /// longer claims these codes promote anybody.
+  ///
+  /// See `docs/管理员与权限边界-设计决定.md`.
   grantsAdmin Boolean @default(false) @map("grants_admin")
 
   /// When the code was withdrawn before anybody used it.
@@ -334,7 +333,6 @@ model RegistrationInvite {
   /// ⚠️ **Defaults to `false`, the more conservative answer.** A code somebody forgot to configure
   /// must not become a one-click door to their collaborator list; opening it up is a deliberate
   /// tick. **A default that grants is a default that will be granted by accident.**
-  allowsDirectCollaborator Boolean @default(false) @map("allows_direct_collaborator")
 
   /// **Who minted this code**, when it is a *referral* code rather than a plain invitation.
   ///
@@ -448,7 +446,13 @@ model TransactionEvent {
   actorId   String? @map("actor_id") @db.Uuid
   actorName String? @map("actor_name") @db.VarChar(64)
 
-  /// `created` / `updated` / `deleted` / `restored` / `member_changed`.
+  /// `created` / `updated` / `deleted` / `restored` / `member_changed` / `book_changed`.
+  ///
+  /// ⚠️ **The database enforces this list** (`transaction_events_kind_known`, a CHECK constraint),
+  /// and that is on purpose: a typo in a `recordEvent` call would otherwise produce a history row
+  /// whose verb `KIND_VERB` cannot look up — **a crash on the history screen, days later, far from
+  /// the line that caused it.** Adding a kind is therefore a migration, and that is the intended
+  /// cost: the list of things a ledger can record is a decision, not a string.
   kind String @db.VarChar(24)
 
   /// ⚠️ **Which fields changed, and what they were before and after**:
@@ -1073,4 +1077,115 @@ model ImportLog {
 
   @@index([bookId, createdAt])
   @@map("import_logs")
+}
+
+/// **Platform administration, granted to one account on purpose.**
+///
+/// ⚠️ **This table exists because `users.is_admin` was not enough, and the reason is not
+/// cosmetic.** A boolean on the user row says *that* somebody is an administrator and
+/// nothing else: no record of who decided, no date, and no way to revoke it that is
+/// distinguishable from the grant itself. This is the **authorization half** of the admin
+/// check, and it is deliberate that it is a different fact from the allow list the guard
+/// also consults — see `apps/api/src/admin/guard.ts` and
+/// `docs/管理员与权限边界-设计决定.md`.
+///
+/// Four things worth knowing, all of them decisions rather than accidents:
+///
+///  * **One row per account** (`userId` is the primary key). "Is this account authorized"
+///    is a question with one answer, and a second live grant would be a second answer.
+///    Re-granting after a revocation **revives this row** rather than adding another, which
+///    is what keeps the history on a single line.
+///  * **`revokedAt` rather than a delete.** Revoking is a fact about the past; deleting the
+///    row would erase the evidence that the account ever held the role, which is exactly
+///    what an audit would need. The guard ignores revoked rows, so revocation takes effect
+///    on the next request — **nothing caches this**, deliberately: a cached admin decision
+///    is an administrator who cannot be fired.
+///  * **`grantedBy` is free text, not a foreign key.** The person who runs the grant script
+///    is the machine owner at a terminal, and they may not have an account in the
+///    application at all. A foreign key would force a row that does not exist, or invite a
+///    fake one.
+///  * **`Cascade` on delete.** Deleting the account removes its authorization. The
+///    alternative — a grant row pointing at nobody — is a privilege waiting for a UUID to
+///    be reused, and UUID reuse is not something to leave to chance.
+///
+/// ⚠️ **Being an administrator is not a licence to read other people's ledgers.** Ledger
+/// access comes from `book_members` and from nothing else; this table grants the ability to
+/// perform *platform* operations, each of which still has to define its own scope. See
+/// `docs/管理员与权限边界-设计决定.md` §6.
+model AdminGrant {
+  /// The account that holds the grant. One row per account, by construction.
+  userId String @id @map("user_id") @db.Uuid
+
+  grantedAt DateTime @default(now()) @map("granted_at") @db.Timestamptz(6)
+
+  /// Who ran the grant. Free text on purpose — see the note above.
+  grantedBy String @map("granted_by") @db.VarChar(200)
+
+  /// When administration was taken away. Null means "currently holds it".
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(6)
+  revokedBy String?   @map("revoked_by") @db.VarChar(200)
+
+  /// Why it was revoked, for whoever reads this later. Optional because the reason is
+  /// sometimes "the owner said so", which is a real reason and a short one.
+  note String? @db.VarChar(500)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([revokedAt])
+  @@map("admin_grants")
+}
+
+/// **The accounts administration may currently be exercised as — the second, independent
+/// half of the admin check.**
+///
+/// ⚠️ **This table exists because the first attempt at the second check was not really a
+/// second check** (2026-10-14, 1.10.23). The guard's allow-list half used to answer by
+/// deriving the list from `admin_grants` — *"is this account granted **and** first-batch?"* —
+/// which reads like a pair of conditions and behaves like one condition. **A grant alone
+/// then satisfied both halves**, so the two checks could never disagree, and the whole point
+/// of asking twice was lost. The owner spotted it: *"授权记录和允许名单并没有完全分离"*.
+///
+/// What the two halves must be is **two facts, stored twice, revocable separately**:
+///
+/// | | `admin_grants` | `admin_allowlist` (this table) |
+/// |---|---|---|
+/// | Question | *"has this account been granted the role?"* | *"is this account one of the accounts administration may run as?"* |
+/// | Written by | `pnpm admin:grant` | `pnpm admin:allow` |
+/// | Removed by | `pnpm admin:revoke` | `pnpm admin:disallow` |
+/// | Can be present alone | ✅ — and then the guard **refuses** | ✅ — and then the guard **refuses** |
+///
+/// ⚠️ **Nothing derives one from the other, and that is enforced in both directions.**
+/// `pnpm admin:grant` does **not** add a list entry, and `pnpm admin:allow` does **not**
+/// create a grant. An operator has to mean both. The regression test that pins this is
+/// *"a second eligible account with a grant but no listing is still refused"* — a guard that
+/// derived the list would pass every other test in the suite and fail only that one.
+///
+/// ⚠️ **The migration that created this table inserted no rows.** A list that arrives
+/// pre-populated is a privilege nobody decided on; adding the first account is a deliberate
+/// command run against a named UUID.
+///
+/// ⚠️ **`revoked_at` rather than a delete**, for the same reason as `AdminGrant`: taking
+/// somebody off the list is a fact about the past, and the record of it is what an incident
+/// review reads. The guard reads only unrevoked rows, so removal takes effect on the next
+/// request — nothing is cached.
+model AdminAllowEntry {
+  /// The account permitted to exercise administration. This **is** the stored UUID the
+  /// brief asks to be checked independently of any role record.
+  userId String @id @map("user_id") @db.Uuid
+
+  listedAt DateTime @default(now()) @map("listed_at") @db.Timestamptz(6)
+
+  /// Who put the account on the list. Free text, for the same reason as `AdminGrant.grantedBy`.
+  listedBy String @map("listed_by") @db.VarChar(200)
+
+  /// When the account was taken off the list. Null means "on the list now".
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(6)
+  revokedBy String?   @map("revoked_by") @db.VarChar(200)
+
+  note String? @db.VarChar(500)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([revokedAt])
+  @@map("admin_allowlist")
 }

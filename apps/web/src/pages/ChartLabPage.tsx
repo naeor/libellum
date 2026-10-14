@@ -76,7 +76,7 @@ export function ChartLabPage(): React.JSX.Element {
     <main className="mx-auto flex min-h-full w-full max-w-md flex-col gap-8 px-4 py-8">
       <header>
         <h1 className="text-xl font-semibold text-ink">组件预览 · 开发验证页</h1>
-        <p className="mt-1.5 text-sm leading-relaxed text-muted">
+        <p className="mt-1.5 text-body-relaxed text-muted">
           这个页面只在开发模式下存在，用来确认图表与完成页在异常数据下仍然可读。它不是产品功能，也不需要登录。
         </p>
       </header>
@@ -85,7 +85,7 @@ export function ChartLabPage(): React.JSX.Element {
         <div className="-m-4 overflow-hidden rounded-card">
           <div className="flex min-h-64 flex-col items-center justify-center gap-3 bg-brand px-6 py-10 text-white">
             <DefaultAvatar />
-            <p className="mt-1 text-xl font-semibold tracking-tight">Tao</p>
+            <p className="mt-1 text-page-title">Tao</p>
             <p className="text-xs text-white/75">@naeor</p>
           </div>
         </div>
@@ -217,11 +217,11 @@ export function ChartLabPage(): React.JSX.Element {
       <Section title="异常状态">
         <div className="flex flex-col gap-6">
           <div>
-            <p className="mb-2 text-xs text-ink">没有任何数据</p>
+            <p className="mb-2 text-helper text-ink">没有任何数据</p>
             <TrendChart points={[]} currency={CURRENCY} bucket="day" hasEntries={false} />
           </div>
           <div>
-            <p className="mb-2 text-xs text-ink">
+            <p className="mb-2 text-helper text-ink">
               没有数据，但序列被补过零（**这是本次修掉的 bug**：以前会误报"金额均为零"）
             </p>
             <TrendChart
@@ -236,7 +236,7 @@ export function ChartLabPage(): React.JSX.Element {
             />
           </div>
           <div>
-            <p className="mb-2 text-xs text-ink">有记录但全为零</p>
+            <p className="mb-2 text-helper text-ink">有记录但全为零</p>
             <TrendChart
               points={[{ bucket: "2026-10-01", expenseMinor: 0, incomeMinor: 0 }]}
               currency={CURRENCY}
@@ -245,14 +245,14 @@ export function ChartLabPage(): React.JSX.Element {
             />
           </div>
           <div>
-            <p className="mb-2 text-xs text-ink">只有一个分类</p>
+            <p className="mb-2 text-helper text-ink">只有一个分类</p>
             <CategoryDonut
               totals={[{ categoryId: "1", name: "餐饮", kind: "expense", minor: 5_000, share: 1 }]}
               currency={CURRENCY}
             />
           </div>
           <div>
-            <p className="mb-2 text-xs text-ink">全零的年度总览</p>
+            <p className="mb-2 text-helper text-ink">全零的年度总览</p>
             <YearOverview
               months={monthSeries(Array.from({ length: 12 }, () => 0))}
               totals={EMPTY_TOTALS}
@@ -260,7 +260,7 @@ export function ChartLabPage(): React.JSX.Element {
             />
           </div>
           <div>
-            <p className="mb-2 text-xs text-ink">含负结余的年度总览</p>
+            <p className="mb-2 text-helper text-ink">含负结余的年度总览</p>
             <YearOverview
               months={monthSeries([120_000, 300_000, 480_000, 90_000, 210_000, 260_000, 150_000, 88_000, 300_000, 190_000, 240_000, 420_000])}
               totals={{ ...TOTALS, incomeMinor: 100_000, netMinor: -202_000 }}
@@ -268,7 +268,7 @@ export function ChartLabPage(): React.JSX.Element {
             />
           </div>
           <div>
-            <p className="mb-2 text-xs text-ink">日元（没有小数位）</p>
+            <p className="mb-2 text-helper text-ink">日元（没有小数位）</p>
             <TrendChart
               points={[
                 { bucket: "2026-08", expenseMinor: 12_000, incomeMinor: 30_000 },

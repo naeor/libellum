@@ -60,12 +60,12 @@ function AddRow({
         onChange={(event) => {
           setName(event.target.value);
         }}
-        className="flex-1 rounded-field border border-line bg-surface px-3.5 py-3 text-base text-ink outline-none placeholder:text-muted/60 focus:border-brand focus:ring-4 focus:ring-brand-soft"
+        className="flex-1 rounded-field border border-line bg-surface px-3.5 py-3 text-base text-ink outline-none placeholder:text-muted/80 focus:border-brand focus:ring-4 focus:ring-brand-soft"
       />
       <button
         type="submit"
         disabled={busy || name.trim() === ""}
-        className="shrink-0 rounded-field bg-brand px-5 text-sm font-medium text-white transition hover:bg-brand-dark disabled:opacity-50"
+        className="shrink-0 rounded-field bg-brand px-5 text-sm font-medium text-white transition hover:bg-brand-dark disabled:opacity-45"
       >
         添加
       </button>
@@ -110,11 +110,11 @@ function ArchivableList({
                 {/* The preset explanation, shown plainly here: this is the
                     screen somebody opens precisely to read them. */}
                 {description ? (
-                  <span className="text-xs leading-relaxed text-muted">{description}</span>
+                  <span className="text-helper-relaxed text-muted">{description}</span>
                 ) : null}
-                {locked ? <span className="text-xs text-muted">系统分类，不可修改</span> : null}
+                {locked ? <span className="text-helper text-muted">系统分类，不可修改</span> : null}
                 {item.isArchived && !locked ? (
-                  <span className="text-xs text-muted">已归档，历史记录仍显示</span>
+                  <span className="text-helper text-muted">已归档，历史记录仍显示</span>
                 ) : null}
               </span>
 
@@ -125,7 +125,7 @@ function ArchivableList({
                   onClick={() => {
                     onRestore(item);
                   }}
-                  className="shrink-0 text-sm text-brand-dark transition hover:underline disabled:opacity-50"
+                  className="shrink-0 text-body text-brand-dark transition hover:underline disabled:opacity-45"
                 >
                   恢复
                 </button>
@@ -136,7 +136,7 @@ function ArchivableList({
                   onClick={() => {
                     onArchive(item);
                   }}
-                  className="shrink-0 text-sm text-muted transition hover:text-ink disabled:opacity-50"
+                  className="shrink-0 text-body text-muted transition hover:text-ink disabled:opacity-45"
                 >
                   归档
                 </button>
@@ -221,7 +221,7 @@ export function CategoriesPage(): React.JSX.Element {
 
           {archived.length > 0 ? (
             <section className="flex flex-col gap-2">
-              <h2 className="px-1 text-xs text-muted">已归档（{String(archived.length)}）</h2>
+              <h2 className="px-1 text-helper text-muted">已归档（{String(archived.length)}）</h2>
               <ArchivableList
                 items={archived}
                 busyId={update.isPending ? (pending?.id ?? null) : null}
@@ -314,7 +314,7 @@ export function PaymentMethodsPage(): React.JSX.Element {
 
           {archived.length > 0 ? (
             <section className="flex flex-col gap-2">
-              <h2 className="px-1 text-xs text-muted">已归档（{String(archived.length)}）</h2>
+              <h2 className="px-1 text-helper text-muted">已归档（{String(archived.length)}）</h2>
               <ArchivableList
                 items={archived}
                 busyId={update.isPending ? (pending?.id ?? null) : null}
@@ -405,7 +405,7 @@ export function TagsPage(): React.JSX.Element {
           onChange={(event) => {
             setName(event.target.value);
           }}
-          className="rounded-field border border-line bg-surface px-3.5 py-3 text-base text-ink outline-none placeholder:text-muted/60 focus:border-brand focus:ring-4 focus:ring-brand-soft"
+          className="rounded-field border border-line bg-surface px-3.5 py-3 text-base text-ink outline-none placeholder:text-muted/80 focus:border-brand focus:ring-4 focus:ring-brand-soft"
         />
 
         <div className="flex items-center gap-2">
@@ -439,7 +439,7 @@ export function TagsPage(): React.JSX.Element {
                 setError(errorMessage(caught));
               });
           }}
-          className="w-full rounded-field bg-brand py-3 text-sm font-medium text-white transition hover:bg-brand-dark disabled:opacity-50"
+          className="w-full rounded-field bg-brand py-3 text-sm font-medium text-white transition hover:bg-brand-dark disabled:opacity-45"
         >
           添加标签
         </button>
@@ -454,14 +454,14 @@ export function TagsPage(): React.JSX.Element {
               <div className="flex items-center justify-between gap-4 border-b border-line px-5 py-3.5 last:border-b-0">
                 <span className="flex items-center gap-3">
                   <span style={{ backgroundColor: tag.color }} className="size-3 rounded-full" />
-                  <span className="text-sm text-ink">{tag.name}</span>
+                  <span className="text-body text-ink">{tag.name}</span>
                 </span>
                 <button
                   type="button"
                   onClick={() => {
                     setPending({ id: tag.id, name: tag.name });
                   }}
-                  className="shrink-0 text-sm text-muted transition hover:text-danger"
+                  className="shrink-0 text-body text-muted transition hover:text-danger"
                 >
                   删除
                 </button>

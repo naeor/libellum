@@ -2,7 +2,7 @@
   "name": "@libellum/shared",
   "version": "0.1.0",
   "private": true,
-  "description": "Types, schemas and pure helpers shared by the Libellum web app and API",
+  "description": "Types, schemas and pure helpers shared by the Libevra web app and API",
   "license": "AGPL-3.0-only",
   "type": "module",
   "main": "./src/index.ts",

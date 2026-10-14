@@ -354,9 +354,9 @@ export function AddEntryPage(): React.JSX.Element {
               placeholder={amountPlaceholder(currency)}
               aria-label="金额"
               autoFocus
-              className="w-full bg-transparent text-4xl font-semibold text-ink outline-none placeholder:text-muted/50"
+              className="w-full bg-transparent text-4xl font-semibold text-ink outline-none placeholder:text-muted/80"
             />
-            <span className="text-sm text-muted">{currency}</span>
+            <span className="text-body text-muted">{currency}</span>
           </label>
 
           <div className="flex flex-wrap gap-2 pt-3">
@@ -367,7 +367,7 @@ export function AddEntryPage(): React.JSX.Element {
                 onClick={() => {
                   setAmountText(minorToInput(cents, currency));
                 }}
-                className="rounded-full border border-brand-soft bg-brand-soft px-3.5 py-1.5 text-sm text-brand-dark transition hover:border-brand"
+                className="rounded-full border border-brand-soft bg-brand-soft px-3.5 py-1.5 text-body text-brand-dark transition hover:border-brand"
               >
                 {minorToInput(cents, currency)}
               </button>
@@ -387,7 +387,7 @@ export function AddEntryPage(): React.JSX.Element {
         ) : null}
 
         <section className="flex flex-col gap-2 px-6 pt-5">
-          <h2 className="text-xs text-muted">分类</h2>
+          <h2 className="text-helper text-muted">分类</h2>
 
           <div className="overflow-hidden rounded-field border border-line bg-surface">
             <button
@@ -398,7 +398,7 @@ export function AddEntryPage(): React.JSX.Element {
               }}
               className="flex w-full items-center justify-between px-4 py-3.5 text-left transition hover:bg-canvas"
             >
-              <span className="text-[15px] text-ink">
+              <span className="text-button-lg text-ink">
                 {selectedCategory?.name ?? UNCATEGORISED_LABEL}
               </span>
               <span className="text-muted" aria-hidden="true">
@@ -459,7 +459,7 @@ export function AddEntryPage(): React.JSX.Element {
                     </div>
 
                     {hintCategoryId === category.id && category.description ? (
-                      <p className="px-4 pb-3 text-xs leading-relaxed text-muted">
+                      <p className="px-4 pb-3 text-helper-relaxed text-muted">
                         {category.description}
                       </p>
                     ) : null}
@@ -469,11 +469,11 @@ export function AddEntryPage(): React.JSX.Element {
             ) : null}
           </div>
 
-          <p className="text-xs text-muted">不选也可以保存，会记入「{UNCATEGORISED_LABEL}」。</p>
+          <p className="text-helper text-muted">不选也可以保存，会记入「{UNCATEGORISED_LABEL}」。</p>
         </section>
 
         <section className="flex flex-col gap-2 px-6 pt-5">
-          <h2 className="text-xs text-muted">支付方式</h2>
+          <h2 className="text-helper text-muted">支付方式</h2>
           <div className="flex flex-wrap gap-2">
             {paymentMethods.map((method) => (
               <button
@@ -495,7 +495,7 @@ export function AddEntryPage(): React.JSX.Element {
         </section>
 
         <section className="flex flex-col gap-2 px-6 pt-5">
-          <h2 className="text-xs text-muted">币种</h2>
+          <h2 className="text-helper text-muted">币种</h2>
           <div className="flex flex-wrap gap-2">
             {CURRENCIES.map((code) => (
               <button
@@ -512,13 +512,13 @@ export function AddEntryPage(): React.JSX.Element {
               </button>
             ))}
           </div>
-          <p className="text-xs leading-relaxed text-muted">
+          <p className="text-helper-relaxed text-muted">
             金额按各币种自身的精度记录，例如日元不保留小数。
           </p>
         </section>
 
         <section className="flex flex-col gap-2 px-6 pt-5">
-          <h2 className="text-xs text-muted">时间</h2>
+          <h2 className="text-helper text-muted">时间</h2>
           <input
             type="datetime-local"
             step="1"
@@ -532,7 +532,7 @@ export function AddEntryPage(): React.JSX.Element {
         </section>
 
         <section className="flex flex-col gap-2 px-6 pt-5">
-          <h2 className="text-xs text-muted">备注</h2>
+          <h2 className="text-helper text-muted">备注</h2>
           <input
             value={note}
             onChange={(event) => {
@@ -540,13 +540,13 @@ export function AddEntryPage(): React.JSX.Element {
             }}
             maxLength={200}
             placeholder="可不填"
-            className="rounded-field border border-line bg-surface px-3.5 py-3 text-base text-ink outline-none placeholder:text-muted/60 focus:border-brand focus:ring-4 focus:ring-brand-soft"
+            className="rounded-field border border-line bg-surface px-3.5 py-3 text-base text-ink outline-none placeholder:text-muted/80 focus:border-brand focus:ring-4 focus:ring-brand-soft"
           />
         </section>
 
         {tags.length > 0 ? (
           <section className="flex flex-col gap-2 px-6 pt-5">
-            <h2 className="text-xs text-muted">
+            <h2 className="text-helper text-muted">
               标签（最多 {String(MAX_TAGS_PER_TRANSACTION)} 个，已选 {String(tagIds.length)} 个）
             </h2>
             <div className="flex flex-wrap gap-2">
@@ -582,7 +582,7 @@ export function AddEntryPage(): React.JSX.Element {
           <button
             type="submit"
             disabled={createEntry.isPending || amountText.trim() === ""}
-            className="w-full rounded-field bg-brand py-3.5 text-[15px] font-medium text-white transition hover:bg-brand-dark disabled:opacity-50"
+            className="w-full rounded-field bg-brand py-3.5 text-button-lg font-medium text-white transition hover:bg-brand-dark disabled:opacity-45"
           >
             {createEntry.isPending ? "保存中…" : "保存"}
           </button>

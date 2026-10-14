@@ -14,7 +14,7 @@ export function Alert({
   readonly children: React.ReactNode;
 }): React.JSX.Element {
   return (
-    <div role="status" className={`rounded-field px-4 py-3 text-sm leading-relaxed ${TONES[tone]}`}>
+    <div role="status" className={`rounded-field px-4 py-3 text-body-relaxed ${TONES[tone]}`}>
       {children}
     </div>
   );

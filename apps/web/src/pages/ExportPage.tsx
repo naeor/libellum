@@ -164,7 +164,7 @@ export function ExportPage(): React.JSX.Element {
 
       {/* ------------------------------------------------------------------ */}
       <section className="flex flex-col gap-3">
-        <h2 className="text-xs text-muted">时间范围</h2>
+        <h2 className="text-helper text-muted">时间范围</h2>
 
         <div className="grid grid-cols-2 gap-2">
           {(Object.keys(RANGE_LABELS) as Exclude<RangePreset, "custom">[]).map((preset) => (
@@ -210,7 +210,7 @@ export function ExportPage(): React.JSX.Element {
                 className="w-full rounded-field border border-line bg-surface px-3 py-3 text-[16px] text-ink"
               />
             </label>
-            <span className="text-sm text-muted">至</span>
+            <span className="text-body text-muted">至</span>
             <label className="flex-1">
               <span className="sr-only">结束月份</span>
               <input
@@ -225,7 +225,7 @@ export function ExportPage(): React.JSX.Element {
           </div>
         ) : null}
 
-        <p className="text-xs leading-relaxed text-muted">
+        <p className="text-helper-relaxed text-muted">
           当前选择：{range === "custom"
             ? `${formatMonthLabel(customFrom)} 至 ${formatMonthLabel(customTo)}`
             : range === "all"
@@ -236,7 +236,7 @@ export function ExportPage(): React.JSX.Element {
 
       {/* ------------------------------------------------------------------ */}
       <section className="flex flex-col gap-3">
-        <h2 className="text-xs text-muted">文件格式</h2>
+        <h2 className="text-helper text-muted">文件格式</h2>
 
         <div className="grid grid-cols-2 gap-2">
           {(
@@ -267,10 +267,10 @@ export function ExportPage(): React.JSX.Element {
 
       {/* ------------------------------------------------------------------ */}
       <section className="flex flex-col gap-3">
-        <h2 className="text-xs text-muted">筛选（可不选）</h2>
+        <h2 className="text-helper text-muted">筛选（可不选）</h2>
 
         <label className="flex flex-col gap-1.5">
-          <span className="text-sm text-ink">收支类型</span>
+          <span className="text-body text-ink">收支类型</span>
           <select
             value={kind}
             onChange={(event) => {
@@ -285,7 +285,7 @@ export function ExportPage(): React.JSX.Element {
         </label>
 
         <label className="flex flex-col gap-1.5">
-          <span className="text-sm text-ink">币种</span>
+          <span className="text-body text-ink">币种</span>
           <select
             value={currency}
             onChange={(event) => {
@@ -303,7 +303,7 @@ export function ExportPage(): React.JSX.Element {
         </label>
 
         <label className="flex flex-col gap-1.5">
-          <span className="text-sm text-ink">分类</span>
+          <span className="text-body text-ink">分类</span>
           <select
             value={categoryId}
             onChange={(event) => {
@@ -332,7 +332,7 @@ export function ExportPage(): React.JSX.Element {
           {busy ? "正在准备…" : "导出"}
         </Button>
 
-        <p className="text-xs leading-relaxed text-muted">{deliveryHint}</p>
+        <p className="text-helper-relaxed text-muted">{deliveryHint}</p>
 
         <Button
           variant="secondary"
@@ -343,7 +343,7 @@ export function ExportPage(): React.JSX.Element {
         >
           下载导入模板
         </Button>
-        <p className="text-xs leading-relaxed text-muted">
+        <p className="text-helper-relaxed text-muted">
           模板只有表头，没有数据。它和导出的文件是同一套列，可以在里面逐行填写。
         </p>
 
@@ -374,7 +374,7 @@ export function ExportPage(): React.JSX.Element {
         cannot show it.
       */}
 
-      <p className="text-xs leading-relaxed text-muted">
+      <p className="text-helper-relaxed text-muted">
         导出默认币种：{currencyName(user?.defaultCurrency ?? "CNY")}。不同币种分开统计，不做汇率换算。
       </p>
     </InnerPage>

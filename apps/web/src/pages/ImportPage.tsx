@@ -103,7 +103,7 @@ export function ImportPage(): React.JSX.Element {
             下载模板
           </Button>
 
-          <div className="rounded-field bg-brand-soft px-4 py-3 text-xs leading-relaxed text-brand-dark">
+          <div className="rounded-field bg-brand-soft px-4 py-3 text-helper-relaxed text-brand-dark">
             <p className="font-medium">关于判重</p>
             <p className="mt-1">
               文件里带的「流水编号」如果这个账本已经有了，那一行会被跳过，并在报告里写出来。
@@ -195,7 +195,7 @@ function Report({
               key={`${String(problem.line)}-${problem.column ?? ""}`}
               className="flex gap-3 border-b border-line px-4 py-3 text-sm last:border-b-0"
             >
-              <span className="shrink-0 font-mono text-xs text-muted">第 {problem.line} 行</span>
+              <span className="shrink-0 font-mono text-helper text-muted">第 {problem.line} 行</span>
               <span className="text-ink">
                 {problem.column === null ? "" : `${problem.column}：`}
                 {problem.message}
@@ -205,7 +205,7 @@ function Report({
         </ul>
 
         {report.errors.length > 50 ? (
-          <p className="text-xs text-muted">
+          <p className="text-helper text-muted">
             只显示了前 50 处，还有 {String(report.errors.length - 50)} 处。
           </p>
         ) : null}
@@ -234,7 +234,7 @@ function Report({
         )}
       </dl>
 
-      <p className="text-xs leading-relaxed text-muted">
+      <p className="text-helper-relaxed text-muted">
         导入编号是这次导入的标识，写进了这批每一笔记录里，日后可以据此追溯它们是从哪个文件来的。
       </p>
 
@@ -257,8 +257,8 @@ function Row({
 }): React.JSX.Element {
   return (
     <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-3 last:border-b-0">
-      <dt className="text-sm text-muted">{label}</dt>
-      <dd className={`text-sm text-ink ${mono ? "font-mono text-xs" : ""}`}>{value}</dd>
+      <dt className="text-body text-muted">{label}</dt>
+      <dd className={`text-body text-ink ${mono ? "font-mono text-xs" : ""}`}>{value}</dd>
     </div>
   );
 }

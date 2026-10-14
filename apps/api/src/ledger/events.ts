@@ -19,7 +19,21 @@ import type { Prisma } from "../generated/prisma/client.js";
 
 type Tx = Prisma.TransactionClient;
 
-export type EventKind = "created" | "updated" | "deleted" | "restored" | "member_changed";
+export type EventKind =
+  | "created"
+  | "updated"
+  | "deleted"
+  | "restored"
+  | "member_changed"
+  /**
+   * ⚠️ **About the ledger itself rather than about one entry** (added 1.10.08, for renaming).
+   *
+   * ⚠️ **The counterpart of `member_changed`, and for the same reason**: `transactionId` and
+   * `transactionSeq` are both null, because there is no entry behind it. The owner's framing for the
+   * history is *"谁在什么时候，对哪一笔账目做了什么修改"* — and his own extension of it —
+   * *"也可以适当展示成员加入、退出……等重要协作事件."* **A ledger's name changing is one of those.**
+   */
+  | "book_changed";
 
 /** One field's before and after, as the history screen renders it. */
 export interface FieldChange {
@@ -87,6 +101,18 @@ const TRACKED_FIELDS: readonly { readonly key: string; readonly label: string }[
   { key: "occurredAt", label: "时间" },
   { key: "occurredTz", label: "时区" },
   { key: "note", label: "备注" },
+  /**
+   * ⚠️ **A ledger's name is not an entry field, and it is in this table anyway** (1.10.08).
+   *
+   * The table is not really "the entry's tracked fields" — it is **"every key that can appear in an
+   * event's `changes`, and what to call it on screen."** `history.ts` renders `label` by looking the
+   * key up here and **falls back to the raw column name**, so a `book_changed` event whose key was
+   * missing would print *"name：（空）→ 共享账本"* — a field name in English, in a Chinese sentence.
+   *
+   * ⚠️ **Adding it to `diffEntry`'s loop is harmless**: that loop skips any key not present in
+   * `after`, and a transaction has no `name` field, so no entry edit can ever produce it.
+   */
+  { key: "name", label: "名称" },
 ];
 
 export function trackedFieldLabel(key: string): string | null {

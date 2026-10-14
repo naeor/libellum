@@ -27,9 +27,9 @@ export function Button({
   return (
     <button
       {...props}
-      className={`inline-flex items-center justify-center gap-2 rounded-field px-4 py-3 text-[15px] font-medium transition disabled:cursor-not-allowed disabled:opacity-45 ${
+      className={`inline-flex items-center justify-center gap-2 rounded-field px-4 py-3 text-button-lg font-medium transition disabled:cursor-not-allowed disabled:opacity-45 ${
         fullWidth ? "w-full" : "w-auto"
-      } ${VARIANTS[variant]} ${className}`}
+      } outline-none focus-visible:ring-4 focus-visible:ring-brand-soft ${VARIANTS[variant]} ${className}`}
     />
   );
 }

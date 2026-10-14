@@ -10,9 +10,9 @@ import { decideNotification } from "../collab/respond.js";
 /**
  * The inbox: what is waiting for me, and what I decide about it.
  *
- * ⚠️ **This is where an undecided thing lives** — not in the collaborator table and not in
- * `book_members`. A relationship row exists only after both sides agreed, so there is exactly one
- * record of "waiting" and it cannot disagree with itself (`教训.md` §8.7).
+ * ⚠️ **This is where an undecided thing lives** — not in `book_members`. A membership row exists
+ * only after the invitation was accepted, so there is exactly one record of "waiting" and it cannot
+ * disagree with itself (`教训.md` §8.7).
  *
  * ⚠️ **Expiry is computed, never stored.** A status that needs a scheduled job to become true is
  * wrong on any day the job does not run, so `expires_at <= now` is asked at read time and at
@@ -24,9 +24,22 @@ export interface NotificationsRouteOptions {
   readonly requireAuth: (request: FastifyRequest) => Promise<void>;
 }
 
+/**
+ * The notification kinds that can still be shown and decided.
+ *
+ * ⚠️ **One list, used by both the inbox query and the view schema below**, so the two cannot
+ * disagree about what is renderable — which is the failure that produced a broken inbox in 1.10.05
+ * (see the long note on the inbox query).
+ *
+ * ⚠️ **`collaborator_request` was removed from this list, not just from the UI.** The account-level
+ * system it belonged to is gone, so a row of that kind has nothing left to decide; parsing it as
+ * valid would show a card whose buttons cannot do what it says.
+ */
+const LIVE_NOTIFICATION_KINDS = ["book_invite", "referral_reminder"] as const;
+
 const notificationView = z.object({
   id: z.string(),
-  kind: z.enum(["collaborator_request", "book_invite", "referral_reminder"]),
+  kind: z.enum(LIVE_NOTIFICATION_KINDS),
   status: z.enum(["pending", "accepted", "declined"]),
   message: z.string().nullable(),
   createdAt: z.string(),
@@ -60,9 +73,24 @@ export function registerNotificationRoutes(app: FastifyInstance, options: Notifi
      * the screen has to hide is a card that some other screen will forget to hide. `decided` rows
      * are kept and returned — the owner asked to see refusals, so the answer has to remain
      * readable rather than vanish.
+     *
+     * ⚠️ **⚠️ `kind` is filtered to the kinds that still exist, and this is load-bearing rather
+     * than tidy.** `collaborator_request` was removed in 1.10.05, and the owner's own development
+     * database still had two **decided, unexpired** rows of that kind — with a seven-day life, so
+     * they stay unexpired for a week after the feature is gone. Unfiltered, they reached
+     * `notificationView.parse` and **threw, which takes down the whole inbox**, not just those two
+     * cards: a person would open the notification centre and get an error.
+     *
+     * The migration deletes the *pending* rows (*"不要让用户收到点击后无法完成的历史通知"*), and the
+     * decided ones are kept as history — so the read path has to be the thing that knows they are no
+     * longer renderable. **A retired kind must never be able to break a live screen.**
      */
     const rows = await prisma.notification.findMany({
-      where: { recipientId: userId, expiresAt: { gt: now } },
+      where: {
+        recipientId: userId,
+        expiresAt: { gt: now },
+        kind: { in: [...LIVE_NOTIFICATION_KINDS] },
+      },
       include,
       orderBy: { createdAt: "desc" },
       take: 200,

@@ -36,11 +36,11 @@ export class ErrorBoundary extends Component<{ readonly children: ReactNode }, E
     return (
       <main className="mx-auto flex min-h-full w-full max-w-md flex-col items-center justify-center gap-4 px-6 py-12 text-center">
         <p className="text-lg font-semibold text-ink">页面无法显示</p>
-        <p className="text-sm leading-relaxed text-muted">
+        <p className="text-body-relaxed text-muted">
           界面遇到了一个未预期的问题。你的账目数据保存在服务器上，不受影响。
         </p>
 
-        <pre className="w-full overflow-x-auto rounded-field bg-danger-soft p-3 text-left text-xs leading-relaxed whitespace-pre-wrap text-danger">
+        <pre className="w-full overflow-x-auto rounded-field bg-danger-soft p-3 text-left text-helper-relaxed whitespace-pre-wrap text-danger">
           {error.message}
         </pre>
 

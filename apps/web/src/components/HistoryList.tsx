@@ -20,18 +20,34 @@ import { useLedgerHistory, type LedgerHistoryEntry } from "../lib/queries.js";
 export function HistoryList({
   limit,
   emptyHint,
+  embedded = false,
 }: {
   readonly limit: number;
   readonly emptyHint: string;
+  /**
+   * ⚠️ **Draw no frame of its own, because the caller already has one.**
+   *
+   * The owner's complaint about the first-level page was *"盒子套盒子"* — a heading, a frame, and
+   * then **a complete second card inside it** before any content. On the full history screen this
+   * list *is* the page and its frame is right; inside `SectionFrame` it would be the nesting he
+   * asked to remove. **One flag, one list** — a second copy for the embedded case would be two
+   * renderers of one server sentence (`教训.md` §8.12).
+   *
+   * ⚠️ **The separators move to the rows here.** The framed version lets the card's border own the
+   * edges, so its `last:border-b-0` is doing nothing; unframed, **every** row needs its divider and
+   * the last one must drop it — otherwise the frame's bottom edge and a divider sit on top of each
+   * other.
+   */
+  readonly embedded?: boolean;
 }): React.JSX.Element {
   const history = useLedgerHistory(limit);
 
   if (history.isPending) {
-    return <p className="text-sm text-muted">正在读取历史……</p>;
+    return <p className="px-5 py-4 text-body text-muted">正在读取历史……</p>;
   }
 
   if (history.isError) {
-    return <p className="text-sm text-muted">历史读取失败。</p>;
+    return <p className="px-5 py-4 text-body text-muted">历史读取失败。</p>;
   }
 
   const { entries, total } = history.data;
@@ -40,27 +56,44 @@ export function HistoryList({
    * ⚠️ **Empty is stated, not left blank.** An empty list reads as "this ledger has no history",
    * which after S9.5 is **false for any ledger that has been touched since** — the events simply
    * start when the feature did. The hint says which of the two it is.
+   *
+   * ⚠️ **Frameless when embedded**, so the empty state does not put a card inside the frame either.
    */
   if (entries.length === 0) {
-    return (
-      <p className="rounded-card border border-line bg-surface px-5 py-4 text-sm leading-relaxed text-muted">
+    return embedded ? (
+      <p className="px-5 py-4 text-body-relaxed text-muted">{emptyHint}</p>
+    ) : (
+      <p className="rounded-card border border-line bg-surface px-5 py-4 text-body-relaxed text-muted">
         {emptyHint}
       </p>
     );
   }
 
+  const rows = (
+    <ul className={embedded ? "" : "overflow-hidden rounded-card border border-line bg-surface"}>
+      {entries.map((entry) => (
+        <li key={entry.id} className="border-b border-line last:border-b-0">
+          <HistoryRow entry={entry} />
+        </li>
+      ))}
+    </ul>
+  );
+
+  if (embedded) {
+    /**
+     * ⚠️ **The "共 N 条" footnote is dropped here.** It belongs to the full screen, where the reader
+     * is asking "how much is there"; on the first-level page the 查看全部 › link in the heading
+     * already answers that, and a second sentence saying it is the crowding the owner is removing.
+     */
+    return rows;
+  }
+
   return (
     <div className="flex flex-col gap-3">
-      <ul className="overflow-hidden rounded-card border border-line bg-surface">
-        {entries.map((entry) => (
-          <li key={entry.id} className="border-b border-line last:border-b-0">
-            <HistoryRow entry={entry} />
-          </li>
-        ))}
-      </ul>
+      {rows}
 
       {total > entries.length ? (
-        <p className="text-xs text-muted">
+        <p className="text-helper text-muted">
           共 {String(total)} 条记录，这里显示最近 {String(entries.length)} 条。
         </p>
       ) : null}
@@ -82,7 +115,7 @@ export function HistoryList({
 function HistoryRow({ entry }: { readonly entry: LedgerHistoryEntry }): React.JSX.Element {
   const body = (
     <>
-      <span className="flex flex-wrap items-center gap-2 text-sm text-ink">
+      <span className="flex flex-wrap items-center gap-2 text-body text-ink">
         {entry.summary}
         {entry.transactionSeq === null ? null : (
           /**
@@ -103,7 +136,7 @@ function HistoryRow({ entry }: { readonly entry: LedgerHistoryEntry }): React.JS
               event.stopPropagation();
               void navigator.clipboard.writeText(formatTransactionNumber(entry.transactionSeq ?? 0)).catch(() => undefined);
             }}
-            className="rounded-field bg-canvas px-1.5 py-0.5 font-mono text-[11px] text-muted transition hover:text-ink"
+            className="rounded-field bg-canvas px-1.5 py-0.5 font-mono text-micro text-muted transition hover:text-ink"
           >
             {formatTransactionNumber(entry.transactionSeq)}
           </button>
@@ -113,14 +146,14 @@ function HistoryRow({ entry }: { readonly entry: LedgerHistoryEntry }): React.JS
       {entry.changes.length === 0 ? null : (
         <span className="flex flex-col gap-0.5">
           {entry.changes.map((change) => (
-            <span key={change.label} className="text-xs text-muted">
+            <span key={change.label} className="text-helper text-muted">
               {change.label}：{change.from} → {change.to}
             </span>
           ))}
         </span>
       )}
 
-      <span className="text-xs text-muted">{formatWhen(entry.occurredAt)}</span>
+      <span className="text-helper text-muted">{formatWhen(entry.occurredAt)}</span>
     </>
   );
 

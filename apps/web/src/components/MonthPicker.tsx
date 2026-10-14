@@ -57,13 +57,13 @@ export function MonthPicker({
         type="button"
         aria-label="关闭月份选择"
         onClick={onClose}
-        className="absolute inset-0 bg-ink/35"
+        className="absolute inset-0 bg-overlay"
       />
 
       <div
         role="dialog"
         aria-label="选择月份"
-        className="relative w-full max-w-md rounded-t-card bg-surface px-6 pt-5 pb-[calc(1.5rem+env(safe-area-inset-bottom))] shadow-xl"
+        className="relative w-full max-w-md rounded-t-sheet bg-surface px-6 pt-5 pb-[calc(1.5rem+env(safe-area-inset-bottom))] shadow-xl"
       >
         <div className="mb-4 flex items-center justify-between">
           <button

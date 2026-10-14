@@ -116,7 +116,7 @@ export function RecordPage(): React.JSX.Element {
           transcribe.reset();
           void recorder.start();
         }}
-        className="flex w-full flex-col items-center gap-5 rounded-card border border-line bg-surface px-6 py-8 transition disabled:opacity-60"
+        className="flex w-full flex-col items-center gap-5 rounded-card border border-line bg-surface px-6 py-8 transition disabled:opacity-45"
       >
         <VoiceRipples level={recorder.level} active={recording} />
 
@@ -131,7 +131,7 @@ export function RecordPage(): React.JSX.Element {
                   : "点击开始录音"}
           </span>
 
-          <span className="text-xs text-muted">
+          <span className="text-helper text-muted">
             {recording
               ? `还可以录 ${String(recorder.secondsLeft)} 秒`
               : `每段最多 ${String(MAX_SPEECH_SECONDS)} 秒`}
@@ -144,7 +144,7 @@ export function RecordPage(): React.JSX.Element {
       )}
 
       {transcribe.isPending ? (
-        <p className="text-center text-sm text-muted">正在识别…</p>
+        <p className="text-center text-body text-muted">正在识别…</p>
       ) : null}
 
       {heardNothing ? (
@@ -153,7 +153,7 @@ export function RecordPage(): React.JSX.Element {
 
       {transcribe.isSuccess && !heardNothing && transcribe.data.text !== "" ? (
         <section className="flex flex-col gap-3">
-          <h2 className="text-xs text-muted">听到的内容（可以修改）</h2>
+          <h2 className="text-helper text-muted">听到的内容（可以修改）</h2>
 
           <textarea
             value={editedText ?? transcribe.data.text}
@@ -216,7 +216,7 @@ export function RecordPage(): React.JSX.Element {
       <button
         type="button"
         onClick={() => void navigate("/add")}
-        className="text-xs text-muted underline"
+        className="text-helper text-muted underline"
       >
         语音不方便？直接手动记账
       </button>

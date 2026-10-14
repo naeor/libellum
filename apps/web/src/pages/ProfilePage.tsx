@@ -45,7 +45,7 @@ export function ProfilePage(): React.JSX.Element {
           <dd className="text-right text-ink">{formatDateTime(user.createdAt)}</dd>
         </dl>
 
-        <p className="mt-6 border-t border-line pt-4 text-xs leading-relaxed text-muted">
+        <p className="mt-6 border-t border-line pt-4 text-helper-relaxed text-muted">
           用户名和账号编号可安全地分享给他人，以便对方将你添加为协作者。
           <br />
           请勿向任何人透露恢复码。恢复码应被妥善保管。
@@ -54,7 +54,7 @@ export function ProfilePage(): React.JSX.Element {
 
       <section className="rounded-card border border-line bg-surface p-6">
         <h2 className="text-sm font-medium text-ink">各项的作用</h2>
-        <dl className="mt-3 flex flex-col gap-3 text-xs leading-relaxed text-muted">
+        <dl className="mt-3 flex flex-col gap-3 text-helper-relaxed text-muted">
           <div>
             <dt className="text-ink">昵称</dt>
             <dd className="mt-0.5">应用内显示的名字，可以与其他人重复。</dd>

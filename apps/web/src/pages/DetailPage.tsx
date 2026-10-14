@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { useNavigate, useSearchParams } from "react-router";
 
 import { useAuth } from "../auth/AuthProvider.js";
+import { CurrentBookCaption } from "../components/CurrentBookCaption.js";
 import { BottomNav } from "../components/BottomNav.js";
 import { useEntryMenu } from "../components/Layouts.js";
 import { MonthPicker } from "../components/MonthPicker.js";
@@ -30,6 +31,7 @@ import {
   subscribePending,
 } from "../lib/offline/localLedger.js";
 import { logOffline } from "../lib/offline/diagnostics.js";
+import { markPresentationSeen } from "../lib/spaceTransition.js";
 import { mergeLedgerEntries } from "../lib/ledgerView.js";
 import { syncMonth } from "../lib/offline/sync.js";
 import { syncNow } from "../lib/offline/syncController.js";
@@ -431,7 +433,34 @@ export function DetailPage(): React.JSX.Element {
             data-pinned={atList}
           >
             <div className="flex h-9 items-center justify-between">
-              <h1 className="detail-title text-2xl font-semibold tracking-tight">Libellum</h1>
+              {/**
+                * ⚠️ **The wordmark is the way back to the ledger space** (owner, 2026-10-13):
+                * *"直接点击明细页的logo（左上角的 libellum）也可以进入开始页（默认海浪为收缩态）."*
+                *
+                * ⚠️ **A real navigation, not a router link**, for the same reason entering a ledger
+                * is one: the ledger screen owns a hero animation and a scroll position, and leaving it
+                * must reset the whole frame rather than unmount one component inside it. **A half-torn
+                * -down ledger over the start page is the mixture the reload rule exists to prevent.**
+                *
+                * ⚠️ **`markPresentationSeen` before navigating, because the owner said "默认海浪为
+                * 收缩态".** The wave's first-run welcome is stored per account; without this, a new
+                * account tapping the wordmark would land on a **fully expanded sea with no list** —
+                * which is the opposite of what a tap labelled "go to the start page" should do.
+                * **It does not disable the welcome elsewhere**: this is the same flag the page sets
+                * once it has been seen, so the presentation still happens on the first visit, and the
+                * reader can still pull the wave open by hand.
+                */}
+              <button
+                type="button"
+                onClick={() => {
+                  markPresentationSeen(user?.id);
+                  window.location.assign("/start");
+                }}
+                aria-label="前往账本空间"
+                className="detail-title -ml-1 rounded-field px-1 text-2xl font-semibold tracking-tight transition hover:opacity-80"
+              >
+                Libevra
+              </button>
 
               <div className="detail-tools flex gap-2">
                 <ToolButton
@@ -486,7 +515,7 @@ export function DetailPage(): React.JSX.Element {
               states: centred, it took horizontal room the currency cards need.
             */}
             <div className="detail-month-row relative mt-2 h-8">
-              <div className="flex items-center gap-1">
+              <div className="detail-month-controls flex items-center">
                 <span className="detail-arrow-slot">
                   <ArrowButton
                     direction="left"
@@ -558,7 +587,7 @@ export function DetailPage(): React.JSX.Element {
                 */}
                 <div
                   data-h-scroll
-                  className="detail-strip flex flex-nowrap gap-2.5 overflow-x-auto pb-1 [scrollbar-width:none]"
+                  className={`detail-strip flex flex-nowrap gap-2.5 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${others.length === 2 ? "detail-strip-fit-pair" : ""}`}
                 >
                   <SmallCard className="detail-twin" summary={main} currency={mainCode} />
 
@@ -571,9 +600,12 @@ export function DetailPage(): React.JSX.Element {
                     onClick={() => {
                       setShowAllCurrencies(true);
                     }}
-                    className="detail-currency-card detail-small-card w-30 shrink-0 px-4 text-left text-xs text-white/90"
+                    aria-label="更多币种"
+                    className="detail-more-currency detail-currency-card detail-small-card w-34 shrink-0 whitespace-nowrap px-4 text-left text-xs text-white/90"
                   >
-                    更多币种
+                    <span>
+                      <span className="inline-block">更多</span><span className="inline-block">币种</span>
+                    </span>
                   </button>
                 </div>
               </>
@@ -769,7 +801,7 @@ export function DetailPage(): React.JSX.Element {
                         }}
                         className="flex w-full items-center gap-3 border-b border-line px-4 py-2.5 text-left transition last:border-b-0 hover:bg-canvas"
                       >
-                        <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-canvas text-xs text-muted">
+                        <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-line text-xs font-semibold text-category-ink">
                           {entry.categoryIsSystem ? "—" : entry.categoryName.slice(0, 1)}
                         </span>
 
@@ -804,7 +836,7 @@ export function DetailPage(): React.JSX.Element {
                 type="button"
                 disabled={list.isFetchingNextPage}
                 onClick={() => void list.fetchNextPage()}
-                className="my-4 w-full rounded-field bg-surface py-3 text-sm text-muted transition hover:text-ink disabled:opacity-50"
+                className="my-4 w-full rounded-field bg-surface py-3 text-sm text-muted transition hover:text-ink disabled:opacity-45"
               >
                 {list.isFetchingNextPage ? "加载中…" : "加载更早的记录"}
               </button>
@@ -846,25 +878,7 @@ export function DetailPage(): React.JSX.Element {
         of buttons immediately above this line and a caption underneath a menu is
         just noise.
       */}
-      {ledger.data === undefined || entryOpen ? null : (
-        <p className="shrink-0 truncate px-6 pt-2 text-[11px] text-muted">
-          {/**
-            * ⚠️ **The ledger's number used to follow the name here, and the owner removed it**:
-            * *"把当前账本的编号删掉吧（也就是不显示编号），只显示名字就行，一来那个编号太长，
-            *  二来用户其实也用不着."*
-            *
-            * ⚠️ **Both of his reasons are about this line specifically.** It is a caption above a
-            * navigation bar — **an eight-digit number there is the longest thing on the row and the
-            * least useful**, because the number exists so two people can confirm they are looking at
-            * the same ledger *out loud*, which is a conversation, not a glance.
-            *
-            * ⚠️ **It is still shown where that conversation happens**: `LedgerInfoPage`, the member
-            * list, and the share-link confirmation screen all carry it, **and they are screens
-            * somebody opens deliberately.**
-            */}
-          当前账本：{ledger.data.book.name}
-        </p>
-      )}
+      <CurrentBookCaption name={ledger.data?.book.name} hidden={entryOpen} />
 
       <LedgerNav
         open={entryOpen}
@@ -1181,7 +1195,7 @@ function AllCurrenciesSheet({
 }): React.JSX.Element {
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center">
-      <button type="button" aria-label="关闭" onClick={onClose} className="absolute inset-0 bg-ink/35" />
+      <button type="button" aria-label="关闭" onClick={onClose} className="absolute inset-0 bg-overlay" />
 
       <div
         role="dialog"

@@ -2,7 +2,7 @@
   "name": "@libellum/web",
   "version": "0.1.0",
   "private": true,
-  "description": "Libellum web client",
+  "description": "Libevra web client",
   "license": "AGPL-3.0-only",
   "type": "module",
   "scripts": {

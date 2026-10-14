@@ -398,3 +398,23 @@
   z-index: 19;
   background: var(--color-canvas);
 }
+
+/* The collapsed arrow slots must not leave a permanent flex gap. */
+.detail-month-controls { gap: calc(var(--p-arrows) * 4px); }
+
+/* With two secondary cards, the trailing action fills the remaining track width.
+   The hidden/appearing primary twin is included so the transition stays continuous. */
+.detail-strip-fit-pair {
+  --currency-gap: clamp(4px, calc((100% - 19.75rem) / 2), 10px);
+  gap: var(--currency-gap);
+}
+.detail-strip-fit-pair .detail-twin {
+  margin-right: calc(-1 * var(--currency-gap) + var(--p-twin) * var(--currency-gap));
+}
+.detail-strip-fit-pair .detail-more-currency {
+  padding-inline: 4px;
+  text-align: center;
+  white-space: normal;
+  line-height: 1.6;
+  width: clamp(32px, calc(100% - 17rem - 2 * var(--currency-gap) - var(--p-twin) * (8.5rem + var(--currency-gap))), 8.5rem);
+}

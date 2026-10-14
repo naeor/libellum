@@ -61,76 +61,49 @@ export function LedgerInfoPage(): React.JSX.Element {
         </dl>
       ) : null}
 
-      <p className="text-xs leading-relaxed text-muted">
+      <p className="text-helper-relaxed text-muted">
         占用空间没有列在这里：它是一个估算值，而在这一页里它会被当成精确值来读。
         需要时主页面上有一行「约 …」的提示。
       </p>
 
-      <Link to="/start" className="text-sm text-brand transition hover:text-brand-dark">
+      <Link to="/start" className="text-body text-brand transition hover:text-brand-dark">
         前往账本空间 ›
       </Link>
     </InnerPage>
   );
 }
 
-/** **成员管理** —— 改权限、移出。 */
+/** **成员管理** —— 看成员、改权限、邀请新成员。 */
 export function LedgerMembersPage(): React.JSX.Element {
   const ledger = useLedger();
 
   return (
     <InnerPage title="成员管理" subtitle={ledger.data?.book.name ?? "正在读取……"} backTo="/ledger">
       {/**
-        * ⚠️ **The full-strength list, controls included** — this is the page the main tab's
-        * 「管理」 link opens, and the reason the tab itself can stay a preview.
+        * ⚠️ **The full-strength list, controls included** — this is the page the 协作 tab's 成员 card
+        * opens, and the reason that card can stay a glimpse.
         */}
       <MemberList />
-    </InnerPage>
-  );
-}
 
-/**
- * **邀请成员。**
- *
- * ⚠️ **Two different invitations, and this page says which is which** — the owner separated them
- * himself: a referral code creates an **account**, a share link joins **this ledger**. He also moved
- * the referral code to 账户: *"前者属于账号级功能……不需要占据当前账本的协作页面."*
- *
- * ⚠️ **So this page never mentions邀请码.** It offers what belongs to *this ledger*, and points at
- * 账户 for the other — **a screen that explains the difference is a screen that admits the two are
- * easy to confuse**, and the cheapest way to keep them apart is to not show both.
- */
-export function LedgerInvitePage(): React.JSX.Element {
-  const ledger = useLedger();
-
-  return (
-    <InnerPage
-      title="邀请成员"
-      subtitle={`把别人请进「${ledger.data?.book.name ?? "这本账"}」`}
-      backTo="/ledger"
-    >
+      {/**
+        * ⚠️ **Inviting lives here in the shared state, and that is the owner's placement**:
+        * *"点击后进入当前账本的成员管理。成员管理内可以查看成员、权限以及邀请新成员."*
+        *
+        * ⚠️ **The lone ledger reaches the same page from its own 邀请成员 section** — one flow, two
+        * ways in, so there is nothing to keep in step.
+        */}
       <div className="flex flex-col gap-3 rounded-card border border-line bg-surface p-5">
-        <h2 className="text-sm font-medium text-ink">邀请某个人</h2>
-        <p className="text-sm leading-relaxed text-muted">
-          在「协作者」页面按对方账号编号找到他，然后邀请他加入这本账。
-          他会收到一条通知，他同意之后才真正加入。
+        <h2 className="text-sm font-medium text-ink">邀请新成员</h2>
+        <p className="text-body-relaxed text-muted">
+          按对方账号编号或用户名找到他，选好权限，发一条邀请。他接受之后才真正加入这本账。
         </p>
         <Link
-          to="/collaborators"
+          to="/ledger/invite"
           className="inline-flex self-start rounded-field bg-brand px-4 py-2.5 text-sm text-white transition hover:bg-brand-dark"
         >
-          去邀请
+          邀请成员
         </Link>
       </div>
-
-      <div className="flex flex-col gap-3 rounded-card border border-line bg-surface p-5">
-        <h2 className="text-sm font-medium text-ink">已经在账本里的人</h2>
-        <MemberList />
-      </div>
-
-      <p className="text-xs leading-relaxed text-muted">
-        用于注册账号的邀请码不在这里——它属于账号本身，在「账户」页面。
-        这里发出的邀请只关于当前这本账。
-      </p>
     </InnerPage>
   );
 }

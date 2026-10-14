@@ -67,19 +67,16 @@ function generateCode(): string {
 
 export interface MintedReferral {
   readonly code: string;
-  /** ⚠️ Stated back to the generator, because it decides whether the reminder exists at all. */
-  readonly allowsDirectCollaborator: boolean;
   readonly expiresAt: Date;
 }
 
 /**
  * Mint a referral code.
  *
- * ⚠️ **`allowsDirectCollaborator` is the generator's choice**, and it is the difference between
- * "the newcomer gets a reminder they can act on" and "the newcomer gets nothing". The owner's rule:
- * *"生成者可以选择新用户注册后是否可以'直接添加他为协作者'"*. **When it is false no reminder is
- * created at all** — a card that says "you may add this person" and then refuses would be worse
- * than no card.
+ * ⚠️ **The `allowsDirectCollaborator` choice is gone (1.10.05).** It existed to let a generator
+ * decide whether the newcomer would be offered "add them as a collaborator" — and the account-level
+ * collaborator system was removed on the owner's instruction, so the choice no longer describes
+ * anything. **A code that still had the flag would be a switch with nothing behind it.**
  *
  * ⚠️ **The code is not tied to a ledger**, so this function takes no `bookId`. That absence is the
  * feature: a code minted while looking at one ledger works the same as one minted from the account
@@ -89,7 +86,6 @@ export async function mintReferralCode(
   prisma: PrismaClient,
   input: {
     readonly generatorId: string;
-    readonly allowsDirectCollaborator: boolean;
     readonly note?: string | null;
   },
   now: Date = new Date(),
@@ -162,13 +158,12 @@ export async function mintReferralCode(
         code,
         note: input.note ?? null,
         createdByUserId: input.generatorId,
-        allowsDirectCollaborator: input.allowsDirectCollaborator,
         expiresAt,
       },
       select: { code: true },
     });
 
-    return { code: created.code, allowsDirectCollaborator: input.allowsDirectCollaborator, expiresAt };
+    return { code: created.code, expiresAt };
   }
 
   throw badRequest("referral_code_collision", "生成邀请码时遇到重复，请再试一次。");
@@ -196,7 +191,6 @@ export async function recordReferral(
   input: {
     readonly newUserId: string;
     readonly generatorId: string;
-    readonly allowsDirectCollaborator: boolean;
     readonly generatorDisplayName: string;
   },
   now: Date = new Date(),
@@ -205,8 +199,6 @@ export async function recordReferral(
     where: { id: input.newUserId },
     data: { referredByUserId: input.generatorId },
   });
-
-  if (!input.allowsDirectCollaborator) return { reminderCreated: false };
 
   if (input.generatorId === input.newUserId) return { reminderCreated: false };
 
@@ -220,7 +212,13 @@ export async function recordReferral(
        * carrying an argument — the newcomer should be able to tell "this is what the app does" from
        * "this is what somebody is asking me for".
        */
-      message: `你是用 ${input.generatorDisplayName} 的邀请码注册的。确认之后，他会成为你的协作者。`,
+      /**
+       * ⚠️ **The wording changed with the model (1.10.05).** It used to promise *"确认之后，他会成为你的
+       * 协作者"* — an account-level relationship that no longer exists. **A reminder that promises a
+       * thing the server will not do is worse than no reminder** (`教训.md` §3.1), so it now states
+       * the fact and points at the action that does exist: inviting somebody into a ledger.
+       */
+      message: `你是用 ${input.generatorDisplayName} 的邀请码注册的。想一起记账的话，可以把他邀请进你的账本。`,
       expiresAt: new Date(now.getTime() + REFERRAL_REMINDER_TTL_MS),
       createdAt: now,
     },

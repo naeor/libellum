@@ -109,7 +109,7 @@ distinguished_name = dn
 x509_extensions    = v3_ext
 
 [dn]
-CN = Libellum local development
+CN = Libevra local development
 
 [v3_ext]
 basicConstraints = critical, CA:TRUE

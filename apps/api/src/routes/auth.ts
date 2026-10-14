@@ -209,19 +209,26 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
           passwordHash,
           recoveryCodeHash,
           /**
-           * Whether this account administers the platform.
+           * ⚠️ **`false`, always — registration cannot create an administrator** (2026-10-14,
+           * 1.10.22).
            *
-           * ⚠️ **Read from the code, not inferred from it.** This used to be
-           * `invite.accountNumber !== null` — "the code reserved a number" —
-           * which meant **every command that reserved a number created an
-           * administrator**, including the ordinary `--reserved` flag and the
-           * whole batch generator. The owner caught it.
+           * This used to be `invite.grantsAdmin`, and before that
+           * `invite.accountNumber !== null`. Both were the same mistake at different
+           * removes: **a piece of paper decided a privilege.**
            *
-           * The two facts are separate now: a code can reserve a number without
-           * granting administration (printable on a card, handed over months
-           * later, ordinary powers) and only `createAdminInvite` sets this.
+           * The batch of 98 codes the owner had printed (`10000002`–`10000099`) carried
+           * `grants_admin = true`, never expired, and were meant to be handed out over
+           * months. Redeeming one silently produced an administrator — **without anybody
+           * deciding so at the moment it happened, which is the only moment a privilege
+           * should need.** An invitation says "you may have an account"; it says nothing
+           * about who may administer the platform, and a code in somebody's drawer cannot
+           * be asked.
+           *
+           * Administration is now an explicit act: an `AdminGrant` row written by
+           * `tools/grant-admin.mjs`, which the admin guard requires. The reserved numbers
+           * those codes hand out are unaffected — they were never the privilege.
            */
-          isAdmin: invite.grantsAdmin,
+          isAdmin: false,
         },
       });
 
@@ -250,8 +257,8 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
       /**
        * ⚠️ **A referral code leaves two traces, and both are written here, in the same transaction.**
        *
-       * `referredByUserId` on the new account is *who invited me*; the reminder (when the generator
-       * allowed it) is what the newcomer actually sees on the collaborator screen for seven days.
+       * `referredByUserId` on the new account is *who invited me*; the reminder is what the newcomer
+       * actually sees for seven days.
        *
        * ⚠️ **Inside the transaction, because a half-recorded referral cannot be repaired**: an
        * account created without its `referredByUserId`, or with one but no invitation marked used,
@@ -271,7 +278,6 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
           await recordReferral(tx, {
             newUserId: created.id,
             generatorId: invite.createdByUserId,
-            allowsDirectCollaborator: invite.allowsDirectCollaborator,
             generatorDisplayName: generator.displayName,
           });
         }

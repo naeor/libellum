@@ -21,9 +21,9 @@ export function TextField({
       <input
         id={id}
         {...props}
-        className={`w-full rounded-field border border-line bg-surface px-3.5 py-3 text-base text-ink transition outline-none placeholder:text-muted/60 focus:border-brand focus:ring-4 focus:ring-brand-soft ${className}`}
+        className={`w-full rounded-field border border-line bg-surface px-3.5 py-3 text-base text-ink transition outline-none placeholder:text-muted/80 focus:border-brand focus:ring-4 focus:ring-brand-soft ${className}`}
       />
-      {hint ? <p className="text-xs leading-relaxed text-muted">{hint}</p> : null}
+      {hint ? <p className="text-helper-relaxed text-muted">{hint}</p> : null}
     </div>
   );
 }

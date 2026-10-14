@@ -39,7 +39,7 @@ export function QrCodeView({
   }, [text]);
 
   if (!code.ok) {
-    return <p className="rounded-field bg-danger-soft px-4 py-3 text-sm text-danger">{code.message}</p>;
+    return <p className="rounded-field bg-danger-soft px-4 py-3 text-body text-danger">{code.message}</p>;
   }
 
   const { size: modules, modules: grid } = code.value;

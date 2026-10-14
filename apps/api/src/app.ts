@@ -4,6 +4,7 @@ import { MAX_RECOGNIZE_BYTES, MAX_RECOGNIZE_IMAGES } from "@libellum/shared";
 import rateLimit from "@fastify/rate-limit";
 import Fastify, { type FastifyInstance, type FastifyServerOptions } from "fastify";
 
+import { createRequireAdmin } from "./admin/guard.js";
 import { createRequireAuth, createRequireBook } from "./auth/guard.js";
 import { LoginThrottle, type LoginThrottleOptions } from "./auth/login-throttle.js";
 import type { PrismaClient } from "./db.js";
@@ -12,7 +13,7 @@ import { OcrService } from "./ocr/client.js";
 import { registerAuthRoutes } from "./routes/auth.js";
 import { registerBooksRoutes } from "./routes/books.js";
 import { registerClassificationRoutes } from "./routes/classification.js";
-import { registerCollabRoutes } from "./routes/collab.js";
+import { registerDirectoryRoutes } from "./routes/directory.js";
 import { registerNotificationRoutes } from "./routes/notifications.js";
 import { registerShareRoutes } from "./routes/share.js";
 import { registerExportRoutes } from "./routes/export.js";
@@ -43,6 +44,24 @@ export interface BuildAppOptions extends HealthDeps {
    * have a 147 MB model on disk.
    */
   readonly voice?: Pick<VoiceService, "transcribe" | "stop">;
+  /**
+   * ⚠️ **Test-only.** Registers one route behind `createRequireAdmin`, so the admin guard
+   * can be exercised end to end — through a real session, a real cookie and a real refusal
+   * — rather than only as a function.
+   *
+   * ⚠️ **Off unless a caller asks, and the production bootstrap never asks.** The brief is
+   * explicit that no admin API should be exposed merely to prove the guard works, and the
+   * honest way to honour that is for the route to **not exist** in a normal build rather
+   * than to exist behind a flag that somebody could flip. `src/server.ts` does not pass
+   * this option and there is no environment variable that sets it; the only caller is
+   * `test/admin.test.ts`.
+   *
+   * ⚠️ **It deliberately does nothing but report who the guard decided you are.** A test
+   * route that performed a real administrative action would need a real administrative
+   * action to exist, and this round has none by design — see
+   * `docs/管理员与权限边界-设计决定.md` §6.
+   */
+  readonly enableTestAdminRoute?: boolean;
 }
 
 const DEFAULT_THROTTLE: LoginThrottleOptions = {
@@ -182,14 +201,19 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     registerBooksRoutes(app, { prisma: options.prisma, requireAuth });
 
     /**
-     * ⚠️ **Collaborators and notifications are registered with plain auth.**
+     * ⚠️ **The account directory, referral codes and notifications are registered with plain auth.**
      *
-     * A collaborator list is account-level by definition — the owner's correction — so it must work
-     * with no ledger in hand (he opens it from the home page, where "当前账本为空"). The routes that
-     * *do* need a ledger — sending an invitation into one — resolve and check it themselves, so the
-     * guard is not weaker, it is simply not the place where that question is asked.
+     * Looking somebody up and minting a referral code are **account-level** questions — they must
+     * work with no ledger in hand (the account screen, and a home page where "当前账本为空"). The
+     * routes that *do* need a ledger — inviting somebody into one — resolve and check it themselves
+     * (`requireBookForWrite`), so the guard is not weaker, it is simply not where that question is
+     * asked.
+     *
+     * ⚠️ **`registerCollabRoutes` is gone.** It carried the account-level collaborator system, which
+     * was removed in 1.10.05 — a ledger invitation no longer has an account-level relationship in
+     * front of it. `POST /books/invite` moved next to the other ledger routes in `books.ts`.
      */
-    registerCollabRoutes(app, { prisma: options.prisma, requireAuth });
+    registerDirectoryRoutes(app, { prisma: options.prisma, requireAuth });
     registerNotificationRoutes(app, { prisma: options.prisma, requireAuth });
 
     /**
@@ -222,16 +246,22 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     const requireBookWrite = createRequireBook(options.prisma, requireAuth, { write: true });
 
     /**
-     * ⚠️ **The ledger's own metadata is registered as a *write* route, which looks wrong and is
-     * deliberate.** It sits at the boundary: reading it needs only membership, but the moment
-     * it starts carrying "which ledger is this and what may I do here", a viewer's copy would be
-     * identical to an editor's. Until that distinction is drawn, treating it as a write route
-     * keeps the two from silently diverging — and the only caller it has today is a full
-     * editor.
+     * ⚠️ **The ledger's own metadata is a *read* route, and it was a write route until 1.10.08.**
+     *
+     * The old note here argued it should stay a write "until the viewer/editor distinction is drawn",
+     * because a viewer's copy would be identical to an editor's. **That argument was about not
+     * *leaking* the distinction — but the effect was that a viewer could not open 账本信息 at all**,
+     * and now that the start page's gear panel links there for every member, it is a plain defect:
+     * *"查看者不应获得编辑或邀请权限"* is the rule, and **reading a ledger's name and entry count is
+     * not editing it.**
+     *
+     * ⚠️ **`requireBookRead` is the right strength**: it answers "may the caller see this ledger",
+     * which is exactly what the route needs. Whether the caller may *write* is a separate question,
+     * asked by the routes that write — and the response says nothing about it, so nothing leaks.
      */
     registerLedgerRoutes(app, {
       prisma: options.prisma,
-      requireAuth: requireBookWrite,
+      requireAuth: requireBookRead,
       /**
        * ⚠️ **The history read is handed the *read* guard**, because a viewer must be able to see who
        * changed what — the owner's rule is that a viewer sees everything except editing. Passing the
@@ -247,6 +277,29 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     registerVoiceRoutes(app, { requireAuth: requireBookWrite, prisma: options.prisma, voice });
     registerExportRoutes(app, { prisma: options.prisma, requireAuth: requireBookWrite });
     registerImportRoutes(app, { prisma: options.prisma, requireAuth: requireBookWrite });
+
+    /**
+     * ⚠️ **Test-only, and it exists nowhere unless a test asks for it.** See the note on
+     * `enableTestAdminRoute` above: the admin guard has to be exercised through a real
+     * request, and the alternative — shipping an admin endpoint nobody needs yet — is the
+     * thing the brief forbids.
+     *
+     * The route reports the guard's decision and nothing else. It reads no ledger, touches
+     * no user data and has no side effects, so even if it were somehow reachable it would
+     * disclose only whether the caller is an administrator — which the caller already knows
+     * if they are one.
+     */
+    if (options.enableTestAdminRoute === true) {
+      const requireAdmin = createRequireAdmin(options.prisma, requireAuth);
+      app.get("/api/v1/admin/self", { preHandler: requireAdmin }, async (request) => {
+        // `adminActor` is set by the guard, which is what makes it safe to read here.
+        const actor = request.adminActor;
+        if (actor === undefined) {
+          throw forbidden("admin_forbidden", "没有权限执行这个操作。");
+        }
+        return { ok: true, accountNumber: actor.accountNumber, username: actor.username };
+      });
+    }
   }
 
   return app;

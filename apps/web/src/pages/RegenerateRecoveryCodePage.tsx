@@ -59,7 +59,7 @@ export function RegenerateRecoveryCodePage(): React.JSX.Element {
         <form className="flex flex-col gap-5" onSubmit={(event) => void submit(event)}>
           {error ? <Alert>{error}</Alert> : null}
 
-          <p className="text-sm leading-relaxed text-muted">
+          <p className="text-body-relaxed text-muted">
             恢复码用于在忘记密码时重置密码，仅在生成时显示一次。请仅在原恢复码遗失或可能泄露时重新生成。
           </p>
 

@@ -30,7 +30,7 @@ export function LedgerHistoryPage(): React.JSX.Element {
         emptyHint="这本账还没有改动记录。改动记录从这个功能上线之后开始，之前的操作不会补记。"
       />
 
-      <p className="mt-4 text-xs leading-relaxed text-muted">
+      <p className="mt-4 text-helper-relaxed text-muted">
         每一条记录都会说明是谁、在什么时候、对哪一笔账做了什么。
         点击一条记录可以直接打开那笔账目；账目编号可以复制，用来在讨论里指认。
       </p>

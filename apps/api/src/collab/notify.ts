@@ -6,16 +6,20 @@ import { reserveNotificationQuota, releaseNotificationQuota } from "./quota.js";
 /**
  * Notifications: sending them, and acting on the ones that arrive.
  *
- * ⚠️ **A notification is the only place an undecided thing lives.** A collaborator row exists only
- * after both sides agreed, and a `book_members` row only after an invitation was accepted — so
- * there is exactly one record of "waiting", and it cannot disagree with itself
- * (`教训.md` §8.7).
+ * ⚠️ **A notification is the only place an undecided thing lives.** A `book_members` row exists
+ * only after an invitation was accepted — so there is exactly one record of "waiting", and it
+ * cannot disagree with itself (`教训.md` §8.7).
  */
 
 /** Seven days, the same for all three kinds (the owner: "统一七天"). */
 export const NOTIFICATION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
-export type NotificationKind = "collaborator_request" | "book_invite" | "referral_reminder";
+/**
+ * ⚠️ **`collaborator_request` was removed in 1.10.05** along with the account-level collaborator
+ * system it belonged to. Two kinds remain: an invitation into a ledger, and the reminder that
+ * follows using somebody's referral code.
+ */
+export type NotificationKind = "book_invite" | "referral_reminder";
 
 /**
  * ⚠️ **A concrete shape rather than `Record<string, unknown>`, and that is the safer choice.**

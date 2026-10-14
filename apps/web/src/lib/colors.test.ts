@@ -1,4 +1,4 @@
-﻿import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -49,6 +49,23 @@ const SRC = resolve(import.meta.dirname, "..");
 /** Files permitted to define colour literals. */
 const EXEMPT = new Set(["index.css", "theme.ts", "QrCodeView.tsx", "OceanBackdrop.tsx"]);
 
+/**
+ * ⚠️ **One file may hardcode `rgb()`, and the reason is the same kind as `OceanBackdrop`'s.**
+ *
+ * `detail-motion.css` `.detail-currency-card` sets `background: rgb(255 255 255 / 0.14)` — a white
+ * *glass* laid over the 明细页's green header so the currency cards read as frosted panels rather than
+ * as another shade of green.
+ *
+ * ⚠️ **It is not a theme colour, because it is not a colour at all: it is a light effect.** Its whole
+ * job is to be 14% white over *whatever is behind it*, and the thing behind it is a header whose
+ * background is **interpolating on every frame of the transition**. A token would have to be a fixed
+ * colour, and a fixed colour over a moving background is a different design.
+ *
+ * ⚠️ **And this file is inside the owner's protected range** — *"明细页动态头部……保留其已有颜色层次和动态过渡"* —
+ * so the right move is to record it, not to route it through the palette for the sake of tidiness.
+ */
+const ALLOWED_RGBA_FILES: readonly string[] = ["detail-motion.css"];
+
 function stripComments(source: string): string {
   return source
     .replace(/\/\*[\s\S]*?\*\//g, "")
@@ -93,6 +110,78 @@ describe("colour literals", () => {
       offenders,
       `组件里出现了硬编码颜色。请按 docs/COLORS.md §7 处理：\n  ${offenders.join("\n  ")}`,
     ).toEqual([]);
+  });
+
+  /**
+   * ⚠️ **The hex rule had a hole: it only looked for hex.**
+   *
+   * `rgb()` and `rgba()` are the same mistake wearing a different hat — and the audit found the two
+   * shadows in this project were written that way (`rgba(36,49,43,0.04)`), precisely because
+   * **nothing was checking for them.** A guard that names one spelling of a colour teaches people the
+   * other spelling is fine.
+   *
+   * ⚠️ **The `rgba(…, 0)` exemption is not a loophole, it is the point.** Tailwind's `box-shadow` and
+   * `ring` utilities compose their value from transparent placeholders:
+   * `rgba(0, 0, 0, 0) 0px 0px 0px 0px`. **That is not a colour, it is an empty slot** — and flagging it
+   * would make the rule unpassable for any component using `shadow-*` or `ring-*`.
+   */
+  it("do not slip through as rgb() or rgba() either", () => {
+    const rgbaOffenders: string[] = [];
+
+    for (const path of sourceFiles(SRC)) {
+      const name = path.split(/[\\/]/).pop() ?? "";
+      if (EXEMPT.has(name)) continue;
+      if (ALLOWED_RGBA_FILES.includes(relative(SRC, path).replace(/\\/g, "/"))) continue;
+
+      const source = stripComments(readFileSync(path, "utf8"));
+      for (const match of source.matchAll(/rgba?\(\s*[\d.]+\s*[\s,/]+[^)]*\)/g)) {
+        const value = match[0].replace(/\s+/g, " ");
+        // ⚠️ `rgba(0, 0, 0, 0)` and `transparent` placeholders are structure, not colour.
+        if (/rgba?\(\s*0[\s,]+0[\s,]+0\s*[\s,/]+0\s*\)/.test(value)) continue;
+        const line = source.slice(0, match.index).split("\n").length;
+        rgbaOffenders.push(`${relative(SRC, path).replace(/\\/g, "/")}:${String(line)} ${value}`);
+      }
+    }
+
+    expect(
+      rgbaOffenders,
+      `组件里出现了 rgb()/rgba() 硬编码颜色。颜色应来自 @theme token：\n  ${rgbaOffenders.join("\n  ")}`,
+    ).toEqual([]);
+  });
+
+  /**
+   * ⚠️ **This test is deliberately narrow, and the limit is worth writing down** — the owner asked
+   * whether the check could cover *inline styles*, *unexpected Tailwind built-ins* and *ad-hoc opacity
+   * combinations*, and the honest answer is **mostly no, not cheaply**:
+   *
+   *  * **Inline styles are legitimate here.** `style={{ backgroundColor: tag.color }}` is *user data*
+   *    read from the database; `backgroundColor: heatColor(level)` is a computed chart value. A rule
+   *    against inline colour would flag the two cases the palette cannot own, and the honest repair
+   *    would be suppression comments — which is how a rule becomes noise.
+   *  * **Tailwind built-ins cannot be told apart by name alone.** `text-white` is correct on the green
+   *    header; `text-red-500` would be a mistake. Both are "a built-in", so a name-based rule needs an
+   *    allowlist of correct ones, which then has to be maintained — and the maintenance is the cost.
+   *  * **Opacity combinations are not wrong in themselves.** `text-white/80` on the brand header is a
+   *    deliberate, documented limitation; a rule banning `/NN` would force it to be written some other
+   *    way without making it more readable.
+   *
+   * **So the constraint is recorded in the design document instead** (`颜色语义与配色规范.md` §4.3 and
+   * §9.3), where a reader gets the *reason*, rather than encoded as a rule that misfires. **This is the
+   * choice the owner offered: low-cost and reliable, or documented — not a complicated rule that
+   * generates false alarms.**
+   */
+  it("stops where a rule would start misfiring, and says so", () => {
+    expect(EXEMPT.size).toBe(4);
+    expect(ALLOWED_RGBA_FILES).toEqual(["detail-motion.css"]);
+    /**
+      * ⚠️ **The one allowed `rgb()` is a translucency, and that is the shape of the whole exception.**
+      * If this list ever grows a *solid* colour, the exception was not needed — a solid colour can be a
+      * token, and the test above exists to say so.
+      */
+    const allowed = readFileSync(join(SRC, "detail-motion.css"), "utf8");
+    for (const match of allowed.matchAll(/rgba?\([^)]*\)/g)) {
+      expect(match[0], "白名单里的颜色必须带透明度（是光效，不是主题色）").toMatch(/\/\s*[\d.]+|,\s*[\d.]+\s*\)$/);
+    }
   });
 
   it("keeps the check honest by finding the files it is meant to guard", () => {

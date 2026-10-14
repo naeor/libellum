@@ -22,17 +22,31 @@ import {
  * nothing it cannot do — hiding is how somebody concludes the app is broken — but every action here
  * is refused server-side too, because **the interface is a courtesy and the guard is the control.**
  */
-export function MemberList({ compact = false }: { readonly compact?: boolean } = {}): React.JSX.Element {
-  const members = useBookMembers();
-  const changeRole = useChangeMemberRole();
-  const removeMember = useRemoveMember();
+export function MemberList({
+  compact = false,
+  bookId,
+}: {
+  readonly compact?: boolean;
+  /**
+   * ⚠️ **The ledger to read, when it is not the current one.**
+   *
+   * The start page's gear panel opens member management **for a ledger the reader has not entered** —
+   * *"必须确保显示的是被点击齿轮的目标账本，而不是默认读取当前全局账本"* — and the ledger travels in
+   * the request header per call. Omitting it keeps the original behaviour exactly: **the ledger the
+   * reader is in**, which is what every other caller of this component means.
+   */
+  readonly bookId?: string;
+} = {}): React.JSX.Element {
+  const members = useBookMembers(bookId);
+  const changeRole = useChangeMemberRole(bookId);
+  const removeMember = useRemoveMember(bookId);
 
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<BookMemberView | null>(null);
 
-  if (members.isPending) return <p className="text-sm text-muted">正在读取成员……</p>;
-  if (members.isError) return <p className="text-sm text-muted">成员读取失败。</p>;
+  if (members.isPending) return <p className="text-body text-muted">正在读取成员……</p>;
+  if (members.isError) return <p className="text-body text-muted">成员读取失败。</p>;
 
   const { members: list, myRole } = members.data;
   /**
@@ -63,7 +77,7 @@ export function MemberList({ compact = false }: { readonly compact?: boolean } =
   return (
     <div className="flex flex-col gap-3">
       {error !== null ? (
-        <p role="alert" className="rounded-field bg-danger-soft px-4 py-3 text-sm text-danger">
+        <p role="alert" className="rounded-field bg-danger-soft px-4 py-3 text-body text-danger">
           {error}
         </p>
       ) : null}
@@ -93,7 +107,7 @@ export function MemberList({ compact = false }: { readonly compact?: boolean } =
         * conclusion.
         */}
       {canManage ? null : (
-        <p className="text-xs leading-relaxed text-muted">
+        <p className="text-helper-relaxed text-muted">
           你是这本账的查看者，可以看到成员，但不能修改权限或移除成员。
         </p>
       )}
@@ -135,17 +149,17 @@ function MemberRow({
     <div className="flex flex-col gap-2 px-5 py-4">
       <div className="flex items-center justify-between gap-4">
         <span className="flex flex-col gap-0.5">
-          <span className="flex items-center gap-2 text-sm text-ink">
+          <span className="flex items-center gap-2 text-body text-ink">
             {member.displayName}
             {member.isCreator ? (
-              <span className="rounded-full bg-brand-soft px-2 py-0.5 text-[11px] text-brand-dark">
+              <span className="rounded-full bg-brand-soft px-2 py-0.5 text-micro text-brand-dark">
                 创建者
               </span>
             ) : null}
-            <span className="rounded-full bg-canvas px-2 py-0.5 text-[11px] text-muted">{roleLabel}</span>
+            <span className="rounded-full bg-canvas px-2 py-0.5 text-micro text-muted">{roleLabel}</span>
           </span>
 
-          <span className="font-mono text-xs text-muted">
+          <span className="font-mono text-helper text-muted">
             {member.accountNumber} · {member.username}
           </span>
         </span>
@@ -158,7 +172,7 @@ function MemberRow({
               onClick={() => {
                 onChangeRole(member.role === "viewer" ? "editor" : "viewer");
               }}
-              className="text-xs text-brand transition hover:text-brand-dark disabled:opacity-45"
+              className="text-helper text-brand transition hover:text-brand-dark disabled:opacity-45"
             >
               {member.role === "viewer" ? "改为可编辑" : "改为仅查看"}
             </button>
@@ -167,7 +181,7 @@ function MemberRow({
               type="button"
               disabled={busy}
               onClick={onAskRemove}
-              className="text-xs text-muted transition hover:text-danger disabled:opacity-45"
+              className="text-helper text-muted transition hover:text-danger disabled:opacity-45"
             >
               移出
             </button>
@@ -182,7 +196,7 @@ function MemberRow({
         * to do.
         */}
       {member.isCreator && canManage ? (
-        <p className="text-xs leading-relaxed text-muted">
+        <p className="text-helper-relaxed text-muted">
           创建者不能被降级或移出——否则这本账将没有人能修改。如果你不想再看到它，请用「弃置」。
         </p>
       ) : null}
@@ -208,8 +222,8 @@ function RemoveConfirm({
 }): React.JSX.Element {
   return (
     <div className="rounded-card border border-danger bg-danger-soft px-5 py-4">
-      <p className="text-sm text-ink">把 {member.displayName} 移出这本账？</p>
-      <p className="mt-2 text-xs leading-relaxed text-muted">
+      <p className="text-body text-ink">把 {member.displayName} 移出这本账？</p>
+      <p className="mt-2 text-helper-relaxed text-muted">
         他会立刻看不到这本账，但他记过的账目会留下，历史记录里也会留下这一条。
         要恢复需要重新邀请，并且要他同意。
       </p>
@@ -225,7 +239,7 @@ function RemoveConfirm({
         <button
           type="button"
           onClick={onCancel}
-          className="rounded-field bg-surface px-4 py-2 text-sm text-muted transition hover:text-ink"
+          className="rounded-field bg-surface px-4 py-2 text-body text-muted transition hover:text-ink"
         >
           取消
         </button>

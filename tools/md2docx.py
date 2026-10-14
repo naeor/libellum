@@ -25,7 +25,6 @@ BODY_FONT = "Segoe UI"
 MONO_FONT = "Consolas"
 ACCENT = RGBColor(0x1F, 0x3A, 0x5F)
 
-INLINE = re.compile(r"(\*\*.+?\*\*|`[^`]+`|\[[^\]]+\]\([^)]+\))")
 MD_LINK = re.compile(r"^\[([^\]]+)\]\(([^)]+)\)$")
 SEP_CELL = re.compile(r"^:?-{2,}:?$")
 
@@ -51,8 +50,64 @@ def set_run_fonts(run, size=None, bold=None, italic=None, mono=False, color=None
         run.font.color.rgb = color
 
 
+def inline_runs(text):
+    """Split a line into (text, style) where style is 'plain' | 'bold' | 'mono'.
+
+    ⚠️ **Marks nest, and the earlier version did not.** It split on the outer
+    `**…**` and emitted the inside as one bold run — so a span like
+    `**规则原文在 \\`版本记录（1.10）.md\\` §1。**` kept its backticks and printed
+    them. **The documents contain 1378 of them**, because bold-with-a-path-inside
+    is how this project writes a reference.
+    """
+    runs = []
+    i = 0
+    n = len(text)
+
+    while i < n:
+        if text.startswith("**", i):
+            end = text.find("**", i + 2)
+            if end != -1:
+                for part in re.split(r"(`[^`]+`)", text[i + 2 : end]):
+                    if not part:
+                        continue
+                    if part.startswith("`") and part.endswith("`") and len(part) > 2:
+                        runs.append((part[1:-1], "mono"))
+                    else:
+                        runs.append((part, "bold"))
+                i = end + 2
+                continue
+        if text[i] == "`":
+            end = text.find("`", i + 1)
+            if end != -1:
+                runs.append((text[i + 1 : end], "mono"))
+                i = end + 1
+                continue
+        if text[i] == "[":
+            m = re.compile(r"\[([^\]]+)\]\(([^)]+)\)").match(text, i)
+            if m:
+                runs.append((m.group(1), "plain"))
+                runs.append((f"（{m.group(2)}）", "mono"))
+                i = m.end()
+                continue
+        nxt = min(
+            (p for p in (text.find("**", i), text.find("`", i), text.find("[", i)) if p != -1),
+            default=n,
+        )
+        if nxt == i:
+            nxt = i + 1
+        runs.append((text[i:nxt], "plain"))
+        i = nxt
+
+    return [(t, s) for t, s in runs if t] or [(text, "plain")]
+
+
 def add_inline(par, text, size=None, mono=False, color=None):
-    for part in INLINE.split(text):
+    """Render `text` into `par`, honouring **bold**, `code` and links.
+
+    Styles are applied per run by `inline_runs`, so `mono=True` (used for code
+    blocks and table cells) still wins over the plain case.
+    """
+    for part, style in inline_runs(text):
         if not part:
             continue
         link = MD_LINK.match(part)
@@ -63,10 +118,10 @@ def add_inline(par, text, size=None, mono=False, color=None):
             set_run_fonts(
                 par.add_run(f"（{url}）"), size=small, color=RGBColor(0x55, 0x55, 0x55)
             )
-        elif part.startswith("**") and part.endswith("**") and len(part) > 4:
-            set_run_fonts(par.add_run(part[2:-2]), size=size, bold=True, mono=mono, color=color)
-        elif part.startswith("`") and part.endswith("`") and len(part) > 2:
-            set_run_fonts(par.add_run(part[1:-1]), size=size, mono=True, color=color)
+        elif style == "bold":
+            set_run_fonts(par.add_run(part), size=size, bold=True, mono=mono, color=color)
+        elif style == "mono":
+            set_run_fonts(par.add_run(part), size=size, mono=True, color=color)
         else:
             set_run_fonts(par.add_run(part), size=size, mono=mono, color=color)
 
@@ -179,7 +234,54 @@ def add_table(doc, rows):
 
 
 def parse_table_row(line):
-    return [c.strip() for c in line.strip().strip("|").split("|")]
+    """Split one Markdown table row into cells.
+
+    ⚠️ **`\\|` is an escaped pipe, not a cell break.** Splitting on every `|`
+    tore a cell like ``显式 `\\| undefined` `` in half and left a stray backslash
+    and an unbalanced backtick in both halves.
+    """
+    body = line.strip()
+    if body.startswith("|"):
+        body = body[1:]
+    if body.endswith("|") and not body.endswith("\\|"):
+        body = body[:-1]
+    return [c.strip().replace("\\|", "|") for c in re.split(r"(?<!\\)\|", body)]
+
+
+def join_continued(lines, i, strip_prefix="", quote=False):
+    """Join a block that Markdown wrapped across several source lines.
+
+    ⚠️ **The documents wrap source lines inside `**…**`**, so a bold sentence
+    arrives as two paragraphs. Rendered line by line the marker never closes and
+    the asterisks print literally. This keeps pulling lines while a span is still
+    open, and stops at a blank line or a new block marker.
+    """
+    if quote:
+        buf = []
+        while i < len(lines) and lines[i].strip().startswith(">"):
+            buf.append(lines[i].strip().lstrip(">").strip())
+            i += 1
+            if balanced(buf):
+                break
+        return " ".join(buf), i
+
+    first = lines[i]
+    text = first[len(strip_prefix) :].strip() if first.startswith(strip_prefix) else first.strip()
+    buf = [text]
+    i += 1
+    while not balanced(buf) and i < len(lines):
+        nxt = lines[i].strip()
+        if not nxt or nxt.startswith(("#", ">", "|", "```")) or re.match(r"^([-*]|\d+\.)\s", nxt):
+            break
+        buf.append(nxt)
+        i += 1
+    return " ".join(buf), i
+
+
+def balanced(parts):
+    """True when no `**` or backtick span is left open."""
+    blob = " ".join(parts)
+    return blob.count("**") % 2 == 0 and blob.count("`") % 2 == 0
 
 
 def convert(md_text, out_path, title):
@@ -255,25 +357,29 @@ def convert(md_text, out_path, title):
                     run.bold = True
                 first_heading_done = True
             else:
-                par = doc.add_paragraph(style=f"Heading {min(level - 1, 4)}")
+                # ⚠️ `max(1, ...)`, because a *second* level-1 heading reaches
+                # here once the title has been used, and `level - 1` would then
+                # be 0 — Word has no "Heading 0" style, and python-docx raises
+                # `KeyError: no style with name 'Heading 0'`. Any document whose
+                # body contains more than one `#` heading hit this.
+                par = doc.add_paragraph(style=f"Heading {max(1, min(level - 1, 4))}")
                 add_inline(par, text)
             i += 1
             continue
 
         if stripped.startswith(">"):
-            text = stripped.lstrip(">").strip()
+            text, i = join_continued(lines, i, quote=True)
             par = doc.add_paragraph()
             par.paragraph_format.left_indent = Cm(0.6)
             par.paragraph_format.space_before = Pt(4)
             add_inline(par, text, size=10, color=RGBColor(0x44, 0x44, 0x44))
             for run in par.runs:
                 run.italic = True
-            i += 1
             continue
 
         m = re.match(r"^(\s*)[-*]\s+(.*)$", line)
         if m:
-            text = m.group(2).strip()
+            text, i = join_continued(lines, i, strip_prefix=m.group(1) + "- ")
             if text.startswith("[ ]"):
                 text = "☐ " + text[3:].strip()
             elif text.lower().startswith("[x]"):
@@ -282,7 +388,6 @@ def convert(md_text, out_path, title):
             par.paragraph_format.space_after = Pt(3)
             par.paragraph_format.line_spacing = 1.2
             add_inline(par, text)
-            i += 1
             continue
 
         m = re.match(r"^\s*(\d+)\.\s+(.*)$", line)
@@ -294,9 +399,9 @@ def convert(md_text, out_path, title):
             i += 1
             continue
 
+        text, i = join_continued(lines, i)
         par = doc.add_paragraph()
-        add_inline(par, stripped)
-        i += 1
+        add_inline(par, text)
 
     doc.save(out_path)
     print(f"OK -> {out_path}")

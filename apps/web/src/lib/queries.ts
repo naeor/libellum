@@ -71,11 +71,32 @@ export const queryKeys = {
    */
   books: ["books"] as const,
   /**
-   * ⚠️ **Account-level, not ledger-level**: the collaborator list spans every ledger this account is
-   * in, so keying it by ledger would show a different — and wrong — subset on each screen.
+   * ⚠️ **Account-level, not ledger-level.** A referral code belongs to the account and creates a new
+   * account; it grants access to no ledger, so keying it by ledger would ask the same question once
+   * per ledger and cache a different answer each time.
+   *
+   * ⚠️ **This replaced `collaborators`, which no longer exists** (1.10.05). The old key held the
+   * account-level collaborator list *and* this count; the list is gone and the count travels alone.
    */
-  collaborators: ["collaborators"] as const,
+  referralQuota: ["referral-quota"] as const,
+  /**
+   * ⚠️ **A prefix, and only ever used for invalidation.** Lookups are mutations (they run on
+   * purpose, not on focus) and TanStack caches mutations nowhere — so there is nothing to read back
+   * out of this key. It exists so that **sending an invitation can mark every previous lookup
+   * stale**, which is what makes the screen re-ask *"is there an invitation outstanding?"* instead of
+   * showing the state it fetched before the send.
+   */
+  directory: ["directory"] as const,
   notifications: ["notifications"] as const,
+  /**
+   * ⚠️ **A prefix for per-ledger metadata reads, kept apart from `ledger` on purpose.**
+   *
+   * `ledger` is the **current** ledger's metadata — the request that teaches the device which ledger
+   * it is in. A read for a ledger the reader has only tapped a gear on must not land in the same cache
+   * entry, or the current ledger's screen would be served the other one's name, number and counts.
+   * **Two questions, two keys.**
+   */
+  ledgerMeta: ["ledger-meta"] as const,
   shareLinks: ["share-links"] as const,
   /**
    * ⚠️ **Keyed by the token itself**, so a second link's preview can never be served from the first
@@ -248,11 +269,40 @@ export function useCreateBook() {
  * ledger every other request addresses, and which slice of the device's offline copy is read —
  * **a half-switched screen that shows one ledger's header over another's entries is exactly the
  * failure this stage exists to prevent.** A reload is blunt and it cannot be half-done.
+ *
+ * ⚠️ **⚠️ `onSuccess` is not bookkeeping — without it, entering a ledger is a one-way door.**
+ *
+ * This was a real defect, found by the owner: he made a second ledger and **could not get into
+ * it** — every attempt, from the create dialog and from the ledger list, landed back in the
+ * first one. The chain, end to end:
+ *
+ *  1. the device remembers which ledger it is in (`lib/currentBook.ts`), and every request names
+ *     it in a header;
+ *  2. activating a ledger **only told the server** — `users.lastBookId` moved, which is the
+ *     *server's* memory of the last ledger and is what a fresh device would use;
+ *  3. the **client's** copy was never updated, so the reload at the end of `enterLedger` read the
+ *     old id back out of the device and sent **that** as the header;
+ *  4. `GET /ledger` honours the header, so it answered with the *old* ledger's metadata;
+ *  5. and `useLedger` then called `setCurrentBook(oldLedger.id)` — **re-pinning the device to the
+ *     ledger it was trying to leave.** Every subsequent attempt repeated the same loop.
+ *
+ * So the new ledger has to be written down where the header is read from, **before** the reload.
+ * `setCurrentBook` also notifies `main.tsx`'s subscription, which primes the header, so the next
+ * request already names the new ledger even if the reload never happened.
  */
 export function useActivateBook() {
   return useMutation({
     mutationFn: (bookId: string) =>
       apiFetch<{ ok: boolean }>(`/books/${bookId}/activate`, { method: "POST" }),
+    onSuccess: (_result, bookId) => {
+      /**
+       * ⚠️ **Returned, not fired and forgotten.** `setCurrentBook` resolves once the id is on the
+       * device, and TanStack awaits a promise returned from `onSuccess` before `mutateAsync`
+       * resolves — which is what lets `enterLedger` reload *after* the write has landed.
+       * See the long note on `useActivateBook`.
+       */
+      return setCurrentBook(bookId);
+    },
   });
 }
 
@@ -279,64 +329,53 @@ export function useRestoreBook() {
 }
 
 /**
- * My collaborators — account-level, with the current ledger's people first.
+ * How many referral codes this account may still mint.
  *
- * ⚠️ **Not scoped by ledger, and it must work with no ledger at all** (the owner opens it from the
- * home page, where "当前账本为空"). When a ledger *is* current, its people come back on top and
- * flagged, which is how the screen highlights them.
+ * ⚠️ **It used to arrive bundled with the collaborator list**, and that list is gone (1.10.05). The
+ * count is still the server's — a second tally here would eventually disagree with the one the mint
+ * path enforces (`教训.md` §8.12) — it simply travels on its own now.
  */
-export interface CollaboratorView {
-  readonly userId: string;
-  readonly displayName: string;
-  readonly username: string;
-  readonly accountNumber: string;
-  readonly inCurrentBook: boolean;
-  readonly currentBookRole: "owner" | "editor" | "viewer" | null;
-}
-
-export function useCollaborators() {
+export function useReferralQuota() {
   return useQuery({
-    queryKey: queryKeys.collaborators,
-    queryFn: () =>
-      apiFetch<{
-        collaborators: readonly CollaboratorView[];
-        currentBookId: string | null;
-        /**
-         * ⚠️ **How many referral codes this account may still mint.** The screen needs it *before*
-         * the button is pressed: a limit you only learn about by hitting it was not communicated.
-         */
-        referralQuota: { readonly limit: number; readonly used: number };
-      }>("/collaborators"),
-    /** ⚠️ Always fresh: somebody else's acceptance changes this list, and they act on their device. */
+    queryKey: queryKeys.referralQuota,
+    queryFn: () => apiFetch<{ quota: { readonly limit: number; readonly used: number } }>("/referral-codes"),
     staleTime: 0,
   });
 }
 
-/** Find somebody by their eight-digit number. Only runs when asked, so it is a mutation. */
-export function useLookupAccount() {
-  return useMutation({
-    mutationFn: (accountNumber: string) =>
-      apiFetch<{
-        id: string;
-        displayName: string;
-        username: string;
-        accountNumber: string;
-        isCollaborator: boolean;
-        hasPendingRequest: boolean;
-      }>(`/collaborators/lookup?accountNumber=${encodeURIComponent(accountNumber)}`),
-  });
+/** What the invite screen learned about one account. */
+export interface DirectoryAccount {
+  readonly id: string;
+  readonly displayName: string;
+  readonly username: string;
+  readonly accountNumber: string;
+  /** ⚠️ Answered by the server against `book_members`, not guessed from a cached list. */
+  readonly alreadyMember: boolean;
 }
 
-export function useRequestCollaborator() {
-  const queryClient = useQueryClient();
-
+/**
+ * Find one account to invite — by its eight-digit number, or by an exact username.
+ *
+ * ⚠️ **A mutation rather than a query, and that is deliberate**: it runs when somebody presses
+ * 查找, not on every render. As a query it would refetch on focus and on every keystroke's
+ * debounce, and each call is a question about *another* account — the one endpoint that answers
+ * those should be asked on purpose, and it carries a tighter rate limit than the rest.
+ */
+export function useLookupAccount() {
   return useMutation({
-    mutationFn: (input: { accountNumber: string; message?: string }) =>
-      apiFetch<{ ok: boolean; notificationId: string; refreshed: boolean }>("/collaborators/requests", {
-        method: "POST",
-        body: input,
-      }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.collaborators }),
+    mutationFn: (input: { accountNumber?: string; username?: string }) => {
+      const params = new URLSearchParams(
+        input.accountNumber !== undefined
+          ? { accountNumber: input.accountNumber }
+          : { username: input.username ?? "" },
+      );
+      return apiFetch<{
+        account: DirectoryAccount;
+        canInvite: boolean;
+        /** ⚠️ The invitation already outstanding for this person, so the screen can say its state. */
+        invitation: { id: string; status: "pending" | "accepted" | "declined"; createdAt: string } | null;
+      }>(`/directory/lookup?${params.toString()}`);
+    },
   });
 }
 
@@ -348,7 +387,12 @@ export function useRequestCollaborator() {
  */
 export interface NotificationView {
   readonly id: string;
-  readonly kind: "collaborator_request" | "book_invite" | "referral_reminder";
+  /**
+   * ⚠️ **`collaborator_request` is not a possible value any more (1.10.05)** — the server stopped
+   * returning it, and the account-level system it belonged to was removed. Two kinds remain: an
+   * invitation into a ledger, and the reminder that follows using somebody's referral code.
+   */
+  readonly kind: "book_invite" | "referral_reminder";
   readonly status: "pending" | "accepted" | "declined";
   readonly message: string | null;
   readonly createdAt: string;
@@ -389,7 +433,6 @@ export function useDecideNotification() {
        * home screen would not show it.
        */
       void queryClient.invalidateQueries({ queryKey: queryKeys.notifications });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.collaborators });
       void queryClient.invalidateQueries({ queryKey: queryKeys.books });
     },
   });
@@ -406,26 +449,34 @@ export function useMarkNotificationsRead() {
 }
 
 /**
- * Invite a collaborator into **the current ledger**.
+ * Invite somebody into **the current ledger** — the one-step flow.
  *
  * ⚠️ **The ledger is not a parameter** — it comes from the request header, because that is what the
  * server checks against `book_members`. Passing a ledger id from here would suggest the client
  * decides which ledger it is inviting into, and it does not: it declares, the server verifies.
+ *
+ * ⚠️ **The person may be named by number or by username**, and the server accepts exactly one of the
+ * two — the same two ways the lookup accepts, so the screen can use whichever the user typed.
  */
 export function useInviteToBook() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (input: { accountNumber: string; role: "editor" | "viewer" }) =>
+    mutationFn: (input: {
+      accountNumber?: string;
+      username?: string;
+      role: "editor" | "viewer";
+    }) =>
       apiFetch<{ ok: boolean; notificationId: string; refreshed: boolean; role: "editor" | "viewer" }>(
         "/books/invite",
         { method: "POST", body: input },
       ),
     /**
-     * ⚠️ The collaborator list is refreshed because the invitation may be a re-send, and the row's
-     * state ("已经邀请过") comes from the server rather than from a local flag that could go stale.
+     * ⚠️ **The lookup is invalidated, not a list**, because there is no list any more. The state the
+     * sender needs next — *"已邀请，等待对方确认"* — comes from the lookup for that person, and it
+     * must be re-read rather than assumed from a local flag that could go stale.
      */
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.collaborators }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.directory }),
   });
 }
 
@@ -459,35 +510,48 @@ export interface ShareLinkView {
   readonly active: boolean;
 }
 
-export function useShareLinks() {
+/**
+ * The share links into a ledger.
+ *
+ * ⚠️ **`bookId` is optional and names the ledger for this call only** — same mechanism and same
+ * reason as `useBookMembers`. The start page's gear panel opens a ledger's sharing screen **without
+ * entering that ledger**, so reading the current one's links would show the wrong ledger's links
+ * under the right ledger's name: **the most confusing shape this bug can take**, because both halves
+ * of the screen look plausible.
+ *
+ * ⚠️ **The key carries the ledger**, so two ledgers' links cannot share a cache entry.
+ */
+export function useShareLinks(bookId?: string) {
   return useQuery({
-    queryKey: queryKeys.shareLinks,
-    queryFn: () => apiFetch<{ links: readonly ShareLinkView[] }>("/share/links"),
+    queryKey: bookId === undefined ? queryKeys.shareLinks : [...queryKeys.shareLinks, bookId],
+    queryFn: () => apiFetch<{ links: readonly ShareLinkView[] }>("/share/links", { ...(bookId === undefined ? {} : { bookId }) }),
     staleTime: 0,
   });
 }
 
 /** Mint one. **The token in the response is the only time it exists** — the screen must show it. */
-export function useCreateShareLink() {
+export function useCreateShareLink(bookId?: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: (input: { role: "editor" | "viewer"; days: number; maxUses: number }) =>
       apiFetch<{ id: string; token: string; expiresAt: string }>("/share/links", {
         method: "POST",
+        ...(bookId === undefined ? {} : { bookId }),
         body: input,
       }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.shareLinks }),
   });
 }
 
-export function useRevokeShareLink() {
+export function useRevokeShareLink(bookId?: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: (linkId: string) =>
       apiFetch<{ ok: boolean; alreadyRevoked: boolean }>(`/share/links/${linkId}/revoke`, {
         method: "POST",
+        ...(bookId === undefined ? {} : { bookId }),
       }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.shareLinks }),
   });
@@ -557,11 +621,11 @@ export function useLeaveBook() {
  */
 export function useMintReferralCode() {
   return useMutation({
-    mutationFn: (allowsDirectCollaborator: boolean) =>
-      apiFetch<{ code: string; allowsDirectCollaborator: boolean; expiresAt: string }>(
-        "/collaborators/referral-codes",
-        { method: "POST", body: { allowsDirectCollaborator } },
-      ),
+    mutationFn: () =>
+      apiFetch<{ code: string; expiresAt: string; quota: { limit: number } }>("/referral-codes", {
+        method: "POST",
+        body: {},
+      }),
   });
 }
 
@@ -615,43 +679,116 @@ export interface BookMemberView {
   readonly isCreator: boolean;
 }
 
-export function useBookMembers() {
+/**
+ * The members of a ledger.
+ *
+ * ⚠️ **`bookId` is optional and, when given, names the ledger for *this call only*.** It travels as
+ * the request header via `apiFetch`'s existing override — the same mechanism the offline queue
+ * uses — so **the global "current ledger" is not touched.**
+ *
+ * ⚠️ **This is what lets the start page's gear panel manage a ledger that is not the current one.**
+ * The owner was explicit that the alternative is not allowed: *"不允许通过静默修改全局当前账本来实现
+ * 这一点."* Changing the global would move every later request, the offline scope, and the cached
+ * slice with it — **to answer a question about a ledger the reader has not entered.**
+ *
+ * ⚠️ **The cache key carries the ledger**, because otherwise the second ledger's members would be
+ * served from the first ledger's cache — the cross-ledger leak this project treats as the worst kind.
+ */
+export function useBookMembers(bookId?: string) {
   return useQuery({
-    queryKey: queryKeys.bookMembers,
-    queryFn: () => apiFetch<{ members: readonly BookMemberView[]; myRole: string }>("/books/members"),
+    queryKey: bookId === undefined ? queryKeys.bookMembers : [...queryKeys.bookMembers, bookId],
+    queryFn: () =>
+      apiFetch<{ members: readonly BookMemberView[]; myRole: string }>("/books/members", {
+        ...(bookId === undefined ? {} : { bookId }),
+      }),
     /** ⚠️ Fresh: membership changes from the other side, on their device. */
     staleTime: 0,
   });
 }
 
-export function useChangeMemberRole() {
+/**
+ * Rename a ledger.
+ *
+ * ⚠️ **Both ids are sent, and they must agree.** The route takes the ledger from the path and the
+ * permission from the header, and refuses with `book_mismatch` if they differ — so this passes the
+ * same id to both, which is the only honest thing a caller can do.
+ *
+ * ⚠️ **`bookId` is required here, unlike the read hooks**, because a rename has no "current ledger"
+ * default that is safe: the panel renames *the ledger whose gear was tapped*, and a rename that
+ * silently fell back to the current one would be the exact mistake the owner warned about.
+ */
+export function useRenameBook() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: { bookId: string; name: string }) =>
+      apiFetch<{ ok: boolean; book: { id: string; name: string; bookNumber: string | null } }>(
+        `/books/${input.bookId}`,
+        { method: "PATCH", bookId: input.bookId, body: { name: input.name } },
+      ),
+    onSuccess: (_result, input) => {
+      /** ⚠️ The list the reader is looking at, and the ledger header if this was the current one. */
+      void queryClient.invalidateQueries({ queryKey: queryKeys.books });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.ledger });
+      /**
+       * ⚠️ **The history prefix, not one limit.** `ledgerHistory` is keyed by limit — the start page
+       * shows 2, the history screen 200 — so invalidating a single limit would refresh one screen and
+       * leave the other showing a name the ledger no longer has. **Prefix matching is what makes
+       * "the history changed" mean all of it.**
+       */
+      void queryClient.invalidateQueries({ queryKey: ["ledger-history"] });
+      void queryClient.invalidateQueries({ queryKey: [...queryKeys.bookMembers, input.bookId] });
+    },
+  });
+}
+
+/**
+ * Change somebody's role in a ledger.
+ *
+ * ⚠️ **`bookId` is optional and, when given, names the ledger for this call** — the start page's gear
+ * panel manages a ledger the reader is not in, and **every write it offers must carry that ledger
+ * explicitly.** Omitting it means the ledger the reader is in, which is what the 成员管理 screen means.
+ *
+ * ⚠️ **The invalidation follows the same split**: with a `bookId` it refreshes *that* ledger's members
+ * and history; without one it refreshes the current ledger's. Refreshing the wrong one would leave the
+ * screen showing a name it just changed, which reads as the save having failed.
+ */
+export function useChangeMemberRole(bookId?: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: (input: { userId: string; role: "editor" | "viewer" }) =>
       apiFetch<{ ok: boolean; changed: boolean }>(`/books/members/${input.userId}`, {
         method: "PATCH",
+        ...(bookId === undefined ? {} : { bookId }),
         body: { role: input.role },
       }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.bookMembers });
+      void queryClient.invalidateQueries({
+        queryKey: bookId === undefined ? queryKeys.bookMembers : [...queryKeys.bookMembers, bookId],
+      });
       /** ⚠️ The tab's own label comes from the member count, so it has to be refreshed too. */
       void queryClient.invalidateQueries({ queryKey: queryKeys.ledger });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.ledgerHistory(6) });
+      void queryClient.invalidateQueries({ queryKey: ["ledger-history"] });
     },
   });
 }
 
-export function useRemoveMember() {
+export function useRemoveMember(bookId?: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: (userId: string) =>
-      apiFetch<unknown>(`/books/members/${userId}`, { method: "DELETE" }),
+      apiFetch<unknown>(`/books/members/${userId}`, {
+        method: "DELETE",
+        ...(bookId === undefined ? {} : { bookId }),
+      }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.bookMembers });
+      void queryClient.invalidateQueries({
+        queryKey: bookId === undefined ? queryKeys.bookMembers : [...queryKeys.bookMembers, bookId],
+      });
       void queryClient.invalidateQueries({ queryKey: queryKeys.ledger });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.ledgerHistory(6) });
+      void queryClient.invalidateQueries({ queryKey: ["ledger-history"] });
     },
   });
 }
@@ -694,6 +831,31 @@ export function useSendBookMessage() {
     mutationFn: (body: string) =>
       apiFetch<{ ok: boolean; id: string }>("/books/messages", { method: "POST", body: { body } }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.bookMessages }),
+  });
+}
+
+/**
+ * **One ledger's metadata, as a plain read — for a ledger the reader is *not* entering.**
+ *
+ * ⚠️ **⚠️ This exists because `useLedger` must not be reused for another ledger, and that is not a
+ * style preference.** `useLedger` calls `setCurrentBook()` and `setOfflineBook()` — they are *how the
+ * device learns which ledger it is in*, which is correct for the screen the reader is looking at and
+ * **completely wrong for a ledger they merely tapped a gear on.** Reusing it there would silently move
+ * the request header, the offline scope and the cached slice to a ledger nobody entered.
+ *
+ * ⚠️ **So this is the same endpoint with the two side effects deliberately absent**, and it has its
+ * own query key. Sharing `queryKeys.ledger` would let a per-book answer overwrite the current
+ * ledger's metadata in the cache — **the cross-ledger leak this project treats as the worst kind**,
+ * in the shape that is hardest to notice: a correct-looking screen showing the wrong ledger.
+ */
+export function useLedgerMeta(bookId: string) {
+  return useQuery({
+    queryKey: [...queryKeys.ledgerMeta, bookId],
+    queryFn: () =>
+      apiFetch<LedgerMetaResponse>("/ledger", {
+        ...(bookId === "" ? {} : { bookId }),
+      }),
+    staleTime: 0,
   });
 }
 

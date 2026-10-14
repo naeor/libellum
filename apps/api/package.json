@@ -2,7 +2,7 @@
   "name": "@libellum/api",
   "version": "0.1.0",
   "private": true,
-  "description": "Libellum API server",
+  "description": "Libevra API server",
   "license": "AGPL-3.0-only",
   "type": "module",
   "main": "src/server.ts",
@@ -12,7 +12,13 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "invite:create": "node --env-file-if-exists=../../.env --import tsx src/scripts/create-invite.ts",
-    "invite:batch": "node --env-file-if-exists=../../.env --import tsx src/scripts/create-invite-batch.ts"
+    "invite:batch": "node --env-file-if-exists=../../.env --import tsx src/scripts/create-invite-batch.ts",
+    "admin:grant": "node --env-file-if-exists=../../.env --import tsx src/scripts/grant-admin.ts",
+    "admin:revoke": "node --env-file-if-exists=../../.env --import tsx src/scripts/revoke-admin.ts",
+    "admin:list": "node --env-file-if-exists=../../.env --import tsx src/scripts/list-admins.ts",
+    "admin:allow": "node --env-file-if-exists=../../.env --import tsx src/scripts/allow-admin.ts",
+    "admin:disallow": "node --env-file-if-exists=../../.env --import tsx src/scripts/disallow-admin.ts",
+    "check:db": "node --import tsx src/scripts/check-db-parity.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.2",
