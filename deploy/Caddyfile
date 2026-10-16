@@ -24,9 +24,31 @@
 	# so the API is not needed.
 	admin off
 
-	# ⚠️ **`email` is optional but should be set.** Let's Encrypt uses it for expiry warnings,
-	# which are the difference between a renewal you hear about and an outage you discover.
-	email {$ACME_EMAIL}
+	# ⚠️ **The ACME notification address is NOT written here — a wrapper script emits it.**
+	#
+	# The obvious line is `email {$ACME_EMAIL:admin@libevra.com}`, and it was here first. It
+	# does not work, and the way it fails is worth recording because it was **found by
+	# actually running `caddy validate` in S12-B (2026-10-16)**, not by reading the docs:
+	#
+	#   * `ACME_EMAIL` **unset**      -> the `:-` default applies -> **valid**
+	#   * `ACME_EMAIL` **set, empty** -> expands to nothing -> `email` has no argument ->
+	#     **`parsing caddyfile tokens for 'email': wrong argument count`** -> **the entire
+	#     configuration is rejected and the site does not start**
+	#
+	# Docker Compose passes `${ACME_EMAIL:-}` as an **empty but set** variable, so the fatal
+	# case is the normal one when nobody has supplied an address yet. **A missing notification
+	# email must not be able to stop the ledger from serving.**
+	#
+	# The Caddyfile format has no conditionals, so `deploy/web-entrypoint.sh` renders this
+	# file at container start and emits the `email` line **only when a real address exists**.
+	# The sentinel comment below marks where that line goes; the wrapper's `sed` replaces it.
+	# With no address set the marker is simply deleted along with the line.
+	#
+	# ⚠️ **Set `ACME_EMAIL` in `deploy/.env` to receive certificate expiry warnings.**
+	# Without it, certificates are still issued and renewed on schedule — you just will not
+	# be told in advance if a renewal starts failing.
+
+	# LIBEVRA_OPTIONAL_EMAIL
 
 	# ⚠️ Bounded, so a misconfigured proxy cannot fill the disk with a debug log.
 	log {

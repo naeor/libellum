@@ -66,7 +66,22 @@ COPY --from=build /repo/apps/web/dist /srv
 
 EXPOSE 80 443
 
-# ⚠️ **The healthcheck asks Caddy, not the network.** A container that cannot answer on its
-# own loopback is not serving, regardless of what the host firewall thinks.
+# ⚠️ **The healthcheck sends `Host: ${LIBEVRA_DOMAIN}`, and that is not decoration.**
+#
+# The first version was `wget --spider http://127.0.0.1:80/healthz`, and it reported the
+# container **unhealthy** the whole time the site was serving perfectly (S12-B, 2026-10-16).
+# Caddy answers a request whose Host is not the configured site with its automatic
+# HTTP -> HTTPS redirect, so 127.0.0.1 received `308 Location: https://127.0.0.1/healthz`;
+# wget followed it, the container presented a certificate for `libevra.com`, and the
+# handshake died with `tlsv1 alert internal error`. **The check was asking the wrong
+# question** — and an "unhealthy" web container is exactly the signal that would send an
+# operator hunting for a fault that does not exist.
+#
+# Sending the real Host header keeps the check inside the container: no DNS, no certificate,
+# no redirect — while still exercising the same handler a browser reaches after TLS.
+#
+# ⚠️ `${LIBEVRA_DOMAIN}` is expanded by the **shell at run time**. Under `CMD-SHELL` with no
+# `escaping` option, docker substitutes `$LIBEVRA_DOMAIN` itself and leaves the braced form
+# alone — so the braces here are load-bearing.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD wget -q --spider http://127.0.0.1:80/healthz || exit 1
+  CMD wget -q --spider --header="Host: ${LIBEVRA_DOMAIN}" http://127.0.0.1:80/healthz || exit 1

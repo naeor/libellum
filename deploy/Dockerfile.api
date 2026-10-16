@@ -44,10 +44,35 @@ COPY packages/shared packages/shared
 COPY apps/api apps/api
 COPY apps/web/package.json apps/web/
 
+# ⚠️ **`prisma.config.ts` and `prisma/` are required, and leaving them out failed the very
+# first real build (S12-B, 2026-10-16):**
+#
+#     schema.prisma: file not found
+#     prisma/schema.prisma: file not found
+#
+# Prisma 7 reads the schema location from `prisma.config.ts` (`schema: "prisma/schema.prisma"`,
+# a path relative to *that file*), and it also needs the migrations directory:
+
+#   * without the config file the CLI falls back to its default lookup, finds nothing at the
+#     repo root, and exits 1 — which fails the image build rather than anything at runtime;
+#   * without `prisma/` there is no schema for `generate` to read and, more importantly, no
+#     `prisma/migrations/` for the `migrate` service to apply.
+#
+# ⚠️ **The migrations have to be in the image.** The `migrate` service runs
+# `pnpm db:deploy` from this same image, and `prisma migrate deploy` applies the files under
+# `prisma/migrations/`. An image built without them would report "no migrations found" and
+# quietly start the API against an empty schema.
+COPY prisma.config.ts ./
+COPY prisma prisma
+
 # ⚠️ **`prisma generate` runs here rather than at start-up.** The generated client is a build
 # artefact of the schema, and generating it on every container start would make boot time
 # depend on a command that cannot change without a new image.
-RUN pnpm db:generate
+#
+# ⚠️ `DATABASE_URL` is not needed to generate a client, but Prisma 7's config resolves
+# `env("DATABASE_URL")` at load time, so a placeholder is supplied to keep the command
+# hermetic. It is a build-time value only and never reaches the runtime image's environment.
+RUN DATABASE_URL="postgresql://build:build@localhost:5432/build" pnpm db:generate
 
 # ---------------------------------------------------------------------------
 # Stage 2 — the runtime
@@ -107,6 +132,29 @@ COPY --from=build /repo/package.json /repo/pnpm-lock.yaml /repo/pnpm-workspace.y
 COPY --from=build /repo/packages/shared /repo/packages/shared
 COPY --from=build /repo/apps/api /repo/apps/api
 COPY --from=build /repo/apps/web/package.json /repo/apps/web/package.json
+
+# ⚠️ **No `.npmrc` is installed into the runtime image, and that is a correction.**
+#
+# The first attempt shipped `deploy/npmrc.runtime` containing `verify-deps-before-run=false`
+# and copied it to `/repo/.npmrc`. **It had no effect at all**: pnpm 12 reads *only* auth and
+# registry settings from `.npmrc`, and `pnpm config get verify-deps-before-run` still answered
+# `undefined` inside the built image.
+#
+# The setting that actually stops the pre-run install lives in `pnpm-workspace.yaml`
+# (`verifyDepsBeforeRun: false`), which is already copied in on the line above. The dead file
+# and this COPY were removed rather than left in place looking effective — a configuration
+# line that does nothing is worse than no line, because the next person trusts it.
+#
+# The repository's own `.npmrc` (`auto-install-peers`, `resolution-mode`) is a development
+# file and is deliberately not copied into the runtime image.
+
+# ⚠️ **The `migrate` service runs from this image**, and `prisma migrate deploy` reads both
+# the config (for the schema location) and the migrations directory. Omitting them here
+# would leave `migrate` with nothing to apply while still exiting 0 — the API would then
+# start against an empty database and answer 500s, which looks like a broken deployment
+# rather than a missing image layer.
+COPY --from=build /repo/prisma.config.ts ./
+COPY --from=build /repo/prisma /repo/prisma
 COPY apps/ocr /repo/apps/ocr
 COPY apps/voice /repo/apps/voice
 
@@ -120,9 +168,28 @@ COPY apps/voice /repo/apps/voice
 # Pointing `HOME` at `/data` is what makes `pywhispercpp` cache the model inside the volume
 # rather than in the image: a model inside the image would be re-downloaded on every deploy.
 # ---------------------------------------------------------------------------
+#
+# ⚠️ **`node_modules` has to be writable by the runtime user, and this was found the hard
+# way (S12-B, 2026-10-16).** The `migrate` service failed with:
+#
+#     Error: Can't write to /repo/node_modules/.pnpm/@prisma+engines@7.10.0/...
+#            please make sure you install "prisma" with the right permissions.
+#
+# The copied `node_modules` was root-owned while the container runs as uid 10001, and
+# **Prisma downloads its query engine into its own package directory on first use**. Read-only
+# `node_modules` therefore breaks migrations — and would have broken the API at its first
+# database query too, just later and less obviously.
+#
+# ⚠️ A safer variant would be `PRISMA_ENGINES_MIRROR` plus a build-time engine download, but
+# the engine write is not the only thing that wants that directory: pnpm's own
+# "verify dependencies before running a script" step tries to *modify* `node_modules` too.
+# Making the directory writable by the user that already owns `/data` keeps both working and
+# grants nothing that user did not already effectively have inside its own container.
 RUN mkdir -p /data/models /data/uploads \
- && chown -R 10001:10001 /data /home/libevra /repo/apps
+ && chown -R 10001:10001 /data /home/libevra /repo/node_modules /repo/apps
 
+# ⚠️ **pnpm's dependency check is switched off in `deploy/npmrc.runtime`**, not here.
+# An `ENV verifyDepsBeforeRun=false` was tried and **did not work** — see that file.
 ENV NODE_ENV=production \
     HOME=/data \
     LIBELLUM_OCR_PYTHON=/opt/libevra/python/bin/python \

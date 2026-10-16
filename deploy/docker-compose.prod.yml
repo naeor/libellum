@@ -140,17 +140,28 @@ services:
       # Caddyfile. A domain compiled into an image has to be rebuilt to change, which is how
       # a placeholder ends up live.
       LIBEVRA_DOMAIN: ${LIBEVRA_DOMAIN:?set LIBEVRA_DOMAIN in .env}
-      # ⚠️ Where certificate renewal notices should go. Optional; empty disables ACME email.
+      # ⚠️ **May be empty, and the empty case is handled deliberately.**
+      # Compose passes `${ACME_EMAIL:-}` as an empty *but set* variable, and Caddy's `email`
+      # directive rejects an empty argument by refusing the **entire** configuration —
+      # measured on a real Caddy in S12-B (2026-10-16), see `deploy/web-entrypoint.sh`.
+      # That is why the container runs a wrapper which emits the line only when a real
+      # address exists, rather than the Caddyfile carrying the directive unconditionally.
       ACME_EMAIL: ${ACME_EMAIL:-}
+    # ⚠️ The stock entrypoint is replaced so the template can be rendered first.
+    command: ["/bin/sh", "/etc/caddy/web-entrypoint.sh"]
     volumes:
       # ⚠️ **Caddy's own state: the certificates and the ACME account key.** Losing this
       # volume means re-issuing certificates, and Let's Encrypt rate-limits issuance — so it
       # is mounted, not left in the container.
       - caddy-data:/data
       - caddy-config:/config
-      # The Caddyfile is mounted rather than copied, so tightening the configuration is a
-      # file edit plus a reload instead of an image build.
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # ⚠️ **Two mounts, because the file Caddy reads is generated from the first one.**
+      # The template is mounted read-only as `*.template`; the wrapper renders it to
+      # `/etc/caddy/Caddyfile` *inside* the container, so a restart always reproduces it from
+      # the committed template. There is deliberately no generated file on the host that
+      # could drift away from the repository.
+      - ./Caddyfile:/etc/caddy/Caddyfile.template:ro
+      - ./web-entrypoint.sh:/etc/caddy/web-entrypoint.sh:ro
     depends_on:
       api:
         # ⚠️ Caddy will start without this, but it would answer 502 on `/api` until the API

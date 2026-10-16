@@ -13,3 +13,36 @@ allowBuilds:
   "@prisma/engines": true
   esbuild: true
   prisma: true
+
+# ⚠️ **Stops pnpm from re-installing dependencies before every script** (S12-B, 2026-10-16).
+#
+# ⚠️ **This setting can only live here.** pnpm 12 reads *only* auth and registry settings from
+# `.npmrc`; every other setting comes from this file or the global config. That is why the
+# first two attempts to switch this off did nothing at all:
+#
+#   1. `ENV verifyDepsBeforeRun=false` in `deploy/Dockerfile.api`  -> no effect
+#   2. `verify-deps-before-run=false` in a runtime `.npmrc`        -> no effect, and
+#      `pnpm config get verify-deps-before-run` still answered `undefined`
+#
+# ⚠️ **Why it matters in production and not in development.** The default is `install`: if
+# pnpm thinks `node_modules` is stale it runs a full install, and **if that install fails it
+# still runs the command**, printing only "your node_modules may be out of sync with your
+# lockfile". Inside the production image that check is not a safety net — it is a liability:
+#
+#   * `node_modules` is a baked, lockfile-frozen layer of the image. An install cannot improve
+#     it and can only move the container away from the artefact CI validated;
+#   * it fires on every operational command (`pnpm invite:create`, `pnpm admin:grant`,
+#     `pnpm admin:allow`, `pnpm db:deploy`) — exactly the commands run under pressure;
+#   * in the container it failed with `ERR_PNPM_CMD_SHIM_CHMOD` (files owned by root, process
+#     running as uid 10001) after re-downloading all 308 packages.
+#
+# ⚠️ **The `migrate` service was actually broken by this**, and the failure was misleading:
+# the install died, the warning was printed, and then the script ran anyway and reported
+# `sh: 1: prisma: not found` + exit 127 — which reads like a broken image, not like a
+# dependency check that had just gutted `node_modules`.
+#
+# ⚠️ **`false`, not `warn`.** `warn` still performs the check and still tells an operator in
+# the middle of an incident that their dependencies are suspect, which is the part that does
+# the damage. There is nothing to warn about: the image's dependencies are the ones that were
+# installed and tested at build time.
+verifyDepsBeforeRun: false
