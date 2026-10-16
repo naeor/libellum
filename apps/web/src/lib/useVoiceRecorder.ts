@@ -112,7 +112,7 @@ export function describeBlocker(blocker: RecorderBlocker): string | null {
   }
 
   if (blocker === "unsupported") {
-    return "这个浏览器不支持录音。可以改用手动记账，功能不受影响。";
+    return "当前浏览器不支持录音，请改用手动记账。";
   }
 
   return null;
@@ -376,7 +376,7 @@ function describeMicrophoneError(caught: unknown): string {
     case "OverconstrainedError":
       return "没有找到可用的麦克风。可以改用手动记账。";
     case "NotReadableError":
-      return "麦克风被其它程序占用了。关掉正在用麦克风的程序再试一次。";
+      return "麦克风被其他应用占用，请关闭后重试。";
     default:
       return "没能开始录音。可以改用手动记账。";
   }

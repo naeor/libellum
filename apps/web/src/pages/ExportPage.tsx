@@ -156,7 +156,7 @@ export function ExportPage(): React.JSX.Element {
   return (
     <InnerPage
       title="导出账目"
-      subtitle="选择要导出的范围与格式。导出的文件会带一个编号，日后可以对照。"
+      subtitle="选择导出范围和格式。文件编号可用于后续核对。"
       backTo="/"
     >
       {error === null ? null : <Alert>{error}</Alert>}
@@ -241,8 +241,8 @@ export function ExportPage(): React.JSX.Element {
         <div className="grid grid-cols-2 gap-2">
           {(
             [
-              ["csv", "CSV", "任何表格软件都能打开，导入也用这个格式"],
-              ["xlsx", "Excel", "Excel / WPS 可直接打开，金额是数字可求和"],
+              ["csv", "CSV", "常见表格软件可打开，也可用于导入"],
+              ["xlsx", "Excel", "Excel / WPS 可打开，金额可直接求和"],
             ] as const
           ).map(([value, label, hint]) => (
             <button
@@ -344,7 +344,7 @@ export function ExportPage(): React.JSX.Element {
           下载导入模板
         </Button>
         <p className="text-helper-relaxed text-muted">
-          模板只有表头，没有数据。它和导出的文件是同一套列，可以在里面逐行填写。
+          模板仅含表头，与导出文件的列一致，可逐行填写。
         </p>
 
         <Button

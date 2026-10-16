@@ -67,7 +67,7 @@
  * `pnpm admin:disallow` — and neither of those touches `admin_grants`.
  * See `docs/S12-A上线前安全与发布准备.md` §4.
  */
-export const APP_VERSION = "1.10.23";
+export const APP_VERSION = "1.10.24";
 
 /**
  * When this bundle was built.

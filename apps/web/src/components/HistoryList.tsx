@@ -43,11 +43,11 @@ export function HistoryList({
   const history = useLedgerHistory(limit);
 
   if (history.isPending) {
-    return <p className="px-5 py-4 text-body text-muted">正在读取历史……</p>;
+    return <p className="px-5 py-4 text-body text-muted">正在载入历史记录…</p>;
   }
 
   if (history.isError) {
-    return <p className="px-5 py-4 text-body text-muted">历史读取失败。</p>;
+    return <p className="px-5 py-4 text-body text-muted">无法载入历史记录，请重试。</p>;
   }
 
   const { entries, total } = history.data;

@@ -26,7 +26,7 @@ export function ReferralCodePage(): React.JSX.Element {
   return (
     <InnerPage
       title="邀请码"
-      subtitle="用于别人注册 Libevra 账号，属于账号本身。"
+      subtitle="用于邀请他人注册 Libevra，不会自动加入账本。"
       backTo="/settings"
     >
       <Card>

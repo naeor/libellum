@@ -54,11 +54,11 @@ describe("the conflict screen", () => {
       at: 0,
     });
 
-    expect(markup).toContain("已经自动合好的地方");
+    expect(markup).toContain("已自动合并");
     expect(markup).toContain("金额");
-    expect(markup).toContain("用你的");
+    expect(markup).toContain("使用本机版本");
     expect(markup).toContain("备注");
-    expect(markup).toContain("用服务器上的");
+    expect(markup).toContain("使用服务器版本");
   });
 
   it("⚠️ says which side each automatic value came from", () => {
@@ -73,7 +73,7 @@ describe("the conflict screen", () => {
       at: 0,
     });
 
-    expect(markup).toContain("用你的");
+    expect(markup).toContain("使用本机版本");
   });
 
   it("asks about the field both sides changed", () => {
@@ -84,7 +84,7 @@ describe("the conflict screen", () => {
       at: 0,
     });
 
-    expect(markup).toContain("需要你选的地方");
+    expect(markup).toContain("需要确认");
     expect(markup).toContain("这台设备");
     expect(markup).toContain("服务器");
   });
@@ -97,7 +97,7 @@ describe("the conflict screen", () => {
       at: 0,
     });
 
-    expect(markup).toContain("不选就先用服务器上的");
+    expect(markup).toContain("未选择时使用服务器版本");
   });
 
   it("⚠️ refuses to save while a question is unanswered", () => {
@@ -123,7 +123,7 @@ describe("the conflict screen", () => {
     });
 
     expect(markup).toContain("稍后再处理");
-    expect(markup).toContain("两份都留着");
+    expect(markup).toContain("保留两个版本");
   });
 
   it("says so when there is nothing to merge automatically", () => {

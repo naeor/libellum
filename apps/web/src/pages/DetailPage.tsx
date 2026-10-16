@@ -490,7 +490,7 @@ export function DetailPage(): React.JSX.Element {
                 <ToolButton
                   icon={<MoreIcon />}
                   label="更多"
-                  hint="本机存放与待同步印记"
+                  hint="本机记录与同步状态"
                   onClick={() => {
                     /**
                      * ⚠️ **This button was disabled from the day it was drawn** — "更多操作即将开放" — and the
@@ -730,7 +730,7 @@ export function DetailPage(): React.JSX.Element {
             {isEmptyMonth ? (
               <EmptyState
                 title={kind === "expense" ? "这个月还没有支出" : "这个月还没有收入"}
-                description="点击下方中间的记账按钮，记下第一笔。"
+                description="轻点下方记账按钮，记录第一笔账目。"
                 actionLabel="记一笔"
                 onAction={() => void navigate("/add")}
               />

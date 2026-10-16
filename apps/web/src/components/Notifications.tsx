@@ -91,8 +91,8 @@ function NotificationPanel(): React.JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
 
-  if (inbox.isPending) return <p className="text-body text-muted">正在读取提醒……</p>;
-  if (!inbox.isSuccess) return <p className="text-body text-danger">提醒读取失败。</p>;
+  if (inbox.isPending) return <p className="text-body text-muted">正在载入提醒…</p>;
+  if (!inbox.isSuccess) return <p className="text-body text-danger">无法载入提醒，请重试。</p>;
 
   const { notifications, pendingCount } = inbox.data;
 

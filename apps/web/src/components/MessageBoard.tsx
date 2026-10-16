@@ -208,7 +208,7 @@ function MessageRow({ message }: { readonly message: BookMessage }): React.JSX.E
 function EmptyBoard(): React.JSX.Element {
   return (
     <p className="px-4 py-5 text-body-relaxed text-muted">
-      这本账还没有留言。这里可以讨论和这本账有关的事，比如「昨天买菜的 86 元是不是还没有记？」。
+      还没有留言。可以在这里讨论此账本的记录。
     </p>
   );
 }
@@ -318,8 +318,8 @@ export function MessageBoardCard({ limit = 2 }: { readonly limit?: number } = {}
     listRef.current?.lastElementChild?.scrollIntoView({ block: "nearest" });
   }, [submitted]);
 
-  if (messages.isPending) return <p className="px-5 py-4 text-body text-muted">正在读取留言……</p>;
-  if (messages.isError) return <p className="px-5 py-4 text-body text-muted">留言读取失败。</p>;
+  if (messages.isPending) return <p className="px-5 py-4 text-body text-muted">正在载入留言…</p>;
+  if (messages.isError) return <p className="px-5 py-4 text-body text-muted">无法载入留言，请重试。</p>;
 
   /**
    * ⚠️ **The newest few, and the list is already newest-first from the server.** `slice` rather than
@@ -472,8 +472,8 @@ export function MessageBoardFull({ bookName }: { readonly bookName: string }): R
 
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         <div className="mx-auto flex w-full max-w-md flex-col pb-4">
-          {messages.isPending ? <p className="px-5 py-6 text-body text-muted">正在读取留言……</p> : null}
-          {messages.isError ? <p className="px-5 py-6 text-body text-muted">留言读取失败。</p> : null}
+          {messages.isPending ? <p className="px-5 py-6 text-body text-muted">正在载入留言…</p> : null}
+          {messages.isError ? <p className="px-5 py-6 text-body text-muted">无法载入留言，请重试。</p> : null}
 
           {messages.isSuccess ? (
             /**
@@ -522,7 +522,7 @@ export function MessageBoardFull({ bookName }: { readonly bookName: string }): R
               }}
               className="shrink-0 rounded-field bg-brand px-4 py-3 text-sm text-white transition hover:bg-brand-dark disabled:opacity-45"
             >
-              {composer.sending ? "发送中……" : "发送"}
+              {composer.sending ? "发送中…" : "发送"}
             </button>
           </div>
         </div>

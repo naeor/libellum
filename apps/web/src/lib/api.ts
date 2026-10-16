@@ -140,7 +140,7 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
     throw new ApiRequestError(
       0,
       "offline",
-      "当前处于离线状态，无法与服务器同步。请恢复网络后重试。",
+      "当前离线，请联网后重试此操作。",
     );
   }
 
@@ -242,7 +242,7 @@ export async function apiFetchFile(
   bookId?: string,
 ): Promise<FetchedFile> {
   if (typeof navigator !== "undefined" && !navigator.onLine) {
-    throw new ApiRequestError(0, "offline", "当前处于离线状态，无法与服务器同步。请恢复网络后重试。");
+    throw new ApiRequestError(0, "offline", "当前离线，请联网后重试此操作。");
   }
 
   const controller = new AbortController();

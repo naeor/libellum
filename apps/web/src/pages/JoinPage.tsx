@@ -31,7 +31,7 @@ export function JoinPage(): React.JSX.Element {
 
   if (preview.isPending) {
     return (
-      <InnerPage title="加入账本" subtitle="正在读取这个邀请链接。" backTo="/">
+      <InnerPage title="加入账本" subtitle="正在载入邀请…" backTo="/">
         <SkeletonRows rows={2} />
       </InnerPage>
     );
@@ -39,7 +39,7 @@ export function JoinPage(): React.JSX.Element {
 
   if (preview.isError) {
     return (
-      <InnerPage title="加入账本" subtitle="这个链接不能用了。" backTo="/">
+      <InnerPage title="加入账本" subtitle="此邀请链接已不可用。" backTo="/">
         <div className="rounded-card border border-line bg-surface p-5">
           <p className="text-body-relaxed text-muted">
             这个分享链接**无效或已被撤销**。请让邀请你的人重新生成一条。
@@ -56,11 +56,11 @@ export function JoinPage(): React.JSX.Element {
 
   if (data.alreadyMember) {
     return (
-      <InnerPage title="加入账本" subtitle="你已经在这本账里了。" backTo="/">
+      <InnerPage title="加入账本" subtitle="你已加入此账本。" backTo="/">
         <div className="rounded-card border border-line bg-surface p-5">
           <p className="text-body text-ink">「{data.bookName}」</p>
           <p className="mt-2 text-helper-relaxed text-muted">
-            你已经在这本账里，不需要再加入一次。
+            无需重复加入。
           </p>
           <div className="mt-4">
             <Button
@@ -77,7 +77,7 @@ export function JoinPage(): React.JSX.Element {
   }
 
   return (
-    <InnerPage title="加入账本" subtitle="请确认之后才会加入。" backTo="/">
+    <InnerPage title="加入账本" subtitle="确认后加入此账本。" backTo="/">
       {error !== null ? (
         <p role="alert" className="mb-4 rounded-field bg-danger-soft px-4 py-3 text-body text-danger">
           {error}
@@ -101,9 +101,9 @@ export function JoinPage(): React.JSX.Element {
 
         <p className="mt-5 border-t border-line pt-4 text-helper-relaxed text-muted">
           {data.role === "editor"
-            ? "加入后你可以记帐、改帐目。"
-            : "加入后你可以看到这本账的全部账目，但不能修改。"}
-          {" "}加入之前什么都不会发生。
+            ? "加入后可记账和修改账目。"
+            : "加入后可查看全部账目，不能修改。"}
+          {" "}确认前不会加入账本。
         </p>
 
         <div className="mt-5 flex flex-col gap-3">
@@ -123,7 +123,7 @@ export function JoinPage(): React.JSX.Element {
                 });
             }}
           >
-            {join.isPending ? "正在加入……" : "确认加入"}
+            {join.isPending ? "正在加入…" : "确认加入"}
           </Button>
 
           <Button

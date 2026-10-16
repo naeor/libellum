@@ -4985,3 +4985,122 @@ S11 审计实测：`text-xs` 用了 **186 次，其中 53 次额外加了 `leadi
 这已经是本项目第三次写同一条原则了，值得记住。
 
 ---
+
+## 2026-10-16 · 1.10.24 上线后首次进入与中文文案修复
+
+### 文案审计：先列对照，再修改
+
+审计前端页面、共享组件、共享校验与 API 错误来源。下表共 73 组，实施 76 处用户界面文案调整，另同步 1 处引用旧文案的源码注释。下表仅对表达作等义调整；删除账目、退出账本、弃置账本、恢复账本、移除成员和取消邀请继续分别命名。表中是本轮候选与实施清单，验证结果在本节后续补充。
+
+| 原文 | 建议文案 | 理由 | 文件 |
+|---|---|---|---|
+| 该账号已在其它设备上登录，本设备的登录状态已失效。 | 登录状态已失效，请重新登录。 | 移除与多设备登录设计矛盾的原因推断 | `apps/web/src/pages/LoginPage.tsx` |
+| 去登录 | 登录 | 按钮名称统一 | `apps/web/src/pages/RegisterPage.tsx` |
+| 在应用内显示的名字，可以重复，最多 | 应用内显示的名称，可重复，最多 | 减少口语赘词 | `apps/web/src/pages/RegisterPage.tsx` |
+| 输入用户名与恢复码，即可设置新密码。 | 输入用户名和恢复码，设置新密码。 | 简洁自然 | `apps/web/src/pages/RecoverPage.tsx` |
+| 正在切换到那本账…… | 正在切换账本… | 避免指代不明 | `apps/web/src/pages/LedgerSpacePage.tsx` |
+| 本机存放与待同步印记 | 本机记录与同步状态 | 入口少用内部实现术语 | `apps/web/src/pages/DetailPage.tsx` |
+| 点击下方中间的记账按钮，记下第一笔。 | 轻点下方记账按钮，记录第一笔账目。 | 空状态说明更自然 | `apps/web/src/pages/DetailPage.tsx` |
+| 以下结果由已记录的账目计算得出。 | 统计基于已记录的账目。 | 压缩说明 | `apps/web/src/pages/StatsPage.tsx` |
+| 退出后这本账不再出现在你的列表里，你也就看不到它的账目了。 | 退出后，你将无法访问此账本，账本也不再显示在你的列表中。 | 保留退出影响并明确访问权 | `apps/web/src/components/BookManageSheet.tsx` |
+| 弃置是整本账对所有人搁置起来，它不再出现在任何成员的列表里。数据不会删除。 | 弃置后，所有成员都将看不到此账本。数据会保留，创建者可恢复。 | 保留全员影响、保留数据和可恢复语义 | `apps/web/src/components/BookManageSheet.tsx` |
+| 弃置是整本账对所有人搁置起来，它不再出现在任何成员的列表里。数据不会删除。 | 弃置后，所有成员都将看不到此账本。数据会保留，创建者可恢复。 | 同一操作说明一致 | `apps/web/src/pages/StartBookPages.tsx` |
+| 用你的 | 使用本机版本 | 明确候选来源 | `apps/web/src/components/ConflictScreen.tsx` |
+| 用服务器上的 | 使用服务器版本 | 明确候选来源 | `apps/web/src/components/ConflictScreen.tsx` |
+| 已经自动合好的地方 | 已自动合并 | 减少口语和模糊指代 | `apps/web/src/components/ConflictScreen.tsx` |
+| 需要你选的地方 | 需要确认 | 简化标题 | `apps/web/src/components/ConflictScreen.tsx` |
+| 选一个；不选就先用服务器上的。 | 请选择一个版本。未选择时使用服务器版本。 | 保留默认处理语义 | `apps/web/src/components/ConflictScreen.tsx` |
+| 用这个结果保存 | 保存结果 | 缩短按钮 | `apps/web/src/components/ConflictScreen.tsx` |
+| 「稍后再处理」不会丢东西——两份都留着，下次打开还会问你。 | 选择「稍后再处理」会保留两个版本，下次仍可处理。 | 明确保留对象 | `apps/web/src/components/ConflictScreen.tsx` |
+| 这个浏览器不允许自动复制。下面就是全部内容，长按选择「复制」，或直接截图。 | 无法自动复制。请长按下方内容复制，或保存截图。 | 给出下一步 | `apps/web/src/components/CopyButton.tsx` |
+| 正在读取历史…… | 正在载入历史记录… | 统一加载表达 | `apps/web/src/components/HistoryList.tsx` |
+| 历史读取失败。 | 无法载入历史记录，请重试。 | 说明失败及下一步 | `apps/web/src/components/HistoryList.tsx` |
+| 正在读取成员…… | 正在载入成员… | 统一加载表达 | `apps/web/src/components/MemberList.tsx` |
+| 成员读取失败。 | 无法载入成员，请重试。 | 明确失败状态 | `apps/web/src/components/MemberList.tsx` |
+| 他会立刻看不到这本账，但他记过的账目会留下，历史记录里也会留下这一条。 | 移除后，对方将无法访问此账本。对方记录的账目和本次操作记录会保留。 | 去除性别指代并保留移除后果 | `apps/web/src/components/MemberList.tsx` |
+| 这本账还没有留言。这里可以讨论和这本账有关的事，比如「昨天买菜的 86 元是不是还没有记？」。 | 还没有留言。可以在这里讨论此账本的记录。 | 空状态克制 | `apps/web/src/components/MessageBoard.tsx` |
+| 正在读取留言…… | 正在载入留言… | 统一加载表达 | `apps/web/src/components/MessageBoard.tsx` |
+| 留言读取失败。 | 无法载入留言，请重试。 | 明确失败状态 | `apps/web/src/components/MessageBoard.tsx` |
+| 发送中…… | 发送中… | 统一省略号 | `apps/web/src/components/MessageBoard.tsx` |
+| 正在读取提醒…… | 正在载入提醒… | 统一加载表达 | `apps/web/src/components/Notifications.tsx` |
+| 提醒读取失败。 | 无法载入提醒，请重试。 | 明确失败状态 | `apps/web/src/components/Notifications.tsx` |
+| 拿到链接的人打开后，会先看到这是哪本账、他会被给什么权限，确认之后才会加入。 | 对方打开链接后，可先查看账本和加入权限，确认后才会加入。 | 说明邀请流程而不改变确认机制 | `apps/web/src/components/ShareSection.tsx` |
+| 这本账现在没有分享链接。 | 暂无分享链接。 | 统一空状态 | `apps/web/src/components/ShareSection.tsx` |
+| 让对方用相机扫这个码 | 请对方用相机扫描二维码 | 明确对象 | `apps/web/src/components/ShareSection.tsx` |
+| 正在生成…… | 正在生成… | 统一省略号 | `apps/web/src/components/ShareSection.tsx` |
+| 连不上服务器：下面的数据来自本机，离线时也能查看。 | 暂时无法连接服务器，正在显示本机记录。 | 保留离线来源提示 | `apps/web/src/components/SyncBanner.tsx` |
+| 当前处于离线状态：下面的数据来自本机，离线时也能查看。 | 当前离线，正在显示本机记录。 | 简化离线提示 | `apps/web/src/components/SyncBanner.tsx` |
+| 选择要导出的范围与格式。导出的文件会带一个编号，日后可以对照。 | 选择导出范围和格式。文件编号可用于后续核对。 | 保留追溯用途 | `apps/web/src/pages/ExportPage.tsx` |
+| 任何表格软件都能打开，导入也用这个格式 | 常见表格软件可打开，也可用于导入 | 避免绝对化兼容承诺 | `apps/web/src/pages/ExportPage.tsx` |
+| Excel / WPS 可直接打开，金额是数字可求和 | Excel / WPS 可打开，金额可直接求和 | 精简格式说明 | `apps/web/src/pages/ExportPage.tsx` |
+| 模板只有表头，没有数据。它和导出的文件是同一套列，可以在里面逐行填写。 | 模板仅含表头，与导出文件的列一致，可逐行填写。 | 说明更集中 | `apps/web/src/pages/ExportPage.tsx` |
+| 关于判重 | 重复记录 | 避免内部术语 | `apps/web/src/pages/ImportPage.tsx` |
+| 没有这几列的外部文件也能导入，但那时无法判重，可能产生重复。 | 缺少这些编号列的文件也可导入，但无法识别重复记录。 | 保留重复风险 | `apps/web/src/pages/ImportPage.tsx` |
+| 会先校验整个文件，通过后才写入这本账。 | 文件全部通过校验后，才会导入此账本。 | 确认动作清晰 | `apps/web/src/pages/ImportPage.tsx` |
+| 正在读取这个邀请链接。 | 正在载入邀请… | 统一加载表达 | `apps/web/src/pages/JoinPage.tsx` |
+| 这个链接不能用了。 | 此邀请链接已不可用。 | 准确状态 | `apps/web/src/pages/JoinPage.tsx` |
+| 你已经在这本账里了。 | 你已加入此账本。 | 减少口语 | `apps/web/src/pages/JoinPage.tsx` |
+| 你已经在这本账里，不需要再加入一次。 | 无需重复加入。 | 减少重复说明 | `apps/web/src/pages/JoinPage.tsx` |
+| 请确认之后才会加入。 | 确认后加入此账本。 | 简洁表达确认条件 | `apps/web/src/pages/JoinPage.tsx` |
+| 加入后你可以记帐、改帐目。 | 加入后可记账和修改账目。 | 修正帐/账错字 | `apps/web/src/pages/JoinPage.tsx` |
+| 加入后你可以看到这本账的全部账目，但不能修改。 | 加入后可查看全部账目，不能修改。 | 保留只读权限边界 | `apps/web/src/pages/JoinPage.tsx` |
+| 加入之前什么都不会发生。 | 确认前不会加入账本。 | 用确切动作替代笼统表述 | `apps/web/src/pages/JoinPage.tsx` |
+| 正在加入…… | 正在加入… | 统一省略号 | `apps/web/src/pages/JoinPage.tsx` |
+| 要完整的 8 位编号，或完整的用户名。只按前缀查找是不行的。 | 请输入完整的 8 位账号编号或用户名。 | 给出可执行输入要求 | `apps/web/src/pages/LedgerInvitePage.tsx` |
+| 这个人已经在这本账里了。 | 对方已加入此账本。 | 去除随意指代 | `apps/web/src/pages/LedgerInvitePage.tsx` |
+| 邀请已经发出。他会收到一条通知，接受之后才真正加入。 | 邀请已发送，对方接受后才会加入。 | 保留接受条件 | `apps/web/src/pages/LedgerInvitePage.tsx` |
+| 正在查找…… | 正在查找… | 统一省略号 | `apps/web/src/pages/LedgerInvitePage.tsx` |
+| 正在发送…… | 正在发送… | 统一省略号 | `apps/web/src/pages/LedgerInvitePage.tsx` |
+| 这本账由几个人一起记。 | 与成员共同记账。 | 简洁描述协作 | `apps/web/src/pages/LedgerPage.tsx` |
+| 这本账目前只有你一个人在用。 | 当前仅你一位成员。 | 准确描述成员状态 | `apps/web/src/pages/LedgerPage.tsx` |
+| 读不到这本账的信息，所以暂时不能打开留言。请回到账本页面重试。 | 暂时无法载入账本信息，请返回账本页面重试。 | 给出下一步 | `apps/web/src/pages/MessageBoardPage.tsx` |
+| 短的，方便直接发在聊天里。 | 简要诊断信息，便于反馈问题。 | 去除随意口语 | `apps/web/src/pages/DownloadMorePage.tsx` |
+| 完整的，包含存储追踪与全部运行记录。 | 完整诊断信息，包含存储和运行记录。 | 统一命名 | `apps/web/src/pages/DownloadMorePage.tsx` |
+| 这台设备正在运行的版本，以及它保存了什么。 | 当前版本与本机存储。 | 压缩副标题 | `apps/web/src/pages/SoftwareUpdatePage.tsx` |
+| 用于别人注册 Libevra 账号，属于账号本身。 | 用于邀请他人注册 Libevra，不会自动加入账本。 | 区分注册和加入账本 | `apps/web/src/pages/ReferralCodePage.tsx` |
+| 账本名称最多 40 个字。 | 账本名称最多 40 个字符。 | 与实际长度规则一致 | `apps/web/src/pages/StartBookPages.tsx` |
+| 读不到这本账的信息。可能它已经被弃置，或者你已不在其中。 | 无法载入账本信息。账本可能已弃置，或你已不再是成员。 | 明确权限或状态变化 | `apps/web/src/pages/StartBookPages.tsx` |
+| 正在保存…… | 正在保存… | 统一省略号 | `apps/web/src/pages/StartBookPages.tsx` |
+| 这一页需要一个刚录好的语音。请先录一段。 | 请先录音，再核对识别结果。 | 给出明确下一步 | `apps/web/src/pages/VoiceReviewPage.tsx` |
+| 听到的内容已经填进表单，请确认金额和分类后再保存。 | 识别结果已填入，请核对金额和分类后保存。 | 描述实际识别结果 | `apps/web/src/pages/VoiceReviewPage.tsx` |
+| 当前处于离线状态，无法与服务器同步。请恢复网络后重试。 | 当前离线，请联网后重试此操作。 | 不将全部请求笼统称为同步 | `apps/web/src/lib/api.ts` |
+| 这个浏览器不支持录音。可以改用手动记账，功能不受影响。 | 当前浏览器不支持录音，请改用手动记账。 | 避免其他功能不受影响的绝对表述 | `apps/web/src/lib/useVoiceRecorder.ts` |
+| 麦克风被其它程序占用了。关掉正在用麦克风的程序再试一次。 | 麦克风被其他应用占用，请关闭后重试。 | 明确操作建议 | `apps/web/src/lib/useVoiceRecorder.ts` |
+| 界面遇到了一个未预期的问题。你的账目数据保存在服务器上，不受影响。 | 请重新载入页面。若有未同步账目，请勿清除网站数据。 | 不对离线未同步数据作无依据保证 | `apps/web/src/components/ErrorBoundary.tsx` |
+
+### 不在本轮重新定义的含义
+
+- 关于页的数据存储 / 日志承诺、法律页面正式文本仍需所有者确认，不擅自补充法律保证。
+- 更改密码使其他设备失效的文案与当前会话实现需专项核实；本轮不以改字代替安全行为修复。
+- 退出登录或清除本机数据涉及未同步记录；本轮保留现有危险操作流程，另列为需确认的风险，不把它简化为「数据不会丢失」。
+- 邀请取消、分享链接撤销和账目删除不互换；已有准确文案保留。
+
+### 首次进入实施与协作边界
+
+设计定义在 `PLAN.md` 的 2026-10-16 小节：账号级首次展示完成与 `lastBookId` 分离；新增列迁移默认让已有账号跳过展示，注册显式设未完成，收束到稳定列表时才幂等确认。启动先核对账号和可访问账本，再挂载离线查询缓存；再次进入恢复最后有效账本的明细，不恢复上次 Tab。无账本进入创建 / 选择，主动账本空间和邀请深链保持正常。
+
+浏览器实际发现注册异步保存身份会先触发已登录跳转，导致一次性恢复码页丢失；现保持注册页到返回恢复码。账本空间头像由站内导航进入账户，避免把主动访问账户误判成新启动。移除旧提示文字 / 箭头及其无使用者样式，保留原海浪与列表之间的布局留白、手势与键盘入口；没有修改海浪几何或动画参数。
+
+基于最新 `origin/main` 的独立分支 `fix/first-entry-and-copy` 与独立工作区开发，保留 DeepSeek 原目录的未完成工作；期间其运维文档提交 `28a32fb` 已快进纳入基线，未覆盖其内容。仅更新交接中的开发版本行，不改运维手册、部署目录、生产数据库、SSH、DNS 或 CI 发布行为。
+
+检查发现 `tools/doc-audit.mjs` 写死原电脑项目路径，独立工作区的检查实际读到了旧版本。已改为相对脚本定位当前仓库；这项修正使本轮文档验证确实针对 1.10.24。它仍会提示若干工作区未生成 / 忽略的证书、Python 环境、阅读版路径，不把这些提示误报为新增业务故障。
+
+### 验证结果与复现
+
+| 检查 | 本轮真实结果与边界 |
+|---|---|
+| `pnpm typecheck` | 三个包通过 |
+| `pnpm -r test` | **887 项通过**：shared 167 / web 422 / api 298；新增 14 项进入决策、2 项设备确认记忆及 5 项 API 集成测试 |
+| `pnpm check:build` | 真实 TypeScript / CSS / 生产打包通过；保留原有大包及动态导入提示，不扩展到代码分包重构 |
+| 新空库迁移 | 仅在本机本任务新建测试库执行，**33 个迁移全部应用成功** |
+| 已有账号升级 | 另一独立测试库先应用旧版 32 个迁移，插入旧账号、账本、成员与最后账本偏好，再应用新迁移：完成标志为 true，原有账号 / 账本 / 成员及偏好保持不变 |
+| 本地真实浏览器 | Chrome + 本地生产构建 + 真实本地 API / PostgreSQL；**53 项断言通过**，含 33 项排版检查、20 项行为 / 异常检查；无页面脚本异常 |
+| 14 类进入场景 | 新注册、完成后重入、已有账号、重登、刷新、关闭浏览器再打开、独立浏览器会话、切账本、旧账本删除 / 无权限、无账本、慢网络、离线与恢复、主动进入空间均有对应断言 |
+| 额外时序 | 展示中途刷新不完成；离线收束不伪造服务端成功，恢复联网补传；注册先保存恢复码再进入；头像导航正常 |
+| 窄屏与平板 | 320 / 390 / 820 CSS px，明细、分析、账本、账户、设置、导入、导出、开始页、管理面板和弃置确认；另测 320px 登录 / 注册 / 恢复页；标题、按钮及弹窗无新增横向溢出，保留原可横向滚动的筛选轨道 |
+| 视觉保护 | 查看真实展开 / 列表 / 中途拖动与窄屏截图；品牌色、字号令牌、卡片、导航结构和海浪参数保持，删除提示不改变原留白 |
+| 尚未验证 | 物理手机 / iPad Safari、设备安全区、真实跨设备网络以及生产发布后的行为；两个隔离浏览器会话不能冒充真机验收 |
+
+浏览器回归脚本为 `tools/verify-account-entry.mjs`。它仅接受回环地址及 `libevra_entry_test_*` 专用数据库，会写入 / 移除本轮测试账号的测试数据，**不可对现有开发库或生产运行**。先建专用库、配置隔离工作区 `.env`、生成 Prisma Client 并迁移，再启动该工作区的本地 API 与前端。`LIBEVRA_E2E_ORIGIN` 指向此前端（默认 `http://localhost:5186`），需与 API 的 `WEB_ORIGIN` 一致；API 与前端需连同一专用库。配置现有 Playwright 运行时的 `LIBEVRA_PLAYWRIGHT_PACKAGE`（package.json 绝对路径），按需以 `LIBEVRA_CHROME` 指定 Chrome，然后运行 `node tools/verify-account-entry.mjs`。报告和截图写入系统临时目录，控制台仅输出路径及断言，不输出邀请码、恢复码或登录凭据。本轮未给项目增加 Playwright 依赖，也未改 CI 来部署。
+
+本版本只准备 GitHub PR，未经所有者批准不合并、不部署。生产仍以运维交付记录为准；合并后下一次正式发布必须先应用新增迁移再启动新 API。

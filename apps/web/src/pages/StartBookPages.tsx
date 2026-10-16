@@ -100,7 +100,7 @@ export function StartBookInfoPage(): React.JSX.Element {
       return;
     }
     if (value.length > 40) {
-      setError("账本名称最多 40 个字。");
+      setError("账本名称最多 40 个字符。");
       return;
     }
 
@@ -123,7 +123,7 @@ export function StartBookInfoPage(): React.JSX.Element {
 
       {failed ? (
         <p className="rounded-card border border-line bg-surface px-5 py-4 text-body-relaxed text-muted">
-          读不到这本账的信息。可能它已经被弃置，或者你已不在其中。
+          无法载入账本信息。账本可能已弃置，或你已不再是成员。
         </p>
       ) : null}
 
@@ -187,7 +187,7 @@ export function StartBookInfoPage(): React.JSX.Element {
 
                 <div className="flex gap-3">
                   <Button fullWidth={false} disabled={rename.isPending} onClick={submitRename}>
-                    {rename.isPending ? "正在保存……" : "保存"}
+                    {rename.isPending ? "正在保存…" : "保存"}
                   </Button>
                   <Button variant="secondary" fullWidth={false} onClick={stopEditing}>
                     取消
@@ -239,7 +239,7 @@ export function StartBookInfoPage(): React.JSX.Element {
       <ConfirmDialog
         open={confirmingDispose}
         title={`弃置「${name ?? "这本账"}」？`}
-        description="弃置是整本账对所有人搁置起来，它不再出现在任何成员的列表里。数据不会删除。"
+        description="弃置后，所有成员都将看不到此账本。数据会保留，创建者可恢复。"
         consequences={["对这本账的所有成员都不再显示", "账目、成员、留言全部保留，不是删除", "创建者随时可以恢复"]}
         confirmLabel="弃置这本账"
         busy={dispose.isPending}

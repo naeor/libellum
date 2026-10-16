@@ -73,6 +73,9 @@ export const sessionUserSchema = z.object({
    * exist. Defaults to CNY.
    */
   defaultCurrency: currencySchema,
+  // Missing fields in old offline sessions mean an existing account, never a new registration.
+  lastBookId: z.string().nullable().optional(),
+  hasCompletedIntro: z.boolean().optional(),
   createdAt: z.string(),
 });
 

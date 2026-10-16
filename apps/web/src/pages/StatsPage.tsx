@@ -110,7 +110,7 @@ export function StatsPage(): React.JSX.Element {
         * a different layer. The reason the row existed (two ledgers' charts look identical) is still
         * answered, just once instead of twice.
         */}
-      <TabPageHeader title="分析" subtitle="以下结果由已记录的账目计算得出。" />
+      <TabPageHeader title="分析" subtitle="统计基于已记录的账目。" />
 
       {/**
         * ⚠️ **`pt-6`, to match the first block on 账本／协作** — the owner's 7th point:

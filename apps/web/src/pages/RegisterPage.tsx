@@ -26,7 +26,9 @@ export function RegisterPage(): React.JSX.Element {
   const [busy, setBusy] = useState(false);
   const [recoveryCode, setRecoveryCode] = useState<string | null>(null);
 
-  if (user && !recoveryCode) return <Navigate to="/" replace />;
+  // Auth state can arrive before IndexedDB persistence and the one-time recovery code.
+  // Keep this form mounted until register() returns; otherwise the code is never shown.
+  if (user && !recoveryCode && !busy) return <Navigate to="/" replace />;
 
   async function submit(event: React.FormEvent): Promise<void> {
     event.preventDefault();
@@ -76,7 +78,7 @@ export function RegisterPage(): React.JSX.Element {
         <>
           已有账号？{" "}
           <Link className="font-medium text-brand-dark hover:underline" to="/login">
-            去登录
+            登录
           </Link>
         </>
       }
@@ -106,7 +108,7 @@ export function RegisterPage(): React.JSX.Element {
 
         <TextField
           label="昵称"
-          hint={`在应用内显示的名字，可以重复，最多 ${String(DISPLAY_NAME_MAX_LENGTH)} 个字符`}
+          hint={`应用内显示的名称，可重复，最多 ${String(DISPLAY_NAME_MAX_LENGTH)} 个字符`}
           value={displayName}
           onChange={(event) => {
             setDisplayName(event.target.value);

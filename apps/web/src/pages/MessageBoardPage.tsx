@@ -46,7 +46,7 @@ export function MessageBoardPage(): React.JSX.Element {
     return (
       <div className="mx-auto flex w-full max-w-md flex-col gap-4 px-6 py-8">
         <p className="rounded-card border border-line bg-surface px-5 py-4 text-body-relaxed text-muted">
-          读不到这本账的信息，所以暂时不能打开留言。请回到账本页面重试。
+          暂时无法载入账本信息，请返回账本页面重试。
         </p>
         <a href="/ledger" className="text-body text-brand transition hover:text-brand-dark">
           ‹ 返回账本

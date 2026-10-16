@@ -1,9 +1,10 @@
 import { QueryClient } from "@tanstack/react-query";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
-import { Suspense, lazy, useEffect } from "react";
+import { Suspense, lazy, useEffect, useState } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router";
 
 import { AuthProvider, useAuth } from "./auth/AuthProvider.js";
+import { AccountEntry } from "./auth/AccountEntry.js";
 import { ErrorBoundary } from "./components/ErrorBoundary.js";
 import { AppShell } from "./components/Layouts.js";
 import { OfflineFillProvider } from "./components/OfflineFillProvider.js";
@@ -59,7 +60,8 @@ const ChartLabPage = import.meta.env.DEV
   ? lazy(async () => import("./pages/ChartLabPage.js").then((module) => ({ default: module.ChartLabPage })))
   : null;
 
-const queryClient = new QueryClient({
+function createQueryClient(): QueryClient {
+  return new QueryClient({
   defaultOptions: {
     queries: {
       // A ledger is small and personal; refetching on every window focus would
@@ -94,7 +96,8 @@ const queryClient = new QueryClient({
       gcTime: Number.POSITIVE_INFINITY,
     },
   },
-});
+  });
+}
 
 function Splash(): React.JSX.Element {
   return (
@@ -163,10 +166,6 @@ function AppRoutes(): React.JSX.Element {
 
   return (
     <Routes>
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/register" element={<RegisterPage />} />
-      <Route path="/recover" element={<RecoverPage />} />
-
       <Route
         path="/"
         element={
@@ -305,9 +304,9 @@ function AppRoutes(): React.JSX.Element {
   );
 }
 
-export default function App(): React.JSX.Element {
+function AccountWorkspace(): React.JSX.Element {
+  const [queryClient] = useState(createQueryClient);
   return (
-    <ErrorBoundary>
       <PersistQueryClientProvider
         client={queryClient}
         persistOptions={{
@@ -335,15 +334,13 @@ export default function App(): React.JSX.Element {
           buster: "v1",
         }}
       >
-        <AuthProvider>
           {/*
             Inside AuthProvider, because there is nothing to fetch until we know
-            who is signed in — and outside the router, because it must not restart
-            when the reader changes screen.
+            who is signed in and which ledger is current. The protected workspace
+            remains mounted while navigating between its routes.
           */}
           <OfflineFillProvider>
             <UndoProvider>
-            <BrowserRouter>
               {/*
                 Inside the router, because the recording menu folds itself when
                 the reader moves to another screen — which it can only notice
@@ -352,11 +349,25 @@ export default function App(): React.JSX.Element {
               <AppShell>
                 <AppRoutes />
               </AppShell>
-            </BrowserRouter>
             </UndoProvider>
           </OfflineFillProvider>
-        </AuthProvider>
       </PersistQueryClientProvider>
+  );
+}
+
+export default function App(): React.JSX.Element {
+  return (
+    <ErrorBoundary>
+      <AuthProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/register" element={<RegisterPage />} />
+            <Route path="/recover" element={<RecoverPage />} />
+            <Route path="*" element={<AccountEntry><AccountWorkspace /></AccountEntry>} />
+          </Routes>
+        </BrowserRouter>
+      </AuthProvider>
     </ErrorBoundary>
   );
 }

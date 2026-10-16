@@ -104,13 +104,13 @@ export function ImportPage(): React.JSX.Element {
           </Button>
 
           <div className="rounded-field bg-brand-soft px-4 py-3 text-helper-relaxed text-brand-dark">
-            <p className="font-medium">关于判重</p>
+            <p className="font-medium">重复记录</p>
             <p className="mt-1">
               文件里带的「流水编号」如果这个账本已经有了，那一行会被跳过，并在报告里写出来。
               同一个文件再导入一次不会产生重复记录。
             </p>
             <p className="mt-2">
-              没有这几列的外部文件也能导入，但那时无法判重，可能产生重复。
+              缺少这些编号列的文件也可导入，但无法识别重复记录。
             </p>
           </div>
 
@@ -143,7 +143,7 @@ export function ImportPage(): React.JSX.Element {
       <ConfirmDialog
         open={step.name === "confirm"}
         title="确认导入"
-        description="会先校验整个文件，通过后才写入这本账。"
+        description="文件全部通过校验后，才会导入此账本。"
         confirmLabel={busy ? "正在导入…" : "开始导入"}
         cancelLabel="取消"
         // Not `danger`: importing adds records. A red confirm button would say

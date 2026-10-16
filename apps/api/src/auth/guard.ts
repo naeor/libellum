@@ -38,6 +38,8 @@ export function createRequireAuth(
       username: session.user.username,
       displayName: session.user.displayName,
       isDemo: session.user.isDemo,
+      lastBookId: session.user.lastBookId,
+      hasCompletedIntro: session.user.hasCompletedIntro,
       // The column is a varchar, so its TypeScript type is wider than the set
       // of currencies the app supports. Writes are validated, so a value
       // outside that set can only come from a manual edit — falling back is

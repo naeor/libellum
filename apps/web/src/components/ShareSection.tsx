@@ -54,7 +54,7 @@ export function ShareSection({ bookId }: { readonly bookId: string }): React.JSX
       ) : null}
 
       <p className="text-helper-relaxed text-muted">
-        拿到链接的人打开后，会先看到这是哪本账、他会被给什么权限，确认之后才会加入。
+        对方打开链接后，可先查看账本和加入权限，确认后才会加入。
         链接可以随时撤销；撤销之后旧的立刻失效。
       </p>
 
@@ -103,7 +103,7 @@ export function ShareSection({ bookId }: { readonly bookId: string }): React.JSX
                 });
             }}
           >
-            {create.isPending ? "正在生成……" : "生成分享链接"}
+            {create.isPending ? "正在生成…" : "生成分享链接"}
           </Button>
         </div>
       ) : (
@@ -129,7 +129,7 @@ export function ShareSection({ bookId }: { readonly bookId: string }): React.JSX
             />
           </div>
 
-          <p className="mt-2 text-center text-helper text-muted">让对方用相机扫这个码</p>
+          <p className="mt-2 text-center text-helper text-muted">请对方用相机扫描二维码</p>
           <div className="mt-3 flex gap-3">
             <Button
               fullWidth={false}
@@ -173,7 +173,7 @@ export function ShareSection({ bookId }: { readonly bookId: string }): React.JSX
       ) : null}
 
       {links.isSuccess && all.length === 0 ? (
-        <p className="text-helper text-muted">这本账现在没有分享链接。</p>
+        <p className="text-helper text-muted">暂无分享链接。</p>
       ) : null}
 
       {all.length > 0 ? (

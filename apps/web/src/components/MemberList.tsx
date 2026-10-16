@@ -45,8 +45,8 @@ export function MemberList({
   const [busyId, setBusyId] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<BookMemberView | null>(null);
 
-  if (members.isPending) return <p className="text-body text-muted">正在读取成员……</p>;
-  if (members.isError) return <p className="text-body text-muted">成员读取失败。</p>;
+  if (members.isPending) return <p className="text-body text-muted">正在载入成员…</p>;
+  if (members.isError) return <p className="text-body text-muted">无法载入成员，请重试。</p>;
 
   const { members: list, myRole } = members.data;
   /**
@@ -224,7 +224,7 @@ function RemoveConfirm({
     <div className="rounded-card border border-danger bg-danger-soft px-5 py-4">
       <p className="text-body text-ink">把 {member.displayName} 移出这本账？</p>
       <p className="mt-2 text-helper-relaxed text-muted">
-        他会立刻看不到这本账，但他记过的账目会留下，历史记录里也会留下这一条。
+        移除后，对方将无法访问此账本。对方记录的账目和本次操作记录会保留。
         要恢复需要重新邀请，并且要他同意。
       </p>
       <div className="mt-3 flex gap-3">
