@@ -118,6 +118,8 @@ const TITLES = {
   "海浪效果要求.md": "Libevra · 海浪效果要求与实现交接",
   "管理员与权限边界-设计决定.md": "Libevra · 系统管理员与权限边界 · 设计决定",
   "S12-A上线前安全与发布准备.md": "Libevra · S12-A 上线前安全与发布准备",
+  "生产环境与运维手册.md": "Libevra · 生产环境与运维手册",
+  "运维上手教程.md": "Libevra · 运维上手教程（零基础）",
   "部署记录-S12-B.md": "Libevra · S12-B 部署记录（已上线）",
   "Libevra服务器部署与日常维护入门.md": "Libevra · 服务器部署与日常维护入门",
   "Libevra品牌迁移记录.md": "Libevra · 品牌迁移记录（原名 Libellum）",

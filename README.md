@@ -3,14 +3,19 @@
 **The free, open ledger.**
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
-[![Status](https://img.shields.io/badge/status-in%20development-orange.svg)](#status)
+[![Status](https://img.shields.io/badge/status-live-brightgreen.svg)](https://libevra.com)
 
-> **Status: in development.** Accounts, recording, statistics and screenshot recognition are
-> built and in daily use; export and import are next, and nothing is deployed publicly yet.
-> The stage-by-stage position is in [ROADMAP.md](docs/ROADMAP.md).
+> **Status: live at <https://libevra.com>** (self-hosted, registration is invite-only).
+> **It is not open for public sign-up** — the owner runs it for one family, and invites are
+> issued by hand. The stage-by-stage position is in [ROADMAP.md](docs/ROADMAP.md).
 >
 > **⚠️ Formerly Libellum.** Renamed on 2026-10-14 for domain reasons. Which names changed,
 > which were deliberately kept, and what still needs a human: [docs/Libevra品牌迁移记录.md](docs/Libevra品牌迁移记录.md).
+>
+> **🛠️ Contributing, or an AI assistant picking this up?** Read [AGENTS.md](AGENTS.md) first.
+> **Deploying or operating it?** Read [docs/生产环境与运维手册.md](docs/生产环境与运维手册.md) —
+> in particular §1 (how to query the *current* state rather than trust a number in a document)
+> and §10 (what never to run).
 
 Libevra is an open-source, self-hosted expense tracker for individuals and families. It aims to be
 the kind of tool you can hand to a family member: fast on a phone, no ads, no tracking, no account
@@ -27,7 +32,8 @@ required with a third party — just your own server and your own data.
 | Screenshot recognition | Upload a payment screenshot, read the fields locally with OCR, confirm or correct, save. Images are never written to disk and never leave the server |
 | Offline | **Recording, editing, deleting, reading history and statistics all work with no signal**; the queue drains by itself when the network returns, idempotently; two devices that changed the same entry get the non-conflicting fields merged and are asked only about the fields that really disagree |
 | Export / import | CSV / XLSX out, CSV back in, with `In-` / `Out-` traceable references |
-| Not built yet | Chinese-English switch, dark mode and theme-colour picker, collaboration and multiple books, public read-only demo account, public deployment |
+| Collaboration | Several ledgers per account, owner / editor / viewer, invites with an expiry and a seat count, book messages, share links |
+| Not built yet | Chinese-English switch, dark mode and theme-colour picker, public read-only demo account |
 
 ## How data stays traceable
 
