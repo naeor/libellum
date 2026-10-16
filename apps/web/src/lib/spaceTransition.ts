@@ -60,21 +60,17 @@ const PRESENTATION_SEEN_PREFIX = "libellum-presentation-seen";
 /**
  * Whether this account has already been shown the presentation state.
  *
- * ⚠️ **Per account, not per device.** Two people share a laptop and a phone; **"has this person seen
- * the welcome" is a fact about the person.** The key carries the id for that reason, and it is the
- * same scoping the offline stores already use.
- *
- * ⚠️ **`localStorage` rather than the server.** This is a preference about a moment, not data: if it
- * is lost the cost is **seeing the welcome once more**, and **a request whose failure mode is a
- * slightly longer welcome is not worth a round trip on the first paint.**
+ * A per-account DEVICE acknowledgement and pending completion retry hint.
+ * The authoritative completion flag is now users.has_completed_intro; a missing local key
+ * never replays the presentation for an account the server already marked complete.
  */
 export function readSeenPresentation(userId: string | undefined): boolean {
   if (userId === undefined) return true;
   try {
     return window.localStorage.getItem(`${PRESENTATION_SEEN_PREFIX}:${userId}`) === "1";
   } catch {
-    /** ⚠️ Private browsing refuses storage, and **a refused read must not trap somebody in the welcome.** */
-    return true;
+    // Storage refusal is not evidence of completion. The server flag still decides.
+    return false;
   }
 }
 
@@ -114,9 +110,6 @@ export function useSpaceTransition(initial: number): SpaceTransition {
      * and showed up as a stall.
      */
     rootRef.current?.style.setProperty("--p", progress.current.toFixed(4));
-    // Visibility and input eligibility follow the same live presentation progress.
-    const cue = rootRef.current?.querySelector<HTMLButtonElement>(".space-cue");
-    if (cue) cue.inert = progress.current >= 0.18;
     if (scrollRef.current) {
       scrollRef.current.inert = progress.current <= 0.001;
       scrollRef.current.style.overflowY = progress.current >= 1 ? "auto" : "hidden";

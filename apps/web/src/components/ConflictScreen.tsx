@@ -90,7 +90,7 @@ function describe(field: MergeField, value: unknown, names: Names = {}): string 
 
 /** The side a field came from, in words. */
 function sideLabel(from: "mine" | "theirs"): string {
-  return from === "mine" ? "用你的" : "用服务器上的";
+  return from === "mine" ? "使用本机版本" : "使用服务器版本";
 }
 
 export function ConflictScreen({ conflict, onResolve, onLater, categories, paymentMethods, tags }: ConflictScreenProps): React.JSX.Element {
@@ -134,7 +134,7 @@ export function ConflictScreen({ conflict, onResolve, onLater, categories, payme
         */}
         {merged.automatic.length > 0 ? (
           <section className="flex flex-col gap-2">
-            <h2 className="text-helper text-muted">已经自动合好的地方（{merged.automatic.length} 处）</h2>
+            <h2 className="text-helper text-muted">已自动合并（{merged.automatic.length} 处）</h2>
 
             <ul className="overflow-hidden rounded-card border border-line bg-surface">
               {merged.automatic.map((pick: AutomaticPick) => (
@@ -146,7 +146,7 @@ export function ConflictScreen({ conflict, onResolve, onLater, categories, payme
                   <span className="text-right">
                     <span className="text-ink">{describe(pick.field, pick.value, { categories, paymentMethods, tags })}</span>
                     {/*
-                      ⚠️ **Which side it came from is the point.** "金额 → ¥25.00" without "用你的" leaves the user
+                      ⚠️ **Which side it came from is the point.** "金额 → ¥25.00" without "使用本机版本" leaves the user
                       unable to tell whether their edit survived — **and that question is the whole reason this
                       list exists.**
                     */}
@@ -161,7 +161,7 @@ export function ConflictScreen({ conflict, onResolve, onLater, categories, payme
         )}
 
         <section className="flex flex-col gap-2">
-          <h2 className="text-helper text-muted">需要你选的地方（{questions.length} 处）</h2>
+          <h2 className="text-helper text-muted">需要确认（{questions.length} 处）</h2>
 
           {questions.map((field) => {
             const chosen = answers.get(field.field);
@@ -202,7 +202,7 @@ export function ConflictScreen({ conflict, onResolve, onLater, categories, payme
                   value, and the user is told so instead of discovering it in the result.
                 */}
                 {chosen === undefined ? (
-                  <p className="mt-2 text-helper text-muted">选一个；不选就先用服务器上的。</p>
+                  <p className="mt-2 text-helper text-muted">请选择一个版本。未选择时使用服务器版本。</p>
                 ) : null}
               </div>
             );
@@ -222,7 +222,7 @@ export function ConflictScreen({ conflict, onResolve, onLater, categories, payme
               }).finally(() => setSaving(false));
             }}
           >
-            {saving ? "正在保存…" : unanswered > 0 ? `还有 ${String(unanswered)} 处没选` : "用这个结果保存"}
+            {saving ? "正在保存…" : unanswered > 0 ? `还有 ${String(unanswered)} 处没选` : "保存结果"}
           </Button>
 
           <Button
@@ -236,7 +236,7 @@ export function ConflictScreen({ conflict, onResolve, onLater, categories, payme
 
           <p className="text-helper-relaxed text-muted">
             保存后这笔记账会按上面的结果重新送到服务器。
-            「稍后再处理」不会丢东西——两份都留着，下次打开还会问你。
+            选择「稍后再处理」会保留两个版本，下次仍可处理。
           </p>
       </section>
     </div>

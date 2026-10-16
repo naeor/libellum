@@ -237,7 +237,7 @@ export function DownloadMorePage(): React.JSX.Element {
           text={shortReport}
           label="复制简版诊断"
           rows={5}
-          hint="短的，方便直接发在聊天里。"
+          hint="简要诊断信息，便于反馈问题。"
         />
 
         {/*
@@ -252,7 +252,7 @@ export function DownloadMorePage(): React.JSX.Element {
           text={report}
           label="复制完整诊断"
           rows={12}
-          hint="完整的，包含存储追踪与全部运行记录。"
+          hint="完整诊断信息，包含存储和运行记录。"
         />
 
         <p className="text-helper-relaxed text-muted">

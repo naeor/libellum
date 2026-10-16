@@ -102,7 +102,7 @@ export function CopyButton({
 
       {phase === "manual" ? (
         <p className="text-center text-helper-relaxed text-muted">
-          这个浏览器不允许自动复制。下面就是全部内容，长按选择「复制」，或直接截图。
+          无法自动复制。请长按下方内容复制，或保存截图。
         </p>
       ) : null}
 

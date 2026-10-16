@@ -82,7 +82,7 @@ export function SoftwareUpdatePage(): React.JSX.Element {
   ].join("\n");
 
   return (
-    <InnerPage title="软件更新" subtitle="这台设备正在运行的版本，以及它保存了什么。" backTo="/me">
+    <InnerPage title="软件更新" subtitle="当前版本与本机存储。" backTo="/me">
       {/*
         ⚠️ **The copy button sits under the description and above the version number, as asked:**
         "把它放到'这台设备正在运行的版本，以及它保存了什么'那行描述性文字下面居中放置，也就是在

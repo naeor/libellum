@@ -38,7 +38,7 @@ describe("analysis screen copy", () => {
   it("describes itself as a computed result", () => {
     // Was "把账目变成看得懂的图。" — warm, but it describes a feeling rather
     // than saying what the screen is.
-    expect(source("../pages/StatsPage.tsx")).toContain("以下结果由已记录的账目计算得出。");
+    expect(source("../pages/StatsPage.tsx")).toContain("统计基于已记录的账目。");
   });
 
   it("does not explain exchange rates where none are applied", () => {
@@ -62,7 +62,7 @@ describe("invitation copy", () => {
 
     // The screen says what pressing the button does, and to whom.
     expect(invite).toContain("发送邀请");
-    expect(invite).toContain("接受之后才真正加入");
+    expect(invite).toContain("对方接受后才会加入");
   });
 
   /**

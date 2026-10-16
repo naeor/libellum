@@ -1,11 +1,12 @@
 import { authResponseSchema, meResponseSchema, type SessionUser } from "@libellum/shared";
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 
 import { ApiRequestError, apiFetch } from "../lib/api.js";
 import { clearQueryCache } from "../lib/offline/cache.js";
 import { forgetUser, readRememberedUser, rememberUser } from "../lib/offline/storage.js";
 import { forgetCurrentBook } from "../lib/currentBook.js";
 import { setOfflineAccount } from "../lib/offline/scope.js";
+import { markPresentationSeen, readSeenPresentation } from "../lib/spaceTransition.js";
 
 interface RegisterInput {
   readonly inviteCode: string;
@@ -27,6 +28,7 @@ interface AuthContextValue {
   register(input: RegisterInput): Promise<string | undefined>;
   logout(): Promise<void>;
   reload(): Promise<void>;
+  completePresentation(): Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -80,6 +82,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
   const [user, setUser] = useState<SessionUser | null>(null);
   const [status, setStatus] = useState<"loading" | "ready">("loading");
   const [sessionRevoked, setSessionRevoked] = useState(false);
+  const activeUser = useRef(user);
+  const authGeneration = useRef(0);
+  activeUser.current = user;
+
+  const completePresentation = useCallback(async () => {
+    const current = activeUser.current;
+    const generation = authGeneration.current;
+    if (!current) return;
+    // This is also the pending offline acknowledgement, retried on reconnect.
+    markPresentationSeen(current.id);
+    if (current.hasCompletedIntro !== false) return;
+    const response = meResponseSchema.parse(await apiFetch<unknown>("/auth/presentation/complete", { method: "POST" }));
+    if (authGeneration.current !== generation || activeUser.current?.id !== current.id) return;
+    setUser(response.user);
+    await rememberUser(response.user);
+  }, []);
+
+  useEffect(() => {
+    const reconcile = (): void => {
+      if (user?.hasCompletedIntro === false && readSeenPresentation(user.id)) {
+        void completePresentation().catch(() => { /* Local acknowledgement stays pending. */ });
+      }
+    };
+    reconcile();
+    window.addEventListener("online", reconcile);
+    return () => window.removeEventListener("online", reconcile);
+  }, [user?.id, user?.hasCompletedIntro, completePresentation]);
 
   /**
    * Drop everything on this device that belongs to the account being left behind.
@@ -110,6 +139,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
    * cached responses behind under the scoped one — the opposite of the intent.
    */
   const forgetLocalState = useCallback(async () => {
+    // A completion request started before sign-out must not re-remember the signed-out account.
+    authGeneration.current += 1;
     await forgetUser();
     await clearQueryCache();
     /**
@@ -277,8 +308,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
   }, [forgetLocalState]);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ user, status, sessionRevoked, login, register, logout, reload }),
-    [user, status, sessionRevoked, login, register, logout, reload],
+    () => ({ user, status, sessionRevoked, login, register, logout, reload, completePresentation }),
+    [user, status, sessionRevoked, login, register, logout, reload, completePresentation],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

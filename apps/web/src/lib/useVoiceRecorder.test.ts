@@ -84,7 +84,7 @@ describe("describeBlocker", () => {
   });
 
   it("says the browser is the problem only when it really is", () => {
-    expect(describeBlocker("unsupported")).toContain("这个浏览器不支持录音");
+    expect(describeBlocker("unsupported")).toContain("当前浏览器不支持录音");
   });
 
   it("says nothing when nothing is wrong", () => {

@@ -18,7 +18,9 @@ export function LoginPage(): React.JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  if (user) return <Navigate to="/" replace />;
+  const next = new URLSearchParams(window.location.search).get("next");
+  const destination = next !== null && next.startsWith("/") && !next.startsWith("//") && !next.includes("\\") ? next : "/";
+  if (user) return <Navigate to={destination} replace />;
 
   async function submit(event: React.FormEvent): Promise<void> {
     event.preventDefault();
@@ -40,8 +42,7 @@ export function LoginPage(): React.JSX.Element {
        * case this exists for — **the token has to survive the sign-in round trip**, and the address
        * bar is the only place it can survive a reload too.
        */
-      const next = new URLSearchParams(window.location.search).get("next");
-      await navigate(next !== null && next.startsWith("/") && !next.startsWith("//") ? next : "/", {
+      await navigate(destination, {
         replace: true,
       });
     } catch (caught) {
@@ -64,7 +65,7 @@ export function LoginPage(): React.JSX.Element {
       }
     >
       {sessionRevoked ? (
-        <Alert tone="info">该账号已在其它设备上登录，本设备的登录状态已失效。</Alert>
+        <Alert tone="info">登录状态已失效，请重新登录。</Alert>
       ) : null}
 
       <form className="flex flex-col gap-5" onSubmit={(event) => void submit(event)}>

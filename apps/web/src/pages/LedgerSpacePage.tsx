@@ -11,7 +11,7 @@ import { OceanBackdrop } from "../components/OceanBackdrop.js";
 import { SkeletonRows } from "../components/States.js";
 import { APP_VERSION } from "../lib/version.js";
 import { errorMessage } from "../lib/api.js";
-import { markPresentationSeen, readSeenPresentation, useSpaceTransition } from "../lib/spaceTransition.js";
+import { readSeenPresentation, useSpaceTransition } from "../lib/spaceTransition.js";
 import {
   useActivateBook,
   useBooks,
@@ -43,9 +43,9 @@ import {
  */
 export function LedgerSpacePage(): React.JSX.Element {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, completePresentation } = useAuth();
 
-  const [initial] = useState(() => (readSeenPresentation(user?.id) ? 1 : 0));
+  const [initial] = useState(() => (user?.hasCompletedIntro !== false || readSeenPresentation(user?.id) ? 1 : 0));
   const space = useSpaceTransition(initial);
   const contentRef = useRef<HTMLDivElement>(null);
 
@@ -77,13 +77,14 @@ export function LedgerSpacePage(): React.JSX.Element {
    * close the tab from the list, and **a welcome that returns because the tab was closed is the
    * "startup advertisement" the owner ruled out.**
    *
-   * ⚠️ **He restated the requirement for this task** — *"不能因为本次 UI 调整导致每次进入开始页都重新
-   * 播放完整展示态"* — and it is why the mechanism below is **kept exactly as it was**: the decision
-   * is made once, in `useState`'s initialiser, from a per-account `localStorage` flag.
+   * Completion now belongs to the account. Only settling at the list acknowledges it;
+   * mounting the presentation, refreshing midway or merely logging in never does.
    */
   useEffect(() => {
-    if (space.atList) markPresentationSeen(user?.id);
-  }, [space.atList, user?.id]);
+    if (space.atList && user?.hasCompletedIntro === false) {
+      void completePresentation().catch(() => { /* Retried by AuthProvider after reconnect. */ });
+    }
+  }, [space.atList, user?.hasCompletedIntro, completePresentation]);
 
   const books = useBooks();
   /**
@@ -153,7 +154,20 @@ export function LedgerSpacePage(): React.JSX.Element {
   }
 
   return (
-    <div ref={space.rootRef} className="ledger-space" style={{ ["--p" as string]: initial }}>
+    <div
+      ref={space.rootRef}
+      className="ledger-space"
+      style={{ ["--p" as string]: initial }}
+      tabIndex={0}
+      role="region"
+      aria-label="账本空间"
+      onKeyDown={(event) => {
+        if (event.target === event.currentTarget && ["Enter", "ArrowUp", "PageDown"].includes(event.key)) {
+          event.preventDefault();
+          space.goTo(1);
+        }
+      }}
+    >
       {/**
         * ⚠️ **The account avatar is a *child of the ocean*, not a sibling.**
         *
@@ -194,21 +208,6 @@ export function LedgerSpacePage(): React.JSX.Element {
         * ⚠️ **No new height was added to the collapsed sea.** The avatar is positioned inside the
         * existing ocean band, which the owner required: *"不应为了添加头像而大幅增加收缩态海浪高度."*
         */}
-      {/* Opacity and input eligibility both follow live progress in useSpaceTransition. */}
-      <div className="space-cue-window">
-        <button
-          type="button"
-          className="space-cue"
-          onClick={() => space.goTo(1)}
-          aria-label="展开账本列表"
-        >
-          <svg width="24" height="28" viewBox="0 0 24 28" fill="none" aria-hidden="true">
-            <path d="M12 25V5m-7 7 7-7 7 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          <span>上滑进入我的账本</span>
-        </button>
-      </div>
-
       {/**
         * ⚠️ **The scrolling region is `inert` while the sea is out.** That is what stops a stray tap
         * or an arrow key from reaching content nobody can see yet — and it is the same mechanism the
@@ -224,7 +223,7 @@ export function LedgerSpacePage(): React.JSX.Element {
 
           {switching ? (
             <p role="status" className="mb-4 text-body text-muted">
-              正在切换到那本账……
+              正在切换账本…
             </p>
           ) : null}
 
@@ -365,17 +364,13 @@ export function LedgerSpacePage(): React.JSX.Element {
 /**
  * **The account avatar.**
  *
- * ⚠️ **An `<a>` rather than a `<Link>`, and that is not a style choice.** The avatar lives inside the
- * animated root, which writes `--p` to the DOM every frame; navigating through the router would keep
- * this component mounted while the ledger list loads underneath — **and a half-transitioned sea over
- * the account screen is the kind of mixture the reload rule exists to prevent.** A real navigation
- * also lets the browser's back button return here, which is what the owner asked for:
- * *"从账户页面能够通过合理的现有入口返回账本空间."*
+ * An explicit in-app visit, not a new application launch. The router unmounts this page
+ * (and its animation hook) when opening the account screen; the workspace stays initialized.
  */
 function AccountButton({ enabled }: { readonly enabled: boolean }): React.JSX.Element {
   return (
-    <a
-      href="/me"
+    <Link
+      to="/me"
       /**
         * ⚠️ **Tappable only once the sea has finished retreating**, which is also the moment the
         * avatar is fully opaque. During the journey it is transparent, and **an invisible 44 px target
@@ -400,7 +395,7 @@ function AccountButton({ enabled }: { readonly enabled: boolean }): React.JSX.El
         * own tinted disc is enough to lift it off the water.
         */}
       <AvatarIcon className="size-[26px] text-muted" />
-    </a>
+    </Link>
   );
 }
 

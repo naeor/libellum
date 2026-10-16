@@ -131,7 +131,7 @@ export function LedgerInvitePage(): React.JSX.Element {
             if (event.key === "Enter") runLookup();
           }}
           placeholder="10000003 或 naeor"
-          hint="要完整的 8 位编号，或完整的用户名。只按前缀查找是不行的。"
+          hint="请输入完整的 8 位账号编号或用户名。"
           inputMode="text"
           autoComplete="off"
         />
@@ -142,7 +142,7 @@ export function LedgerInvitePage(): React.JSX.Element {
             disabled={lookup.isPending || query.trim() === ""}
             onClick={runLookup}
           >
-            {lookup.isPending ? "正在查找……" : "查找"}
+            {lookup.isPending ? "正在查找…" : "查找"}
           </Button>
         </div>
 
@@ -169,7 +169,7 @@ export function LedgerInvitePage(): React.JSX.Element {
             {account.alreadyMember ? (
               /** ⚠️ Stated instead of offering a button the server would refuse. */
               <p className="text-body-relaxed text-muted">
-                这个人已经在这本账里了。
+                对方已加入此账本。
               </p>
             ) : (
               <>
@@ -210,7 +210,7 @@ export function LedgerInvitePage(): React.JSX.Element {
                   */}
                 {canInvite ? (
                   <Button disabled={invite.isPending} onClick={send}>
-                    {invite.isPending ? "正在发送……" : "发送邀请"}
+                    {invite.isPending ? "正在发送…" : "发送邀请"}
                   </Button>
                 ) : (
                   <p className="rounded-field bg-canvas px-4 py-3 text-body-relaxed text-muted">
@@ -239,7 +239,7 @@ export function LedgerInvitePage(): React.JSX.Element {
 
         {sent ? (
           <p role="status" className="rounded-field bg-brand-soft px-4 py-3 text-body text-brand-dark">
-            邀请已经发出。他会收到一条通知，接受之后才真正加入。
+            邀请已发送，对方接受后才会加入。
           </p>
         ) : null}
       </div>

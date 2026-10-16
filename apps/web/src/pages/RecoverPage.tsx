@@ -59,7 +59,7 @@ export function RecoverPage(): React.JSX.Element {
   return (
     <AuthLayout
       title="找回密码"
-      subtitle="输入用户名与恢复码，即可设置新密码。"
+      subtitle="输入用户名和恢复码，设置新密码。"
       footer={
         <Link className="font-medium text-brand-dark hover:underline" to="/login">
           返回登录

@@ -364,7 +364,7 @@ export function BookManageSheet({
       <ConfirmDialog
         open={confirming === "leave"}
         title={`退出「${book.name}」？`}
-        description="退出后这本账不再出现在你的列表里，你也就看不到它的账目了。"
+        description="退出后，你将无法访问此账本，账本也不再显示在你的列表中。"
         consequences={[
           "不再拥有这本账的访问权限",
           "你记过的账目与历史都会保留",
@@ -381,7 +381,7 @@ export function BookManageSheet({
       <ConfirmDialog
         open={confirming === "dispose"}
         title={`弃置「${book.name}」？`}
-        description="弃置是整本账对所有人搁置起来，它不再出现在任何成员的列表里。数据不会删除。"
+        description="弃置后，所有成员都将看不到此账本。数据会保留，创建者可恢复。"
         consequences={[
           "对这本账的所有成员都不再显示",
           "账目、成员、留言全部保留，不是删除",

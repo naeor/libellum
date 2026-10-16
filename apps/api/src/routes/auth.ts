@@ -55,6 +55,8 @@ type UserRow = {
   displayName: string;
   isDemo: boolean;
   defaultCurrency: string;
+  lastBookId: string | null;
+  hasCompletedIntro: boolean;
   createdAt: Date;
 };
 
@@ -65,6 +67,8 @@ function toSessionUser(user: UserRow): SessionUser {
     username: user.username,
     displayName: user.displayName,
     isDemo: user.isDemo,
+    lastBookId: user.lastBookId,
+    hasCompletedIntro: user.hasCompletedIntro,
     // See the guard: the column type is wider than the supported set, and only
     // a manual database edit could put anything else in it.
     defaultCurrency: currencySchema.catch("CNY").parse(user.defaultCurrency),
@@ -208,6 +212,7 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
           displayName: body.displayName,
           passwordHash,
           recoveryCodeHash,
+          hasCompletedIntro: false,
           /**
            * ⚠️ **`false`, always — registration cannot create an administrator** (2026-10-14,
            * 1.10.22).
@@ -341,6 +346,15 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
   // ---------------------------------------------------------------------------
   app.get("/api/v1/auth/me", { preHandler: requireAuth }, async (request) => {
     return meResponseSchema.parse({ user: request.currentUser });
+  });
+
+  // One-way, idempotent completion; never inferred from authentication or a ledger selection.
+  app.post("/api/v1/auth/presentation/complete", { preHandler: requireAuth }, async (request) => {
+    const updated = await prisma.user.update({
+      where: { id: request.currentUser!.id },
+      data: { hasCompletedIntro: true },
+    });
+    return meResponseSchema.parse({ user: toSessionUser(updated) });
   });
 
   // ---------------------------------------------------------------------------

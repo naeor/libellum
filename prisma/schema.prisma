@@ -81,6 +81,10 @@ model User {
   /// "last used" empty rather than block the delete.
   lastBookId String? @map("last_book_id") @db.Uuid
 
+  /// Existing accounts skip the welcome; registration explicitly opts new accounts in.
+  /// Completed only after the ledger space settles at its list, independently of lastBookId.
+  hasCompletedIntro Boolean @default(true) @map("has_completed_intro")
+
   /// The currency this account treats as primary. It sorts first in every
   /// currency list, and once exchange rates exist it is what other currencies
   /// will be converted into. Stored per account rather than per book because it

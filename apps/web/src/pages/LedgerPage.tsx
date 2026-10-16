@@ -90,7 +90,7 @@ export function LedgerPage(): React.JSX.Element {
         */}
       <TabPageHeader
         title={shared ? "协作" : "账本"}
-        subtitle={shared ? "这本账由几个人一起记。" : "这本账目前只有你一个人在用。"}
+        subtitle={shared ? "与成员共同记账。" : "当前仅你一位成员。"}
         action={<NotificationBell showHeading={false} />}
       />
 

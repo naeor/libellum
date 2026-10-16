@@ -127,7 +127,7 @@ export function VoiceReviewPage(): React.JSX.Element {
   if (spoken === null) {
     return (
       <InnerPage title="核对" subtitle="没有听到内容。" backTo="/record">
-        <Alert tone="info">这一页需要一个刚录好的语音。请先录一段。</Alert>
+        <Alert tone="info">请先录音，再核对识别结果。</Alert>
         <button
           type="button"
           onClick={() => void navigate("/record")}
@@ -194,7 +194,7 @@ export function VoiceReviewPage(): React.JSX.Element {
   return (
     <InnerPage
       title="核对"
-      subtitle="听到的内容已经填进表单，请确认金额和分类后再保存。"
+      subtitle="识别结果已填入，请核对金额和分类后保存。"
       backTo="/record"
     >
       {error === null ? null : <Alert tone="error">{error}</Alert>}
