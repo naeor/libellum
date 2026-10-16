@@ -32,6 +32,7 @@
     "admin:list": "pnpm --filter @libellum/api admin:list",
     "admin:allow": "pnpm --filter @libellum/api admin:allow",
     "admin:disallow": "pnpm --filter @libellum/api admin:disallow",
+    "set:password": "pnpm --filter @libellum/api set:password",
     "check:db": "pnpm --filter @libellum/api check:db",
     "docs:build": "node tools/build-docs.mjs"
   },
