@@ -115,6 +115,7 @@ const TITLES = {
   "BACKLOG.md": "Libevra 后期待办与想法池",
   "COLORS.md": "Libevra · 颜色清单与语义分类",
   "DEVLOG.md": "Libevra 开发日志",
+  "BUG记录.md": "Libevra · BUG 记录",
   "海浪效果要求.md": "Libevra · 海浪效果要求与实现交接",
   "管理员与权限边界-设计决定.md": "Libevra · 系统管理员与权限边界 · 设计决定",
   "S12-A上线前安全与发布准备.md": "Libevra · S12-A 上线前安全与发布准备",
