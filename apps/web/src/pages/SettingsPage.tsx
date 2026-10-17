@@ -49,10 +49,15 @@ function RowList({ rows, onNavigate }: { readonly rows: readonly Row[]; readonly
 /**
  * Settings.
  *
- * The categories, payment methods and tags screens are real, and so is the
- * default currency; the rest are listed and marked "后续开放" rather than
- * hidden, so their absence is a stated fact instead of something the user has
+ * Rows without a `to` are genuinely not built yet, and say "后续开放" rather than
+ * disappearing — their absence is a stated fact instead of something the user has
  * to wonder about.
+ *
+ * ⚠️ **导出／导入 are built and must not be listed among them.** They used to be two
+ * disabled rows here (marked 后续开放) while the real screens already existed at
+ * `/export` and `/import`; the settings screen was the place people looked, and it
+ * said the opposite of the truth. They now navigate to those screens, which operate
+ * on **the current ledger** — the hint says so, because "导出数据" alone does not.
  */
 export function SettingsPage(): React.JSX.Element {
   const navigate = useNavigate();
@@ -136,8 +141,13 @@ export function SettingsPage(): React.JSX.Element {
             { label: "语言", hint: "中文 / English" },
             { label: "主题色" },
             { label: "汇率折算", hint: "将各币种折算为一种货币后统计" },
-            { label: "导出数据", hint: "CSV / Excel" },
-            { label: "导入历史账", hint: "从 CSV 批量导入" },
+            /**
+             * ⚠️ **These two are real pages, not promises.** They live at `/export` and
+             * `/import` and work on **the ledger currently open**; the hint names that so
+             * nobody expects them to export every ledger at once.
+             */
+            { label: "导出数据", hint: "把当前账本导出为 CSV / Excel", to: "/export" },
+            { label: "导入历史账", hint: "从 CSV 批量导入当前账本", to: "/import" },
           ]}
           onNavigate={go}
         />

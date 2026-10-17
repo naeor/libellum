@@ -28,6 +28,12 @@ import {
  *   they simply lose that label.
  *
  * Every destructive control asks first, and the safe option holds focus.
+ *
+ * ⚠️ **All three are opened from 账户 (`MePage`), so that is their declared parent.**
+ * They used to say `backTo="/settings"`, which is a screen that does not link to any
+ * of them — normal taps returned correctly through history, but a deep link or a
+ * reload fell back to a page the reader had never visited. `InnerPage` still prefers
+ * history first (`useGoBack`); `/me` is only the fallback, and now it is the truth.
  */
 
 function AddRow({
@@ -167,7 +173,7 @@ export function CategoriesPage(): React.JSX.Element {
     <InnerPage
       title="分类管理"
       subtitle="归档后不再出现在记账选项中。已有记录仍会显示该分类的名称，可随时恢复。"
-      backTo="/settings"
+      backTo="/me"
     >
       {error ? <Alert>{error}</Alert> : null}
 
@@ -278,7 +284,7 @@ export function PaymentMethodsPage(): React.JSX.Element {
     <InnerPage
       title="支付方式"
       subtitle="记录款项的支付渠道。归档后不再出现在记账选项中，已有记录不受影响。"
-      backTo="/settings"
+      backTo="/me"
     >
       {error ? <Alert>{error}</Alert> : null}
 
@@ -393,7 +399,7 @@ export function TagsPage(): React.JSX.Element {
     <InnerPage
       title="标签"
       subtitle="标签用于跨分类标注，例如「出差」「可报销」。每条记录最多添加 10 个标签。"
-      backTo="/settings"
+      backTo="/me"
     >
       {error ? <Alert>{error}</Alert> : null}
 

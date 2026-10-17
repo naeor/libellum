@@ -362,7 +362,8 @@ export function StartBookSharePage(): React.JSX.Element {
           <ShareSection bookId={bookId} />
 
           <p className="text-helper-relaxed text-muted">
-            想按名字邀请某个人，用「成员与邀请」；用于注册账号的邀请码属于账号本身，在「设置 → 账号安全」。
+            想按名字邀请某个人，用「成员与邀请」；用于注册账号的邀请码与账本无关，
+            在「设置 → 账号安全」生成（终身 3 个），或由管理员在管理后台发放。
           </p>
         </>
       ) : null}

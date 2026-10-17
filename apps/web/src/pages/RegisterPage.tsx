@@ -71,7 +71,7 @@ export function RegisterPage(): React.JSX.Element {
   return (
     <AuthLayout
       title="创建账号"
-      subtitle="注册需要有效的邀请码。"
+      subtitle="注册需要有效的邀请码：可以请已有账号的人在「设置 → 账号安全」生成，或请管理员发放。"
       footer={
         <>
           已有账号？{" "}

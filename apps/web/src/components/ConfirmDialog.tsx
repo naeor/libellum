@@ -42,16 +42,36 @@ export function ConfirmDialog({
    * A sensitive operation needs a reason and a second password *inside* the dialog — putting
    * them on the page behind it would let the confirmation describe one action while the form
    * collected input for another. Optional, so every existing caller is unchanged.
+   *
+   * ⚠️ **They were declared here and never rendered until 1.13.02.** The three S13 dialogs
+   * (作废邀请码 / 停用账户 / 恢复账户) all pass their reason and password fields as children,
+   * and the dialog dropped them — the confirmation appeared with no way to enter either, so
+   * the only possible outcome was the validation message "需要填写原因并输入你的密码".
+   * A prop that callers rely on must be rendered; the type alone is not a feature.
    */
   readonly children?: React.ReactNode;
 }): React.JSX.Element | null {
   const cancelRef = useRef<HTMLButtonElement>(null);
   const confirmRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * ⚠️ **Focus the safe choice once, when the dialog opens.**
+   *
+   * This is a separate effect from the key listener on purpose. `onCancel` is usually an
+   * inline arrow, so it is a new function on every parent render — and while the two
+   * effects were combined, typing one character into a child input re-rendered the parent,
+   * changed `onCancel`, re-ran the effect and **pulled focus back to 取消**. The field
+   * could then only ever hold one character. Focus is a one-time event, not a side effect
+   * of the parent re-rendering.
+   */
+  useEffect(() => {
+    if (!open) return;
+    cancelRef.current?.focus();
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
-
-    cancelRef.current?.focus();
 
     function onKeyDown(event: KeyboardEvent): void {
       if (event.key === "Escape") {
@@ -60,12 +80,41 @@ export function ConfirmDialog({
         return;
       }
 
-      // Two focusable controls: keep Tab cycling between them so focus cannot
-      // wander onto the page behind the dialog.
+      /**
+       * ⚠️ **Focus stays inside the dialog, but it must reach every control in it.**
+       *
+       * This used to cycle between exactly the two buttons, which was true only while the
+       * dialog had exactly two controls. Since it can carry an input and a password field,
+       * a two-element cycle would make them unreachable by keyboard — and keep Tab on the
+       * buttons while a sighted user saw fields above them.
+       */
       if (event.key === "Tab") {
-        event.preventDefault();
-        if (document.activeElement === cancelRef.current) confirmRef.current?.focus();
-        else cancelRef.current?.focus();
+        const focusable = Array.from(
+          dialogRef.current?.querySelectorAll<HTMLElement>(
+            "button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), a[href]",
+          ) ?? [],
+        ).filter((element) => element.offsetParent !== null);
+
+        if (focusable.length === 0) return;
+
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (first === undefined || last === undefined) return;
+
+        const active = document.activeElement;
+        if (!dialogRef.current?.contains(active)) {
+          event.preventDefault();
+          first.focus();
+          return;
+        }
+
+        if (!event.shiftKey && active === last) {
+          event.preventDefault();
+          first.focus();
+        } else if (event.shiftKey && active === first) {
+          event.preventDefault();
+          last.focus();
+        }
       }
     }
 
@@ -89,6 +138,7 @@ export function ConfirmDialog({
       }}
     >
       <div
+        ref={dialogRef}
         role="alertdialog"
         aria-modal="true"
         aria-labelledby="confirm-title"
@@ -112,6 +162,9 @@ export function ConfirmDialog({
             ))}
           </ul>
         ) : null}
+
+        {/* ⚠️ Rendered here, between what will happen and the buttons that do it. */}
+        {children}
 
         <div className="mt-6 flex gap-3">
           <button

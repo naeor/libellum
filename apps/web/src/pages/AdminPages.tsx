@@ -173,7 +173,13 @@ export function AdminOverviewPage(): React.JSX.Element {
   const { state, reload } = useLoad(fetchAdminOverview);
 
   return (
-    <Shell title="系统管理">
+    /**
+     * ⚠️ **The overview's fallback parent is 设置, not `/admin`.** Its only entry is
+     * 设置 → 系统管理 (`SettingsPage`), and a deep link or a reload has no history to go
+     * back through — so the fallback has to be the screen the reader actually came from.
+     * The sub-pages keep `/admin` as their fallback, which is correct for them.
+     */
+    <Shell title="系统管理" backTo="/settings">
       {state.kind === "loading" ? <SkeletonRows rows={5} /> : null}
       {state.kind === "error" ? <ErrorState message={state.message} onRetry={reload} /> : null}
       {state.kind === "ready" ? <OverviewBody data={state.data} onNavigate={navigate} /> : null}

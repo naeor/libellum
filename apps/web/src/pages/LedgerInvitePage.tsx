@@ -253,10 +253,16 @@ export function LedgerInvitePage(): React.JSX.Element {
         * ⚠️ **The sharing link, named as the third way in.** The owner keeps the concepts apart —
         * 邀请成员（点名邀请）· 分享链接（链接邀请）· 邀请码（注册账号）— and this sentence is where
         * the second one is pointed at, so somebody holding a link need not go looking.
+        *
+        * ⚠️ **The registration-code half used to say 「账户」页面, which stopped being true when the
+        * code moved to 设置 → 账号安全 (`ReferralCodePage`, 2026-10-13).** It is the same sentence
+        * the sharing screen carries, and it now names the place that exists **and** the second,
+        * real way one is issued since S13: an administrator creating it in the console.
         */}
       <p className="text-helper-relaxed text-muted">
         想一次请多个人，或者不方便当面输入编号，可以用分享链接——它在账本详情里。
-        用于注册账号的邀请码不在这里，它属于账号本身，在「账户」页面。
+        用于注册账号的邀请码与账本无关：在「设置 → 账号安全」里生成（终身 3 个）；
+        没有可用的码时，可以请管理员在管理后台发放。
       </p>
 
       <Link to="/ledger" className="text-body text-brand transition hover:text-brand-dark">
