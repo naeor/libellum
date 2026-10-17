@@ -36,7 +36,7 @@
 // worse than a missing one.
 
 import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync, rmSync, statSync } from "node:fs";
+import { existsSync, readdirSync, rmSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -212,53 +212,61 @@ if (docxPython === null) {
   // Every generated file this run is going to write, so that anything left over
   // from an earlier layout can be removed. Renaming an export used to leave the
   // old name behind looking current.
+  /**
+   * ⚠️ **阅读版跟着源文件走，不再一律堆到 `docs/` 根目录。**
+   *
+   * 所有者 2026-10-17 的原话：**"那些设计决定、版本记录之类的东西，docs 跟 PDF 也都扔进去（平时不看）"**。
+   * 根目录只留他**日常要读**的那 9 份的阅读版；过程文档的 Word/PDF 跟着进 `开发过程记录/`。
+   *
+   * ⚠️ 这条规则比"维护两份名单"可靠：**输出目录＝源文件所在目录**，
+   * 于是新增一份文档时不需要记得去改这里 —— 它自然落在该在的地方。
+   */
   const produced = new Set();
   for (const from of sources) {
-    const rel = relative(docs, from).split("\\").join("/");
-    const base = rel.replace(/\.md$/i, "");
-    const name = base.split("/").pop();
-    produced.add(`${name}.docx`);
-    produced.add(`${name}.pdf`);
+    const base = from.replace(/\.md$/i, "");
+    produced.add(`${base}.docx`);
+    produced.add(`${base}.pdf`);
   }
 
   // ⚠️ **Stale cleanup runs first, not last.** A file that looks authoritative
   // while being wrong is worse than a missing one, and doing it after the
   // conversions means a later failure strands them — which is what happened the
   // first time this script ran.
+  //
+  // ⚠️ **现在递归清理所有子目录**，因为阅读版跟着源文件分散到了各层。
+  // 以前只清理根目录与 `归档/`，是那时候所有生成物都在根目录。
   let removed = 0;
-  for (const name of readdirSync(docs)) {
-    if (NEVER_DELETE.has(name)) continue;
-    if (!/\.(docx|pdf)$/i.test(name)) continue;
-    if (produced.has(name)) continue;
-    rmSync(join(docs, name));
-    console.log(`  – 删除已不再生成的旧产物：${name}`);
-    removed += 1;
-  }
-  // Same rule one level down: `docs/*/` must not accumulate generated copies,
-  // which is how three stale `.docx` files ended up sitting inside the old
-  // `档案/` folder looking exactly like the current ones.
-  for (const dir of [archive]) {
-    if (!existsSync(dir)) continue;
-    for (const name of readdirSync(dir)) {
-      const full = join(dir, name);
-      if (!statSync(full).isFile()) continue;
-      if (!/\.(docx|pdf)$/i.test(name)) continue;
+  const sweep = (dir) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name.startsWith(".")) continue;
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        // `阅读报告/` 是过程产物目录，不生成也不该被扫
+        if (dir === archive && SKIP_DIRS.has(entry.name)) continue;
+        sweep(full);
+        continue;
+      }
+      if (!/\.(docx|pdf)$/i.test(entry.name)) continue;
+      // ⚠️ `恢复码.docx` 没有 Markdown 源、也不由本脚本生成，**永远不许删**。
+      if (dir === docs && NEVER_DELETE.has(entry.name)) continue;
+      if (produced.has(full)) continue;
       rmSync(full);
-      console.log(`  – 删除子目录里的过期生成物：${relative(root, full)}`);
+      console.log(`  – 删除已不再生成的旧产物：${relative(root, full)}`);
       removed += 1;
     }
-  }
+  };
+  sweep(docs);
   if (removed > 0) console.log("");
 
   let failed = 0;
 
   for (const from of sources) {
     const rel = relative(docs, from).split("\\").join("/");
-    const base = rel.replace(/\.md$/i, "");
-    const stem = base.split("/").pop();
     const title = titleFor(rel);
-    const docx = join(docs, `${stem}.docx`);
-    const pdf = join(docs, `${stem}.pdf`);
+    // ⚠️ 输出与源同目录、同主名 —— 见上面 `produced` 那段的长注释。
+    const base = from.replace(/\.md$/i, "");
+    const docx = `${base}.docx`;
+    const pdf = `${base}.pdf`;
 
     try {
       execFileSync(docxPython, pythonArgs(docxPython, [docxConverter, from, docx, "--title", title]), {
