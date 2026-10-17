@@ -119,6 +119,14 @@ apps/web/.certs/
 deploy/.env
 deploy/backups/
 deploy/.last-deployed
+
+# ⚠️ **S12-C 的三个秘密文件**（自动备份用）。文件名写在这里是**为了让它们被忽略**——
+# 内容永远不进仓库。同名的模板/说明不在仓库里，而在本机"Libevra-敏感信息"文件夹。
+deploy/.backup.key
+deploy/.backup.env
+deploy/.backup-notify.env
+# 运行期状态文件：不含秘密，但也不该进仓库（每天都变）
+deploy/backups/last-run.json
 #
 # ⚠️ **上面那条 `deploy/.env` 是必需的**，因为第 15 行的 `.env.*` 只看文件名部分
 # （`*` 不跨 `/`），匹配不到 `deploy/.env.production.example`——

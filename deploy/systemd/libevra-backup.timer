@@ -1,0 +1,18 @@
+﻿# Libevra — 每天 03:00（**香港时间**）触发一次备份。
+#
+# ⚠️ **不改操作系统的时区。** 服务器是 Asia/Shanghai，这里用带时区的 OnCalendar，
+# 两者当前都是 UTC+8，但**没有依赖这一点** —— 哪天系统时区变了，这个定时器仍然按香港时间跑。
+#
+# ⚠️ `Persistent=true`：关机错过的那一次，开机后补跑一次（只补一次）。
+[Unit]
+Description=Daily Libevra backup at 03:00 Asia/Hong_Kong
+
+[Timer]
+OnCalendar=*-*-* 03:00:00 Asia/Hong_Kong
+Persistent=true
+AccuracySec=1min
+RandomizedDelaySec=0
+Unit=libevra-backup.service
+
+[Install]
+WantedBy=timers.target

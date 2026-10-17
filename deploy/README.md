@@ -305,3 +305,51 @@ git push ──────────────────▶
 
 **⚠️ 数据库口令不是应用管理员的认证方式。** 知道口令的人能改库，
 但**不能**通过任何 HTTP 接口获得管理员权限——两件事没有通道。
+---
+
+## 🗄️ 自动备份（S12-C，2026-10-17 新增）
+
+生产备份由三层组成，**每层失败原因不同，所以状态分开记录**：
+
+| 文件 | 作用 |
+|---|---|
+| `backup.sh` | 本地备份 + **隔离恢复演练** + 轮转 + 写 `backups/last-local.json` |
+| `backup-all.sh` | 编排：调 `backup.sh` → **AES-256 加密** → 上传 COS → **下载回来比对 SHA-256** → 写 `backups/last-run.json` → 失败告警 |
+| `offsite-fetch.sh` | **灾难恢复用**：从 COS 取回并解密（只读，不碰数据库） |
+| `notify-test.sh` | 测告警渠道（不碰备份） |
+| `systemd/` | `libevra-backup.service` / `.timer`（**仓库副本，安装见下**） |
+
+### 三个秘密文件（**不进仓库**，权限 `600`）
+
+| 文件 | 内容 |
+|---|---|
+| `deploy/.backup.key` | 加密口令（`openssl rand -base64 32`）。**丢了 = 异地备份全废**，必须有服务器之外的副本 |
+| `deploy/.backup.env` | `COS_SECRET_ID` / `COS_SECRET_KEY` / `COS_BUCKET` / `COS_REGION` / `COS_ENDPOINT` |
+| `deploy/.backup-notify.env` | `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID`（可选） |
+
+**⚠️ 子账号只给 `PutObject` / `GetObject` / `ListBucket`，绝不给 `DeleteObject`。**
+30 天过期由**桶的生命周期规则**在服务端执行 —— 即使服务器被入侵，历史备份也删不掉。
+
+### 安装定时任务（**先手动跑通，再 `enable`**）
+
+```bash
+sudo cp deploy/systemd/libevra-backup.service /etc/systemd/system/
+sudo cp deploy/systemd/libevra-backup.timer   /etc/systemd/system/
+sudo systemctl daemon-reload
+
+# ⚠️ 先手动跑一次，确认三项状态都是 true 再启用
+cd /srv/libevra/deploy && ./backup-all.sh
+
+# 启用（每天 03:00 香港时间；Persistent=true 会补跑关机错过的）
+sudo systemctl enable --now libevra-backup.timer
+systemctl list-timers libevra-backup.timer --no-pager
+```
+
+### 查看与暂停
+
+```bash
+journalctl -u libevra-backup -n 100 --no-pager     # 最近一次的输出
+cat /srv/libevra/deploy/backups/last-run.json      # 三项状态（本地/演练/异地）
+sudo systemctl stop libevra-backup.timer           # 暂停（备份不再自动跑）
+sudo systemctl start libevra-backup.timer          # 恢复
+```
