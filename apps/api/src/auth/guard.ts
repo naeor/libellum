@@ -32,6 +32,22 @@ export function createRequireAuth(
       throw unauthorized("session_expired", "登录状态已过期，请重新登录。");
     }
 
+    /**
+     * ⚠️ **A suspended account cannot use a session even if one somehow still exists.**
+     *
+     * Suspending deletes every session in the same transaction (`admin/accounts.ts`), so this is
+     * normally unreachable — which is exactly why it belongs here: **the guarantee must not
+     * depend on the cleanup having worked.** A surviving cookie for a suspended person is the
+     * one failure this check exists to catch.
+     *
+     * ⚠️ **The row is deleted as well**, so the dead cookie stops being retried on every request.
+     * The message is the same one login gives, deliberately: *"该账户目前已停用或不存在"*.
+     */
+    if (session.user.disabledAt !== null) {
+      await prisma.session.deleteMany({ where: { id: session.id } });
+      throw unauthorized("account_disabled", "该账户目前已停用或不存在。");
+    }
+
     const user: SessionUser = {
       id: session.user.id,
       accountNumber: session.user.accountNumber,

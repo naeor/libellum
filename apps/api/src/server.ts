@@ -1,3 +1,4 @@
+import { APP_VERSION } from "@libellum/shared";
 import { buildApp } from "./app.js";
 import { createPrismaClient } from "./db.js";
 import { loadEnv } from "./env.js";

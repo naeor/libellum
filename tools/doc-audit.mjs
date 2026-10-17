@@ -46,7 +46,7 @@ const DOCS = join(ROOT, "docs");
  * `颜色清单.md` 一旦被误排除，这个检查就失去了它存在的意义。
  */
 const RECORD_FILES = new Set([
-  "开发过程记录/版本记录（1.10）.md",
+  "开发过程记录/版本记录（1.10-1.13）.md",
   "开发过程记录/版本记录（1.08-1.09）.md",
   "开发过程记录/开发日志.md",
   "开发过程记录/部署记录-S12-B.md",
@@ -78,8 +78,13 @@ function tokensOf(prefix) {
 
 const colorTokens = tokensOf("color");
 const radiusTokens = tokensOf("radius");
+/**
+ * ⚠️ **`APP_VERSION` moved to `shared` in 1.13.01**, so both the web app and the API's `/health`
+ * report the same number. This reads the definition, not the re-export — `apps/web/.../version.ts`
+ * now only says `export { APP_VERSION } from "@libellum/shared"`.
+ */
 const version = /APP_VERSION = "([^"]+)"/.exec(
-  readFileSync(join(ROOT, "apps", "web", "src", "lib", "version.ts"), "utf8"),
+  readFileSync(join(ROOT, "packages", "shared", "src", "version.ts"), "utf8"),
 )?.[1];
 
 console.log("================ 代码现状（ground truth） ================");

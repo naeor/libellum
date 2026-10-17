@@ -38,7 +38,12 @@ type App = ReturnType<typeof makeApp>;
 
 /** The app every test in this file talks to, with the test-only admin route switched on. */
 function appWithAdminRoute(): App {
-  return makeApp({ enableTestAdminRoute: true });
+  /**
+     * ⚠️ **No special option any more (S13).** The console''s real `GET /admin/self` is
+     * registered unconditionally, so the guard is exercised through the same route production
+     * serves — the old test-only route existed only because there was no admin API at all.
+     */
+    return makeApp();
 }
 
 /**
@@ -492,7 +497,15 @@ describe("6. the correctly authorized account passes", () => {
 
     const response = await callAdminSelf("theadministrator");
     expect(response.statusCode, response.body).toBe(200);
-    expect(response.json()).toMatchObject({ ok: true, accountNumber: FIRST_BATCH_ACCOUNT_FIRST });
+    /**
+       * ⚠️ **The body changed in S13** — this is now the console's real endpoint, so it answers
+       * `{ isAdmin: true, username, accountNumber }` rather than the old test route's
+       * `{ ok: true, ... }`.
+       */
+      expect(response.json()).toMatchObject({
+        isAdmin: true,
+        accountNumber: FIRST_BATCH_ACCOUNT_FIRST,
+      });
   });
 });
 
@@ -1008,7 +1021,7 @@ describe("14. the data survives, and reads as the database says", () => {
   });
 });
 
-describe("the test-only admin route never exists in a normal build", () => {
+describe("the admin surface exists in a normal build and is guarded", () => {
   /**
    * ⚠️ **Required by the brief: *"测试路由不能在正常生产构建中暴露"*.**
    *
@@ -1023,16 +1036,17 @@ describe("the test-only admin route never exists in a normal build", () => {
    *     may do it either. This is checked against the source rather than asserted in prose,
    *     because a later edit could add the flag with nothing to notice.
    */
-  it("404s when the option is not passed", async () => {
-    const productionShaped = makeApp(); // no enableTestAdminRoute
+  it("exists in a normal build and refuses unauthenticated callers with 401", async () => {
+    const productionShaped = makeApp();
 
     const response = await productionShaped.inject({
       method: "GET",
       url: "/api/v1/admin/self",
     });
 
-    // 404 — the path is not registered. Not 401, not 403: the route is absent.
-    expect(response.statusCode).toBe(404);
+    // 401, not 404: the route exists and "who are you" is the first question it asks.
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toMatchObject({ code: "not_authenticated" });
   });
 
   it("cannot be enabled from the production entry point or the environment", async () => {

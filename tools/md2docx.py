@@ -55,7 +55,7 @@ def inline_runs(text):
 
     ⚠️ **Marks nest, and the earlier version did not.** It split on the outer
     `**…**` and emitted the inside as one bold run — so a span like
-    `**规则原文在 \\`版本记录（1.10）.md\\` §1。**` kept its backticks and printed
+    `**规则原文在 \\`版本记录（1.10-1.13）.md\\` §1。**` kept its backticks and printed
     them. **The documents contain 1378 of them**, because bold-with-a-path-inside
     is how this project writes a reference.
     """

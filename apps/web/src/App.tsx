@@ -12,6 +12,13 @@ import { CACHE_MAX_AGE_MS, cachePersister, shouldPersistQuery } from "./lib/offl
 import { primeDeviceId } from "./lib/api.js";
 import { deviceId } from "./lib/offline/device.js";
 import { startSyncTriggers } from "./lib/offline/syncController.js";
+import {
+  AdminAdminsPage,
+  AdminAuditPage,
+  AdminInvitesPage,
+  AdminOverviewPage,
+  AdminUsersPage,
+} from "./pages/AdminPages.js";
 import { AboutPage } from "./pages/AboutPage.js";
 import { AddEntryPage } from "./pages/AddEntryPage.js";
 import { ChangePasswordPage } from "./pages/ChangePasswordPage.js";

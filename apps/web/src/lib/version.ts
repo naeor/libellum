@@ -67,7 +67,12 @@
  * `pnpm admin:disallow` — and neither of those touches `admin_grants`.
  * See `docs/开发过程记录/S12-A上线前安全与发布准备.md` §4.
  */
-export const APP_VERSION = "1.10.23";
+/**
+ * ⚠️ **Re-exported from `shared`, not defined here (S13).** The API's `/health` reports the same
+ * constant, so "which version is deployed" now has one answer instead of two. Keeping a second
+ * literal here is exactly the drift this project keeps recording as a bug.
+ */
+export { APP_VERSION } from "@libellum/shared";
 
 /**
  * When this bundle was built.

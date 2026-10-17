@@ -24,6 +24,7 @@ export function ConfirmDialog({
   busy = false,
   onConfirm,
   onCancel,
+  children,
 }: {
   readonly open: boolean;
   readonly title: string;
@@ -35,6 +36,14 @@ export function ConfirmDialog({
   readonly busy?: boolean;
   readonly onConfirm: () => void;
   readonly onCancel: () => void;
+  /**
+   * ⚠️ **Optional fields between the consequences and the buttons** (added for S13's console).
+   *
+   * A sensitive operation needs a reason and a second password *inside* the dialog — putting
+   * them on the page behind it would let the confirmation describe one action while the form
+   * collected input for another. Optional, so every existing caller is unchanged.
+   */
+  readonly children?: React.ReactNode;
 }): React.JSX.Element | null {
   const cancelRef = useRef<HTMLButtonElement>(null);
   const confirmRef = useRef<HTMLButtonElement>(null);

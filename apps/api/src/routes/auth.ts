@@ -316,6 +316,22 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
       throw unauthorized("invalid_credentials", "用户名或密码不正确。");
     }
 
+    /**
+     * **A suspended account cannot sign in** (S13).
+     *
+     * ⚠️ **The message is the one the owner specified** — *"该账户目前已停用或不存在"* — and it
+     * is written to be indistinguishable from "no such account", which is what keeps the login
+     * form from answering *"does this username exist, and was it banned?"*. The password is
+     * verified **before** this check so a suspended account costs the same time as a real one.
+     *
+     * ⚠️ It counts as a failed attempt, so a suspended person guessing passwords is throttled
+     * exactly like anybody else.
+     */
+    if (user.disabledAt !== null) {
+      throttle.recordFailure(keys);
+      throw unauthorized("account_disabled", "该账户目前已停用或不存在。");
+    }
+
     throttle.recordSuccess(keys);
     await issueSession(reply, user.id, metaFrom(request));
 

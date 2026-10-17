@@ -57,6 +57,14 @@ export async function resetDatabase(): Promise<void> {
   await prisma.bookMember.deleteMany();
   await prisma.book.deleteMany();
   await prisma.session.deleteMany();
+  /**
+   * ⚠️ **S13's two tables too.** They have no foreign keys (an audit row must outlive the
+   * account it describes, and a backup log describes no account at all), so nothing cascades
+   * them — a reset that forgot them would let one test's audit rows answer another test's
+   * "how many actions were recorded".
+   */
+  await prisma.adminAuditLog.deleteMany();
+  await prisma.backupLog.deleteMany();
   await prisma.registrationInvite.deleteMany();
   await prisma.user.deleteMany();
   await prisma.counter.deleteMany();

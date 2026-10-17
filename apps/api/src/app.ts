@@ -10,6 +10,7 @@ import { LoginThrottle, type LoginThrottleOptions } from "./auth/login-throttle.
 import type { PrismaClient } from "./db.js";
 import { forbidden, registerErrorHandlers } from "./lib/errors.js";
 import { OcrService } from "./ocr/client.js";
+import { registerAdminRoutes } from "./routes/admin.js";
 import { registerAuthRoutes } from "./routes/auth.js";
 import { registerBooksRoutes } from "./routes/books.js";
 import { registerClassificationRoutes } from "./routes/classification.js";
@@ -44,24 +45,6 @@ export interface BuildAppOptions extends HealthDeps {
    * have a 147 MB model on disk.
    */
   readonly voice?: Pick<VoiceService, "transcribe" | "stop">;
-  /**
-   * ⚠️ **Test-only.** Registers one route behind `createRequireAdmin`, so the admin guard
-   * can be exercised end to end — through a real session, a real cookie and a real refusal
-   * — rather than only as a function.
-   *
-   * ⚠️ **Off unless a caller asks, and the production bootstrap never asks.** The brief is
-   * explicit that no admin API should be exposed merely to prove the guard works, and the
-   * honest way to honour that is for the route to **not exist** in a normal build rather
-   * than to exist behind a flag that somebody could flip. `src/server.ts` does not pass
-   * this option and there is no environment variable that sets it; the only caller is
-   * `test/admin.test.ts`.
-   *
-   * ⚠️ **It deliberately does nothing but report who the guard decided you are.** A test
-   * route that performed a real administrative action would need a real administrative
-   * action to exist, and this round has none by design — see
-   * `docs/开发过程记录/管理员与权限边界-设计决定.md` §6.
-   */
-  readonly enableTestAdminRoute?: boolean;
 }
 
 const DEFAULT_THROTTLE: LoginThrottleOptions = {
@@ -162,6 +145,16 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     const requireAuth = createRequireAuth(options.prisma);
 
     /**
+     * **The administration guard, built once and shared.**
+     *
+     * ⚠️ **One instance for the whole app**, because a second `createRequireAdmin` call would be
+     * a second place the admin decision is made — which is the shape this project records as
+     * *"how a hole appears"* (`admin/guard.ts`, `auth/guard.ts`). The console's routes receive
+     * this function; none of them decides for itself.
+     */
+    const requireAdmin = createRequireAdmin(options.prisma, requireAuth);
+
+    /**
      * Started on first use, not here.
      *
      * The recogniser holds a few hundred megabytes of models. A deployment
@@ -188,6 +181,16 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       throttle: new LoginThrottle(options.loginThrottleOptions ?? DEFAULT_THROTTLE),
       cookieSecure: options.cookieSecure ?? false,
     });
+
+    /**
+     * **The admin console's API (S13).**
+     *
+     * ⚠️ **Registered unconditionally, guarded by `requireAdmin` on every route.** That is the
+     * opposite of the test-only route further down (which exists only when a test asks for it):
+     * this is a real product surface, so its safety has to come from the guard rather than from
+     * nobody knowing the address.
+     */
+    registerAdminRoutes(app, { prisma: options.prisma, requireAdmin });
 
     /**
      * ⚠️ **Ledgers themselves are registered with plain auth, and that is not a weaker check.**
@@ -277,29 +280,6 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     registerVoiceRoutes(app, { requireAuth: requireBookWrite, prisma: options.prisma, voice });
     registerExportRoutes(app, { prisma: options.prisma, requireAuth: requireBookWrite });
     registerImportRoutes(app, { prisma: options.prisma, requireAuth: requireBookWrite });
-
-    /**
-     * ⚠️ **Test-only, and it exists nowhere unless a test asks for it.** See the note on
-     * `enableTestAdminRoute` above: the admin guard has to be exercised through a real
-     * request, and the alternative — shipping an admin endpoint nobody needs yet — is the
-     * thing the brief forbids.
-     *
-     * The route reports the guard's decision and nothing else. It reads no ledger, touches
-     * no user data and has no side effects, so even if it were somehow reachable it would
-     * disclose only whether the caller is an administrator — which the caller already knows
-     * if they are one.
-     */
-    if (options.enableTestAdminRoute === true) {
-      const requireAdmin = createRequireAdmin(options.prisma, requireAuth);
-      app.get("/api/v1/admin/self", { preHandler: requireAdmin }, async (request) => {
-        // `adminActor` is set by the guard, which is what makes it safe to read here.
-        const actor = request.adminActor;
-        if (actor === undefined) {
-          throw forbidden("admin_forbidden", "没有权限执行这个操作。");
-        }
-        return { ok: true, accountNumber: actor.accountNumber, username: actor.username };
-      });
-    }
   }
 
   return app;

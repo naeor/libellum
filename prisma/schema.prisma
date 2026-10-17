@@ -64,6 +64,24 @@ model User {
   /// administrators nobody chose.
   isAdmin      Boolean  @default(false) @map("is_admin")
 
+  /// **When the account was suspended, and by whom.** Non-null means suspended (S13).
+  ///
+  /// ⚠️ **Suspension is a platform action, not a data deletion.** The owner's rule
+  /// (2026-10-17): *"在停用账户的一瞬间，服务器会把账户上的所有登录设备都踢出去，
+  /// 然后服务器把对应账户标记为停用状态。停用状态的账户没法被登录"*. Nothing is
+  /// deleted — the ledger, the transactions and the history all stay, **because
+  /// suspending a person is not the same decision as destroying their records.**
+  ///
+  /// ⚠️ **A timestamp rather than a boolean**, for the same reason
+  /// `RegistrationInvite.revokedAt` is one: the record should say *when*, which is
+  /// what somebody auditing the decision will want and what a boolean throws away.
+  ///
+  /// ⚠️ **The sessions are deleted at the same moment**, in one transaction — see
+  /// `admin/suspend.ts`. Marking the account without kicking the devices would
+  /// leave a suspended person signed in until their cookie expired (30 days).
+  disabledAt DateTime? @map("disabled_at") @db.Timestamptz(6)
+  disabledBy String? @map("disabled_by") @db.VarChar(200)
+
   /// The ledger this account looked at last, so signing in returns to it.
   ///
   /// ⚠️ **This is a preference about the account, not about a device**, which is
@@ -1188,4 +1206,81 @@ model AdminAllowEntry {
 
   @@index([revokedAt])
   @@map("admin_allowlist")
+}
+/// **One row per administrative action** — who did what, to whom, when, and whether it worked.
+///
+/// ⚠️ **The fields were decided in 2026-10-14 and the table was deliberately not created then**
+/// (`docs/开发过程记录/管理员与权限边界-设计决定.md` §9.4): *"没有实际管理员操作就不必为预留而增加复杂的空表和后台页面"*,
+/// so the field list was fixed and the table waited. **The first real administrative actions
+/// happened on 2026-10-16** (grant + allow against production), and S13 is where management
+/// operations get an interface — so the table is built now, with a writer from day one.
+///
+/// ⚠️ **No foreign key to `users`, on purpose.** An audit record must survive the account it
+/// describes being deleted; `admin_username` is the snapshot that keeps it readable then — the
+/// same reasoning as `TransactionEvent.actorName`.
+///
+/// ⚠️ **Nothing here ever stores a credential.** No passwords, no session cookies, no recovery
+/// codes, no invitation code plaintext. `target` names the object by a readable label.
+model AdminAuditLog {
+  id String @id @default(uuid()) @db.Uuid
+
+  /// The administrator's UUID. An identifier, not a name — names change.
+  adminUserId String @map("admin_user_id") @db.Uuid
+
+  /// A snapshot of the username when the action happened, so the row stays readable.
+  adminUsername String @map("admin_username") @db.VarChar(64)
+
+  /// A **stable identifier**, not a human sentence: `invite.create`, `invite.revoke`,
+  /// `account.disable`, `account.enable`. The UI owns the sentence.
+  action String @db.VarChar(48)
+
+  /// What was acted on, in a readable form (a username or an invite note).
+  target String? @db.VarChar(200)
+
+  /// `success` or `failed`.
+  outcome String @db.VarChar(16)
+
+  /// The minimum extra context (shape of invite created, account number, why refused).
+  /// ⚠️ Never a credential — see the note above.
+  detail Json?
+
+  /// Fastify's request id, so an audit row can be matched against the access log.
+  requestId String? @map("request_id") @db.VarChar(64)
+
+  at DateTime @default(now()) @db.Timestamptz(6)
+
+  /// The only query this table serves is "the most recent actions, newest first".
+  @@index([at(sort: Desc)])
+  @@map("admin_audit_logs")
+}
+
+/// **One row per backup attempt**, so the admin console can answer *"when did the last backup
+/// succeed"* — the owner asked for it in the S13 overview (2026-10-17).
+///
+/// ⚠️ **Why a table rather than reading the files.** `backup.sh` writes `.dump` files to the
+/// **host** (`deploy/backups/`), and the API runs in a **container** that cannot see them.
+/// Mounting the host directory read-only would widen what the container can read for one
+/// number; a row written inside the transaction of the backup is visible, historical, and adds
+/// no new access.
+///
+/// ⚠️ **The writer is not wired yet.** That is a deliberate hand-off: the owner said
+/// *"备份的话，我待会再跟你说怎么做"*. Until `backup.sh` inserts a row, the overview honestly
+/// says "还没有记录" rather than claiming a backup exists.
+model BackupLog {
+  id String @id @default(uuid()) @db.Uuid
+
+  startedAt  DateTime  @default(now()) @map("started_at") @db.Timestamptz(6)
+  finishedAt DateTime? @map("finished_at") @db.Timestamptz(6)
+
+  /// Whether the backup **and its restore drill** both passed. A backup nobody restored is a
+  /// hope, which is the rule `backup.sh` already enforces.
+  ok Boolean @default(false)
+
+  /// The dump file name, relative to `deploy/backups/`.
+  fileRef String? @map("file_ref") @db.VarChar(300)
+
+  note String? @db.VarChar(500)
+
+  @@index([startedAt(sort: Desc)])
+  @@map("backup_logs")
 }
