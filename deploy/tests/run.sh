@@ -91,7 +91,7 @@ echo "=== 2. 告警邮件：未配置时必须明确说"未启用"（退出码 3
 ALERT_DIR="$WORK/alert"
 mkdir -p "$ALERT_DIR/backups"
 cp "$DEPLOY/alert-mail.sh" "$ALERT_DIR/"
-if (cd "$ALERT_DIR" && ./alert-mail.sh --test >/dev/null 2>&1); then
+if (cd "$ALERT_DIR" && bash alert-mail.sh --test >/dev/null 2>&1); then
   bad "未配置时应该退出 3，实际是 0"
 else
   CODE=$?
@@ -116,33 +116,33 @@ send_count() {
 
 # 3a 首次失败 → 发
 run_with_mocks
-(cd "$ALERT_DIR" && ./alert-mail.sh --stage local --error "disk full" --last-success "2026-10-16" >/dev/null 2>&1)
+(cd "$ALERT_DIR" && bash alert-mail.sh --stage local --error "disk full" --last-success "2026-10-16" >/dev/null 2>&1)
 [ "$(send_count)" -ge 1 ] && ok "首次失败 → 发邮件" || bad "首次失败没发邮件" "$(cat "$MOCK_LOG")"
 
 # 3b 同一阶段立刻再失败 → 不发
 run_with_mocks
-(cd "$ALERT_DIR" && ./alert-mail.sh --stage local --error "disk full" >/dev/null 2>&1)
+(cd "$ALERT_DIR" && bash alert-mail.sh --stage local --error "disk full" >/dev/null 2>&1)
 [ "$(send_count)" -eq 0 ] && ok "同一故障再次失败 → 24 小时内不重复" || bad "同一故障重复发送"
 
 # 3c 阶段变化 → 立即发
 run_with_mocks
-(cd "$ALERT_DIR" && ./alert-mail.sh --stage upload --error "COS 403" >/dev/null 2>&1)
+(cd "$ALERT_DIR" && bash alert-mail.sh --stage upload --error "COS 403" >/dev/null 2>&1)
 [ "$(send_count)" -ge 1 ] && ok "失败阶段变化 → 立即发" || bad "阶段变化没发"
 
 # 3d 恢复 → 发一次恢复通知
 run_with_mocks
-(cd "$ALERT_DIR" && ./alert-mail.sh --recovered >/dev/null 2>&1)
+(cd "$ALERT_DIR" && bash alert-mail.sh --recovered >/dev/null 2>&1)
 [ "$(send_count)" -ge 1 ] && ok "恢复 → 发恢复通知" || bad "恢复通知没发"
 
 # 3e 再恢复一次 → 不发（避免每天一封"正常"）
 run_with_mocks
-(cd "$ALERT_DIR" && ./alert-mail.sh --recovered >/dev/null 2>&1)
+(cd "$ALERT_DIR" && bash alert-mail.sh --recovered >/dev/null 2>&1)
 [ "$(send_count)" -eq 0 ] && ok "持续正常 → 不发恢复通知" || bad "正常状态重复发恢复通知"
 
 # 3f API 5xx → 退出码非零（不能把发送失败当成功）
 run_with_mocks
 export MOCK_HTTP=500
-(cd "$ALERT_DIR" && ./alert-mail.sh --stage encrypt --error "boom" >/dev/null 2>&1)
+(cd "$ALERT_DIR" && bash alert-mail.sh --stage encrypt --error "boom" >/dev/null 2>&1)
 CODE=$?
 [ "$CODE" -ne 0 ] && ok "邮件 API 失败 → 退出码非零" || bad "邮件 API 失败却返回 0"
 unset MOCK_HTTP
@@ -161,7 +161,7 @@ HB_DIR="$WORK/hb"
 mkdir -p "$HB_DIR/backups"
 cp "$DEPLOY/heartbeat.sh" "$HB_DIR/"
 
-if (cd "$HB_DIR" && ./heartbeat.sh --ok >/dev/null 2>&1); then
+if (cd "$HB_DIR" && bash heartbeat.sh --ok >/dev/null 2>&1); then
   bad "未配置心跳应退出 3"
 else
   [ $? -eq 3 ] && ok "心跳未配置 → 退出码 3" || bad "心跳未配置退出码不对"
@@ -172,17 +172,17 @@ HEARTBEAT_URL=https://hc-ping.com/00000000-0000-0000-0000-000000000000
 ENV
 
 run_with_mocks
-(cd "$HB_DIR" && ./heartbeat.sh --ok >/dev/null 2>&1)
+(cd "$HB_DIR" && bash heartbeat.sh --ok >/dev/null 2>&1)
 grep -q 'URL: https://hc-ping.com/00000000-0000-0000-0000-000000000000$' "$MOCK_LOG" \
   && ok "成功心跳打到基础 URL" || bad "成功心跳 URL 不对" "$(cat "$MOCK_LOG")"
 
 run_with_mocks
-(cd "$HB_DIR" && ./heartbeat.sh --fail "上传失败" >/dev/null 2>&1)
+(cd "$HB_DIR" && bash heartbeat.sh --fail "上传失败" >/dev/null 2>&1)
 grep -q '/fail$' "$MOCK_LOG" && ok "失败心跳打到 /fail" || bad "失败心跳 URL 不对" "$(cat "$MOCK_LOG")"
 
 run_with_mocks
 export MOCK_HTTP=500
-if (cd "$HB_DIR" && ./heartbeat.sh --ok >/dev/null 2>&1); then
+if (cd "$HB_DIR" && bash heartbeat.sh --ok >/dev/null 2>&1); then
   bad "心跳 5xx 应返回非零"
 else
   ok "心跳 5xx → 退出码非零（监控失效会被发现）"
@@ -196,7 +196,7 @@ DRILL_DIR="$WORK/drill"
 mkdir -p "$DRILL_DIR"
 cp "$DEPLOY/monthly-offsite-drill.sh" "$DEPLOY/offsite-fetch.sh" "$DRILL_DIR/"
 printf 'POSTGRES_USER=x\nPOSTGRES_PASSWORD=x\nPOSTGRES_DB=libevra_prod\n' > "$DRILL_DIR/.env"
-if (cd "$DRILL_DIR" && ./monthly-offsite-drill.sh >/dev/null 2>&1); then
+if (cd "$DRILL_DIR" && bash monthly-offsite-drill.sh >/dev/null 2>&1); then
   bad "月度演练面对生产库应拒绝"
 else
   ok "月度演练面对 libevra_prod → 拒绝执行"
@@ -207,7 +207,7 @@ FETCH_DIR="$WORK/fetch"
 mkdir -p "$FETCH_DIR"
 cp "$DEPLOY/offsite-fetch.sh" "$FETCH_DIR/"
 touch "$FETCH_DIR/.backup.key"
-if (cd "$FETCH_DIR" && COS_UPLOAD_ID=same COS_RESTORE_ID=same COS_RESTORE_KEY=k COS_BUCKET=b ./offsite-fetch.sh --list >/dev/null 2>&1); then
+if (cd "$FETCH_DIR" && COS_UPLOAD_ID=same COS_RESTORE_ID=same COS_RESTORE_KEY=k COS_BUCKET=b bash offsite-fetch.sh --list >/dev/null 2>&1); then
   bad "恢复身份=上传身份时应拒绝"
 else
   ok "恢复身份与上传身份相同 → 拒绝（最小权限设计）"
@@ -246,7 +246,7 @@ run_docker_mocks() { : > "$DOCKER_LOG"; }
 
 # 7a 成功路径：退出 0，确实调用了一次向 backup_logs 的插入
 run_docker_mocks
-OUT="$( (cd "$LOG_DIR" && ./backup-log.sh --ok --started-at 2026-10-17T19:00:00Z \
+OUT="$( (cd "$LOG_DIR" && bash backup-log.sh --ok --started-at 2026-10-17T19:00:00Z \
   --file-ref libevra_prod-test.dump --note "local+restore+encrypt+upload+remote-meta ok") 2>&1 )"
 CODE=$?
 [ "$CODE" -eq 0 ] && ok "写入成功路径 → 退出 0" || bad "写入成功路径退出码 $CODE" "$OUT"
@@ -257,7 +257,7 @@ grep -q "libevra_prod-test.dump" "$DOCKER_LOG" && ok "file_ref 只写文件名" 
 run_docker_mocks
 OUT="$( (cd "$LOG_DIR" && MOCK_DOCKER_EXIT=1 \
   MOCK_DOCKER_STDERR='ERROR: relation "backup_logs" does not exist' \
-  ./backup-log.sh --ok --started-at 2026-10-17T19:00:00Z --note ok) 2>&1 )"
+  bash backup-log.sh --ok --started-at 2026-10-17T19:00:00Z --note ok) 2>&1 )"
 CODE=$?
 [ "$CODE" -eq 0 ] && ok "表不存在 → 仍退出 0（不改变备份结论）" || bad "表不存在时退出码 $CODE"
 printf '%s' "$OUT" | grep -q 'S13 迁移未部署' && ok "表不存在 → 提示可行动原因" || bad "表不存在时没有提示" "$OUT"
@@ -266,7 +266,7 @@ printf '%s' "$OUT" | grep -q 'S13 迁移未部署' && ok "表不存在 → 提�
 run_docker_mocks
 OUT="$( (cd "$LOG_DIR" && MOCK_DOCKER_EXIT=1 \
   MOCK_DOCKER_STDERR='psql: error: connection to server failed' \
-  ./backup-log.sh --fail --stage upload --note "上传 COS 失败" --started-at 2026-10-17T19:00:00Z) 2>&1 )"
+  bash backup-log.sh --fail --stage upload --note "上传 COS 失败" --started-at 2026-10-17T19:00:00Z) 2>&1 )"
 CODE=$?
 [ "$CODE" -eq 0 ] && ok "数据库不可用 → 仍退出 0" || bad "数据库不可用时退出码 $CODE"
 printf '%s' "$OUT" | grep -q 'super-secret-value' && bad "输出泄露了口令" || ok "输出不含口令"
@@ -277,7 +277,7 @@ mkdir -p "$NOENV_DIR"
 cp "$DEPLOY/backup-log.sh" "$NOENV_DIR/"
 chmod +x "$NOENV_DIR/backup-log.sh"
 run_docker_mocks
-OUT="$( (cd "$NOENV_DIR" && ./backup-log.sh --ok --note ok) 2>&1 )"
+OUT="$( (cd "$NOENV_DIR" && bash backup-log.sh --ok --note ok) 2>&1 )"
 CODE=$?
 [ "$CODE" -eq 0 ] && ok "未配置 .env → 退出 0（静默跳过）" || bad "未配置时退出码 $CODE"
 [ -s "$DOCKER_LOG" ] && bad "未配置时仍调用了 docker" || ok "未配置时没有调用 docker"
