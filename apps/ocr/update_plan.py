@@ -1,4 +1,4 @@
-"""Bring PLAN.md in line with the redesigned S5.
+"""Bring 技术方案.md in line with the redesigned S5.
 
 The technical solution document still described uploading receipt photographs
 and storing them in a non-public directory. The feature is now screenshot
@@ -16,7 +16,7 @@ import os
 import sys
 
 DOCS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "docs")
-PLAN = os.path.join(DOCS, "PLAN.md")
+PLAN = os.path.join(DOCS, "技术方案.md")
 
 REPLACEMENTS: list[tuple[str, str]] = [
     (

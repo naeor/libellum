@@ -3,7 +3,7 @@
  *
  * **Why this exists.** On 2026-10-10 a **real, unused invitation code** was found
  * quoted in two places: `docs/README.md`, as an example of what the generator
- * prints, and `docs/DEVLOG.md`, as evidence that the script had been run.
+ * prints, and `docs/开发过程记录/开发日志.md`, as evidence that the script had been run.
  *
  * Two problems, and the second is the one that matters:
  *
@@ -35,12 +35,12 @@ const [find, replace, ...files] = process.argv.slice(2);
 if (find === undefined || replace === undefined) {
   process.stderr.write(
     "usage: redact-in-docs.mjs <find> <replace> [file...]\n" +
-      "       rewrites files in place; defaults to docs/README.md and docs/DEVLOG.md\n",
+      "       rewrites files in place; defaults to docs/README.md and docs/开发过程记录/开发日志.md\n",
   );
   process.exit(2);
 }
 
-const targets = files.length > 0 ? files : ["docs/README.md", "docs/DEVLOG.md"];
+const targets = files.length > 0 ? files : ["docs/README.md", "docs/开发过程记录/开发日志.md"];
 
 for (const path of targets) {
   let text;

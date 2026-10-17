@@ -49,7 +49,7 @@ export function AboutPage(): React.JSX.Element {
             * name — **a link to a repository that does not exist is worse than an old one that
             * does.** The remote was renamed on 2026-10-14 and this line followed it in the same
             * version; GitHub keeps a redirect for the old slug, so old links still resolve.
-            * The rename is recorded in `docs/Libevra品牌迁移记录.md`.
+            * The rename is recorded in `docs/开发过程记录/Libevra品牌迁移记录.md`.
             */}
           <p className="mt-2 text-muted">仓库地址：github.com/naeor/libevra</p>
         </section>

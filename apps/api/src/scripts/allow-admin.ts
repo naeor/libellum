@@ -8,7 +8,7 @@
  *
  * That separation is the point. The first version of the second check derived its answer from
  * `admin_grants`, so one grant satisfied both halves and the two checks could never disagree;
- * the owner caught it (`docs/管理员与权限边界-设计决定.md` §4.2). Granting and listing are
+ * the owner caught it (`docs/开发过程记录/管理员与权限边界-设计决定.md` §4.2). Granting and listing are
  * therefore two deliberate acts:
  *
  * ```bash

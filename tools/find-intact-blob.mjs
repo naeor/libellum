@@ -1,7 +1,7 @@
 /**
  * Find every version of a documentation file that still has its line breaks.
  *
- * Written after a history rewrite flattened `docs/DEVLOG.md` and `docs/README.md`
+ * Written after a history rewrite flattened `docs/开发过程记录/开发日志.md` and `docs/README.md`
  * into single lines — all of the content, none of the structure — and then the
  * flattened version was pushed. The question this answers is simply: which blob,
  * anywhere in the object database, still has a usable copy?
@@ -12,7 +12,7 @@
  * section headings are present, so the best copy can be chosen by content rather
  * than by guesswork.
  *
- *   node tools/find-intact-blob.mjs docs/DEVLOG.md 先查清 安全事件
+ *   node tools/find-intact-blob.mjs docs/开发过程记录/开发日志.md 先查清 安全事件
  */
 import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";

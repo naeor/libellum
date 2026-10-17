@@ -59,7 +59,7 @@ export interface BuildAppOptions extends HealthDeps {
    * ⚠️ **It deliberately does nothing but report who the guard decided you are.** A test
    * route that performed a real administrative action would need a real administrative
    * action to exist, and this round has none by design — see
-   * `docs/管理员与权限边界-设计决定.md` §6.
+   * `docs/开发过程记录/管理员与权限边界-设计决定.md` §6.
    */
   readonly enableTestAdminRoute?: boolean;
 }

@@ -1,4 +1,4 @@
-// Contrast audit for docs/颜色语义与配色规范.md (S11 Semantic Color System).
+// Contrast audit for docs/开发过程记录/颜色语义与配色规范.md (S11 Semantic Color System).
 //
 // Computes WCAG 2.1 contrast ratios for every foreground/background pairing the app actually
 // renders, including the ones the Tailwind opacity modifiers produce — which is where the real

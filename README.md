@@ -7,10 +7,10 @@
 
 > **Status: live at <https://libevra.com>** (self-hosted, registration is invite-only).
 > **It is not open for public sign-up** — the owner runs it for one family, and invites are
-> issued by hand. The stage-by-stage position is in [ROADMAP.md](docs/ROADMAP.md).
+> issued by hand. The stage-by-stage position is in [开发计划.md](docs/开发计划.md).
 >
 > **⚠️ Formerly Libellum.** Renamed on 2026-10-14 for domain reasons. Which names changed,
-> which were deliberately kept, and what still needs a human: [docs/Libevra品牌迁移记录.md](docs/Libevra品牌迁移记录.md).
+> which were deliberately kept, and what still needs a human: [docs/开发过程记录/Libevra品牌迁移记录.md](docs/开发过程记录/Libevra品牌迁移记录.md).
 >
 > **🛠️ Contributing, or an AI assistant picking this up?** Read [AGENTS.md](AGENTS.md) first.
 > **Deploying or operating it?** Read [docs/生产环境与运维手册.md](docs/生产环境与运维手册.md) —
@@ -67,12 +67,12 @@ be written in the first place. Details in
 | Document | What it covers |
 |---|---|
 | [docs/交接.md](docs/交接.md) | Handover: where to start, how to run it, where it stands, what is next |
-| [docs/PLAN.md](docs/PLAN.md) | Technical plan: architecture, data model, API, security, deployment, cost |
-| [docs/ROADMAP.md](docs/ROADMAP.md) | Stage-by-stage build plan with acceptance criteria |
-| [docs/DEVLOG.md](docs/DEVLOG.md) | Development log: every change, decision and its evidence |
-| [docs/BACKLOG.md](docs/BACKLOG.md) | Deferred ideas, and the ones deliberately rejected |
+| [docs/技术方案.md](docs/技术方案.md) | Technical plan: architecture, data model, API, security, deployment, cost |
+| [docs/开发计划.md](docs/开发计划.md) | Stage-by-stage build plan with acceptance criteria |
+| [docs/开发过程记录/开发日志.md](docs/开发过程记录/开发日志.md) | Development log: every change, decision and its evidence |
+| [docs/待办清单.md](docs/待办清单.md) | Deferred ideas, and the ones deliberately rejected |
 | [docs/归档/S6-导出与导入-设计决定.md](docs/归档/S6-导出与导入-设计决定.md) | Export/import decisions, including the reference scheme above |
-| [docs/Libevra品牌迁移记录.md](docs/Libevra品牌迁移记录.md) | The rename from Libellum: what changed, what was kept, what is still manual |
+| [docs/开发过程记录/Libevra品牌迁移记录.md](docs/开发过程记录/Libevra品牌迁移记录.md) | The rename from Libellum: what changed, what was kept, what is still manual |
 
 ## Privacy
 

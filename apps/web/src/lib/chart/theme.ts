@@ -8,7 +8,7 @@
  *    shape, so a legend and a chart stay readable for someone who cannot
  *    separate the hues, or is looking at a washed-out screen in daylight.
  *
- * ⚠️ **This file holds values, not tokens — read `docs/COLORS.md` §4 before
+ * ⚠️ **This file holds values, not tokens — read `docs/开发过程记录/颜色清单.md` §4 before
  * touching it.** Charts are the one place the theme cannot reach: the colours
  * are handed to SVG as strings and asserted in tests, so they have to be
  * literals rather than `var(--…)`. Two consequences worth knowing:

@@ -1,4 +1,4 @@
-// Colour audit for docs/颜色语义与配色规范.md (S11 Semantic Color System, phase 1).
+// Colour audit for docs/开发过程记录/颜色语义与配色规范.md (S11 Semantic Color System, phase 1).
 //
 // Reads every web source file and reports, per class of colour expression:
 //   * Tailwind colour utilities and how often each is used,

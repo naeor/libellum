@@ -64,7 +64,7 @@
  * `book_members` and from nothing else — `ledger/access.ts` owns that, and being an
  * administrator is not a way around it (test 13 asserts exactly this). Administration is
  * the ability to perform *platform* operations, and each of those still has to define its
- * own scope and its own audit. See `docs/管理员与权限边界-设计决定.md` §6.
+ * own scope and its own audit. See `docs/开发过程记录/管理员与权限边界-设计决定.md` §6.
  */
 import type { FastifyRequest } from "fastify";
 

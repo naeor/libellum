@@ -2,7 +2,7 @@
  * Create a test account and fill it with plausible entries.
  *
  * This exists because the development database was wiped on 2026-10-10 (see
- * docs/DEVLOG.md), and because a realistic ledger is the only way to look at the
+ * docs/开发过程记录/开发日志.md), and because a realistic ledger is the only way to look at the
  * list, the statistics and the charts and see whether they behave.
  *
  * Two deliberate choices:

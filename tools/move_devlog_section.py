@@ -12,7 +12,7 @@ import os
 PATH = os.path.join(
     r"C:\Users\ZhuanZ（无密码）\Desktop\工作\记账程序\记账程序v1",
     "docs",
-    "DEVLOG.md",
+    "开发日志.md",
 )
 
 HEADING = "### 1.31 第三十一阶段：明细页两个形态（2026-10-10 全天）"

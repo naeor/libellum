@@ -384,7 +384,7 @@ describe("account numbers", () => {
    * `pnpm admin:grant`, and **registration can no longer confer it at all**.
    *
    * ⚠️ **The reserved number is still honoured**, and that is asserted below: it was never
-   * the privilege. See `docs/管理员与权限边界-设计决定.md` §5.
+   * the privilege. See `docs/开发过程记录/管理员与权限边界-设计决定.md` §5.
    */
   it("gives the reserved number but not the administration", async () => {
     await prisma.registrationInvite.create({

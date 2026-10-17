@@ -6,7 +6,7 @@
  * the actual authorization step. The split exists so the rules can be reasoned about and
  * **tested without a server**, which is where most of the interesting cases live.
  *
- * See `docs/管理员与权限边界-设计决定.md` for the decisions behind all of this.
+ * See `docs/开发过程记录/管理员与权限边界-设计决定.md` for the decisions behind all of this.
  */
 
 /**

@@ -17,7 +17,7 @@ import os
 PATH = os.path.join(
     r"C:\Users\ZhuanZ（无密码）\Desktop\工作\记账程序\记账程序v1",
     "docs",
-    "DEVLOG.md",
+    "开发日志.md",
 )
 
 SECTION = """

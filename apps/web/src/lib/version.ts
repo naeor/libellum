@@ -10,7 +10,7 @@
  * | 段 | 含义 |
  * |---|---|
  * | **1** | 第几次整体开发。**只有在"从头再做一遍"时才变** |
- * | **08** | 正在开发哪个阶段（S8）。**与 `ROADMAP.md` 的阶段号一致** |
+ * | **08** | 正在开发哪个阶段（S8）。**与 `开发计划.md` 的阶段号一致** |
  * | **01** | 该阶段里的第几版。**改到用户看得见的行为就 +1** |
  *
  * ⚠️ **Every update bumps the last part, and the owner made that a rule**: "以后你每次更新
@@ -48,7 +48,7 @@
  * ⚠️ **The middle part stays at 10 for the rename** (2026-10-14, 1.10.20,
  * Libellum → Libevra). Changing the brand is a user-visible change, so the last
  * segment moves; **it is not a new stage**, and moving the middle one would claim
- * that S11 had been left. See `docs/Libevra品牌迁移记录.md`.
+ * that S11 had been left. See `docs/开发过程记录/Libevra品牌迁移记录.md`.
  *
  * ⚠️ **1.10.21 is phase two of the same rename** — the GitHub repository and the
  * engineering tidy-up that the migration record listed as manual work. It is a
@@ -58,14 +58,14 @@
  * ⚠️ **1.10.22 is the administrator mechanism** (2026-10-14), and it is the first
  * bump in this series that changed *behaviour* rather than names: registration can
  * no longer confer administration, and an admin request is now decided by two
- * independent server-side checks. See `docs/管理员与权限边界-设计决定.md`.
+ * independent server-side checks. See `docs/开发过程记录/管理员与权限边界-设计决定.md`.
  *
  * ⚠️ **1.10.23 makes the second of those checks genuinely independent** (S12-A,
  * 2026-10-14). 1.10.22 introduced two checks that both read `admin_grants`, so one
  * grant satisfied both and they could never disagree. The allow list is now its own
  * table (`admin_allowlist`), written by `pnpm admin:allow` and withdrawn by
  * `pnpm admin:disallow` — and neither of those touches `admin_grants`.
- * See `docs/S12-A上线前安全与发布准备.md` §4.
+ * See `docs/开发过程记录/S12-A上线前安全与发布准备.md` §4.
  */
 export const APP_VERSION = "1.10.23";
 

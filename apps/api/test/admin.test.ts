@@ -670,7 +670,7 @@ describe("11. no ordinary path creates an administrator", () => {
    * ⚠️ **This test is the inverse of the one it replaces**, which asserted the opposite and
    * was correct when written (a deliberate privilege, chosen by name). The owner then decided
    * that registration must not confer administration at all — see
-   * `docs/管理员与权限边界-设计决定.md` §5.
+   * `docs/开发过程记录/管理员与权限边界-设计决定.md` §5.
    */
   it("does not make the holder of an admin code an administrator", async () => {
     await prisma.registrationInvite.create({

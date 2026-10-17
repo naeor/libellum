@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 /**
  * The colour rule, enforced rather than described.
  *
- * `docs/COLORS.md` §7 says components may not contain colour literals: adding a
+ * `docs/开发过程记录/颜色清单.md` §7 says components may not contain colour literals: adding a
  * colour means deciding which block it belongs to, and a block is a token. That
  * is easy to agree with and easy to break — one `#ffffff` in a hurry, and the
  * next person copies it. So it is checked here.
@@ -108,7 +108,7 @@ describe("colour literals", () => {
   it("appear only in the token file, the chart palettes, the QR code and the ocean", () => {
     expect(
       offenders,
-      `组件里出现了硬编码颜色。请按 docs/COLORS.md §7 处理：\n  ${offenders.join("\n  ")}`,
+      `组件里出现了硬编码颜色。请按 docs/开发过程记录/颜色清单.md §7 处理：\n  ${offenders.join("\n  ")}`,
     ).toEqual([]);
   });
 

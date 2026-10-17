@@ -1,5 +1,5 @@
 // Layout / spacing / radius / alignment audit — the measurement half of
-// docs/布局间距与圆角规范.md (S11 phase 3).
+// docs/开发过程记录/布局间距与圆角规范.md (S11 phase 3).
 //
 // ⚠️ **Measures the rendered box, not the class names.** The brief is explicit that alignment has to
 // come from the browser: `getBoundingClientRect()` on real elements, at three viewports, because

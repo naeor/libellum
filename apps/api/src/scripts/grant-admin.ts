@@ -3,7 +3,7 @@
  *
  * ⚠️ **This script is the only way an administrator is created.** There is deliberately no
  * route, no request body field and no invite flag that does it — see
- * `docs/管理员与权限边界-设计决定.md`. A privilege that can be acquired by sending a
+ * `docs/开发过程记录/管理员与权限边界-设计决定.md`. A privilege that can be acquired by sending a
  * request is a privilege that will eventually be acquired by sending a request.
  *
  * ## Running it

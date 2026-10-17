@@ -373,7 +373,7 @@ const TAG_COLORS = CATEGORICAL_COLORS;
  * `CATEGORICAL_COLORS` is a non-empty constant, so the first entry always
  * exists; the assertion says that rather than a `?? "#…"` fallback, which would
  * have been a colour literal outside the token file — the one thing
- * `docs/COLORS.md` §7 forbids.
+ * `docs/开发过程记录/颜色清单.md` §7 forbids.
  */
 const DEFAULT_TAG_COLOR = CATEGORICAL_COLORS[0] as string;
 

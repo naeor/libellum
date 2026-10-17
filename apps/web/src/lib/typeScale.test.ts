@@ -110,7 +110,7 @@ describe("任意字号", () => {
     expect(
       offenders,
       [
-        "组件里出现了任意字号。请改用语义 token（见 docs/文字语义与排版规范.md §3）：",
+        "组件里出现了任意字号。请改用语义 token（见 docs/开发过程记录/文字语义与排版规范.md §3）：",
         "  正文 text-body ｜ 辅助 text-helper ｜ 微文字 text-micro ｜ 功能区标题 text-section-title",
         "确实需要新尺寸时，先加语义 token，再把它加进本测试的白名单并写明理由。",
         `  ${offenders.join("\n  ")}`,

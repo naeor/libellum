@@ -32,7 +32,7 @@ def main() -> int:
     applied = 0
     missing: list[str] = []
 
-    for name in ("DEVLOG.md", "BACKLOG.md", "README.md"):
+    for name in ("开发日志.md", "待办清单.md", "README.md"):
         path = os.path.join(DOCS, name)
         if not os.path.exists(path):
             continue
@@ -53,7 +53,7 @@ def main() -> int:
 
     # Report what is left, so a stale current-state reference cannot hide.
     print("\n剩余提到「记账程序v2」的位置（应全部是历史记录）：")
-    for name in ("DEVLOG.md", "BACKLOG.md", "README.md"):
+    for name in ("开发日志.md", "待办清单.md", "README.md"):
         path = os.path.join(DOCS, name)
         if not os.path.exists(path):
             continue

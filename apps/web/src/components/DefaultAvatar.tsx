@@ -11,7 +11,7 @@
  * statement.
  *
  * The colours come from the theme's variables rather than from literals, so this
- * follows the accent colour like everything else. See `docs/COLORS.md`: the
+ * follows the accent colour like everything else. See `docs/开发过程记录/颜色清单.md`: the
  * petals are the accent, the disc behind them is the surface, and the centre dot
  * is the accent's soft tint.
  */

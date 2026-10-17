@@ -3,7 +3,7 @@
 //     node tools/doc-audit.mjs
 //
 // ⚠️ **Why this exists as a tool rather than a habit.** The 2026-10-14 documentation pass found that
-// `COLORS.md` had been carrying two colour values the code had stopped using a day earlier, and that
+// `颜色清单.md` had been carrying two colour values the code had stopped using a day earlier, and that
 // `README.md` claimed "21 份 Markdown / 根目录 10 份" when the real answers were 25 and 15 — **the
 // README's own document index did not list the three design specifications.** None of that is visible
 // from the code: **a token change makes no document fail.**
@@ -34,6 +34,32 @@ import { join, relative } from "node:path";
 
 const ROOT = "C:\\Users\\ZhuanZ（无密码）\\Desktop\\工作\\记账程序\\记账程序v1";
 const DOCS = join(ROOT, "docs");
+
+/**
+ * ⚠️ **哪些文档是「历史记录」，哪些是「描述现在的规格」。**
+ *
+ * 2026-10-17 把过程文档收进 `开发过程记录/` 之后，一开始把所有 `开发过程记录/` 都当成历史记录跳过了 ——
+ * **那是错的**：`颜色清单.md`、三个设计规范、`海浪效果要求.md`、管理员设计决定**都是当前规格**，
+ * 它们的值必须和代码一致，正是最该被检查的东西。
+ *
+ * 所以按**文件名精确列出真正的记录**，而不是按目录一刀切。
+ * `颜色清单.md` 一旦被误排除，这个检查就失去了它存在的意义。
+ */
+const RECORD_FILES = new Set([
+  "开发过程记录/版本记录（1.10）.md",
+  "开发过程记录/版本记录（1.08-1.09）.md",
+  "开发过程记录/开发日志.md",
+  "开发过程记录/部署记录-S12-B.md",
+  "开发过程记录/Libevra品牌迁移记录.md",
+  "开发过程记录/S12-A上线前安全与发布准备.md",
+  "开发过程记录/视觉精修验收-1.10.10.md",
+  "开发过程记录/账号迁移方案-本机到生产.md",
+  "开发过程记录/教训.md",
+  "开发过程记录/BUG记录.md",
+]);
+
+/** 归档、以及上面列出的记录文件 —— 它们说的是"当时"，不是"现在"。 */
+const isRecord = (rel) => rel.startsWith("归档/") || RECORD_FILES.has(rel);
 
 // ---------------------------------------------------------------------------
 // Ground truth, read from the source rather than remembered
@@ -108,7 +134,7 @@ for (const path of files) {
     * every version's values are correct by definition. **Flagging those would teach the reader to
     * ignore the scan**, which is the failure mode this whole exercise is trying to avoid.
     */
-  if (rel.startsWith("归档/") || rel.startsWith("版本记录")) continue;
+  if (isRecord(rel)) continue;
 
   const lines = readFileSync(path, "utf8").split("\n");
   let section = "";
@@ -168,7 +194,7 @@ for (const m of mismatches) {
   let examined = 0;
   for (const path of files) {
     const rel = relative(DOCS, path).replace(/\\/g, "/");
-    if (rel.startsWith("归档/") || rel.startsWith("版本记录")) continue;
+    if (isRecord(rel)) continue;
     let section = "";
     for (const line of readFileSync(path, "utf8").split("\n")) {
       if (line.startsWith("#")) section = line;
@@ -199,16 +225,16 @@ const GONE = /原|已并入|已被|已改名|已删除|不再|曾|以前|旧路�
 /**
   * ⚠️ **Logs and archived readings are records, not statements about now.**
   *
-  * `DEVLOG.md` is a diary: *"所以新建了 `docs/离线与同步-设计决定.md`"* was true when written, and the
+  * `开发日志.md` is a diary: *"所以新建了 `docs/离线与同步-设计决定.md`"* was true when written, and the
   * file has since been archived — **rewriting the sentence would falsify the history.** The same goes
   * for `归档/阅读报告/*`, which are snapshots of what the repository looked like on a given day.
   * **Only documents that claim to describe the PRESENT are checked here.**
   */
-const RECORDS = /^(归档\/|DEVLOG\.md|版本记录)/;
+// ⚠️ 规则见文件顶部的 isRecord()：按文件名精确判断，不按目录一刀切。
 
 for (const path of files) {
   const rel = relative(DOCS, path).replace(/\\/g, "/");
-  if (RECORDS.test(rel)) continue;
+  if (isRecord(rel)) continue;
   const body = readFileSync(path, "utf8");
   body.split("\n").forEach((line, index) => {
     if (GONE.test(line)) return;
@@ -232,7 +258,7 @@ const versionClaims = [];
 for (const path of files) {
   const rel = relative(DOCS, path).replace(/\\/g, "/");
   // ⚠️ Records and archives state what was true THEN; a version number in them is not a claim about now.
-  if (RECORDS.test(rel)) continue;
+  if (isRecord(rel)) continue;
   const lines = readFileSync(path, "utf8").split("\n");
   lines.forEach((line, i) => {
     for (const m of line.matchAll(/当前版本[^`]*`(1\.\d+\.\d+)`/g)) {
@@ -250,7 +276,7 @@ console.log("\n\n================ ④ 引用了已删除的组件或页面 =====
 const REMOVED = ["CollaboratorsPage", "collab.ts", "account_level_collaborators"];
 for (const path of files) {
   const rel = relative(DOCS, path).replace(/\\/g, "/");
-  if (RECORDS.test(rel)) continue;
+  if (isRecord(rel)) continue;
   const lines = readFileSync(path, "utf8").split("\n");
   let section = "";
   lines.forEach((line, i) => {
