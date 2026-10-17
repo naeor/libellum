@@ -204,9 +204,18 @@ EOF
 json_escape() {
   sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e ':a;N;$!ba;s/\n/\\n/g'
 }
-PAYLOAD="$(printf '{"from":"%s","to":["%s"],"subject":"%s","text":"%s"}' \
+# ⚠️ MAIL_TO 支持**多个收件人**（逗号分隔）：出事了要两个邮箱一起发。
+TO_JSON=""
+IFS=',' read -r -a ADDRS <<< "$MAIL_TO"
+for ADDR in "${ADDRS[@]}"; do
+  ADDR="$(printf '%s' "$ADDR" | tr -d '[:space:]')"
+  [ -z "$ADDR" ] && continue
+  [ -n "$TO_JSON" ] && TO_JSON="${TO_JSON},"
+  TO_JSON="${TO_JSON}\"$ADDR\""
+done
+PAYLOAD="$(printf '{"from":"%s","to":[%s],"subject":"%s","text":"%s"}' \
   "$(printf '%s' "$MAIL_FROM" | json_escape)" \
-  "$(printf '%s' "$MAIL_TO" | json_escape)" \
+  "$TO_JSON" \
   "$(printf '%s' "$SUBJECT" | json_escape)" \
   "$(printf '%s' "$BODY" | json_escape)")"
 

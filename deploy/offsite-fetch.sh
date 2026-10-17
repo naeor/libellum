@@ -72,16 +72,17 @@ endpoint = ${COS_ENDPOINT:-cos.ap-hongkong.myqcloud.com}
 region = ${COS_REGION:-ap-hongkong}
 acl = private
 no_check_bucket = true
+force_path_style = false
 RCLONE
 
 if [ "$MODE" = "list" ]; then
   echo "=== 云端备份（新到旧） ==="
-  rclone --config "$RCLONE_CONF" lsf --files-only "cos:${COS_BUCKET}/daily/" | sort -r | sed 's/^/  /'
+  rclone --config "$RCLONE_CONF" lsf --files-only "cos:${COS_BUCKET}/daily/" | grep '\.dump\.gpg$' | sort -r | sed 's/^/  /'
   exit 0
 fi
 
 if [ "$MODE" = "latest" ] || [ -z "$REF" ]; then
-  REF="$(rclone --config "$RCLONE_CONF" lsf --files-only "cos:${COS_BUCKET}/daily/" | sort -r | head -1)"
+  REF="$(rclone --config "$RCLONE_CONF" lsf --files-only "cos:${COS_BUCKET}/daily/" | grep '\.dump\.gpg$' | sort -r | head -1)"
   if [ -z "$REF" ]; then
     echo "❌ 云端没有备份。" >&2
     exit 1

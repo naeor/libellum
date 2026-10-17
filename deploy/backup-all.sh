@@ -107,7 +107,7 @@ fi
 
 write_final_status() {
   local finished_at local_json="{}"
-  local baselineMonthValue="${BASELINE_MONTH:-}" baselineRefValue="${BASELINE_REF:-}"
+  local monthlyMonthValue="${MONTHLY_MONTH:-}" monthlyRefValue="${MONTHLY_REF:-}"
   finished_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   [ -f "$LOCAL_STATUS" ] && local_json="$(cat "$LOCAL_STATUS")"
 
@@ -128,8 +128,8 @@ write_final_status() {
     "remoteSize": ${REMOTE_SIZE:-0},
     "contentVerified": false,
     "contentVerifiedNote": "内容级验证由 monthly-offsite-drill.sh 用恢复身份执行",
-    "baselineMonth": "$(baselineMonthValue)",
-    "baselineRef": "$(baselineRefValue)"
+    "monthlyMonth": "${MONTHLY_MONTH:-}",
+    "monthlyRef": "${MONTHLY_REF:-}"
   },
   "heartbeat": {
     "configured": $HEARTBEAT_CONFIGURED,
@@ -286,6 +286,7 @@ endpoint = ${COS_ENDPOINT:-cos.ap-hongkong.myqcloud.com}
 region = ${COS_REGION:-ap-hongkong}
 acl = private
 no_check_bucket = true
+force_path_style = false
 RCLONE
 chmod 600 "$RCLONE_CONF"
 
@@ -317,47 +318,48 @@ REMOTE_META_OK=true
 echo "✅ 远端一致（${REMOTE_SIZE} 字节）"
 
 # ---------------------------------------------------------------------------
-# 5. **基准备份**（每月一份，独立前缀、独立更长保留期）
+# 5. **月度长期备份**（每月一份，独立前缀、独立更长保留期）
 # ---------------------------------------------------------------------------
 # ⚠️ **为什么必须有它**：`daily/` 的生命周期是"35 天后删除"，这是**按时间**算的，
 # 与"备份是否成功"无关。如果连续 35 天备份都失败，`daily/` 会被全部清空 ——
-# 而那 35 天里没有任何新备份可替换它们。**基准备份就是"没有新备份时仍然存在的那一份"。**
+# 而那 35 天里没有任何新备份可替换它们。**月度长期备份就是"没有新备份时仍然存在的那一份"。**
 #
 # 规则（简单、可验证）：
-#   · 每个自然月（香港时间）**第一次成功备份**时，额外传一份到 `baseline/YYYY-MM/`；
+#   · **每月 1 日（香港时间）**那次成功备份，额外传一份到 `monthly/YYYY-MM/`；
+#     若 1 日那次失败，则在**当月后续第一次成功运行**时补做（仍只留一份/月）；
 #   · 名称仍带时间戳+随机，绝不覆盖；
-#   · 生命周期：`baseline/` 保留 **400 天**（约 13 个月）；
-#   · 失败不会删除它；只有时间会（所以永远有一份一年内的基线）。
+#   · 生命周期：`monthly/` 保留 **365 天**（独立规则，不受 daily/ 影响）；
+#   · 失败不会删除它；只有时间会（所以永远有一份一年内的月度长期）。
 HKT_MONTH="$(TZ=Asia/Hong_Kong date '+%Y-%m')"
-PREV_BASELINE_MONTH="$(grep -o '"baselineMonth"[[:space:]]*:[[:space:]]*"[^"]*"' "$STATUS_FILE" 2>/dev/null | head -1 | sed 's/.*"\([^"]*\)"$/\1/')"
-BASELINE_MONTH="${PREV_BASELINE_MONTH:-}"
-BASELINE_REF=""
+PREV_MONTHLY_MONTH="$(grep -o '"monthlyMonth"[[:space:]]*:[[:space:]]*"[^"]*"' "$STATUS_FILE" 2>/dev/null | head -1 | sed 's/.*"\([^"]*\)"$/\1/')"
+MONTHLY_MONTH="${PREV_MONTHLY_MONTH:-}"
+MONTHLY_REF=""
 
-if [ "$PREV_BASELINE_MONTH" != "$HKT_MONTH" ]; then
-  BASELINE_REF="baseline/${HKT_MONTH}/${BASE_NAME}.dump.gpg"
-  echo "→ 本月尚无基准备份，额外上传一份：${BASELINE_REF}"
+if [ "$PREV_MONTHLY_MONTH" != "$HKT_MONTH" ]; then
+  MONTHLY_REF="monthly/${HKT_MONTH}/${BASE_NAME}.dump.gpg"
+  echo "→ 本月尚无月度长期备份，额外上传一份：${MONTHLY_REF}"
   if rclone --config "$RCLONE_CONF" copyto --s3-no-check-bucket --retries 2 \
-        "$ENCRYPTED" "cos:${COS_BUCKET}/${BASELINE_REF}" 2>&1; then
-    BASE_JSON="$(rclone --config "$RCLONE_CONF" lsjson --stat "cos:${COS_BUCKET}/${BASELINE_REF}" 2>/dev/null || true)"
+        "$ENCRYPTED" "cos:${COS_BUCKET}/${MONTHLY_REF}" 2>&1; then
+    BASE_JSON="$(rclone --config "$RCLONE_CONF" lsjson --stat "cos:${COS_BUCKET}/${MONTHLY_REF}" 2>/dev/null || true)"
     BASE_SIZE="$(printf '%s' "$BASE_JSON" | sed -n 's/.*"Size"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p' | head -1)"
     if [ "${BASE_SIZE:-0}" = "$LOCAL_ENC_SIZE" ]; then
-      BASELINE_MONTH="$HKT_MONTH"
-      echo "✅ 基准备份已上传并校验（${BASE_SIZE} 字节，保留 400 天）"
+      MONTHLY_MONTH="$HKT_MONTH"
+      echo "✅ 月度长期备份已上传并校验（${BASE_SIZE} 字节，保留 365 天）"
     else
-      # ⚠️ 基准备份失败**不让整次备份失败**：daily/ 那份已经成功了。
-      # 但必须留下痕迹 —— 否则"以为有基线"比"知道没有基线"更危险。
-      BASELINE_REF=""
-      echo "⚠️ 基准备份上传后大小不符，本次记为未完成基准备份" >&2
+      # ⚠️ 月度长期备份失败**不让整次备份失败**：daily/ 那份已经成功了。
+      # 但必须留下痕迹 —— 否则"以为有月度长期"比"知道没有月度长期"更危险。
+      MONTHLY_REF=""
+      echo "⚠️ 月度长期备份上传后大小不符，本次记为未完成月度长期备份" >&2
     fi
   else
-    BASELINE_REF=""
-    echo "⚠️ 基准备份上传失败（daily 那份已成功，不影响本次结论）" >&2
+    MONTHLY_REF=""
+    echo "⚠️ 月度长期备份上传失败（daily 那份已成功，不影响本次结论）" >&2
   fi
   rm -f "$RCLONE_CONF"
 else
   rm -f "$RCLONE_CONF"
-  BASELINE_REF="$(grep -o '"baselineRef"[[:space:]]*:[[:space:]]*"[^"]*"' "$STATUS_FILE" 2>/dev/null | head -1 | sed 's/.*"\([^"]*\)"$/\1/')"
-  echo "→ 本月已有基准备份（${HKT_MONTH}），不重复上传"
+  MONTHLY_REF="$(grep -o '"monthlyRef"[[:space:]]*:[[:space:]]*"[^"]*"' "$STATUS_FILE" 2>/dev/null | head -1 | sed 's/.*"\([^"]*\)"$/\1/')"
+  echo "→ 本月已有月度长期备份（${HKT_MONTH}），不重复上传"
 fi
 
 # ---------------------------------------------------------------------------
@@ -372,5 +374,5 @@ echo "   本地 ✅  恢复演练 $([ "$RESTORE_OK" = true ] && echo ✅ || echo
 [ "$HEARTBEAT_CONFIGURED" = true ] && echo "   心跳：$([ "$HEARTBEAT_OK" = true ] && echo ✅ || echo '⚠️ 发送失败')" || echo "   心跳：⚠️ 未配置"
 echo "   ⚠️ 异地**内容**验证未做 —— 每月由 monthly-offsite-drill.sh 用恢复身份执行。"
 echo "   对象：cos:${COS_BUCKET}/${REF}"
-[ -n "$BASELINE_REF" ] && echo "   基准备份：cos:${COS_BUCKET}/${BASELINE_REF}（保留 400 天）"
+[ -n "$MONTHLY_REF" ] && echo "   月度长期备份：cos:${COS_BUCKET}/${MONTHLY_REF}（保留 365 天）"
 exit 0
