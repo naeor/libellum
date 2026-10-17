@@ -8,4 +8,4 @@
  * from `/health`. Before this, health answered `0.1.0` — the API package's own version — and
  * *"which version is deployed"* could only be answered by reading a file on the server.
  */
-export const APP_VERSION = "1.13.02";
+export const APP_VERSION = "1.13.03";

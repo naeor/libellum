@@ -220,17 +220,36 @@ function OverviewBody({
       <SectionFrame title="备份">
         {data.lastBackup === null ? (
           /**
-           * ⚠️ **"还没有记录" is the honest answer, and it must stay that way until the backup
-           * script starts writing rows.** A screen that turned "no data" into "看起来正常"
-           * would be inventing reassurance.
+           * ⚠️ **"还没有记录" is the honest answer.** The writer is connected now, but a fresh
+           * deployment (or a failed write) still has no row; "normal" would be invented.
            */
           <p className="px-5 py-4 text-body-relaxed text-muted">
-            还没有备份记录。备份脚本尚未接入，所以这里不会显示"正常"。
+            还没有备份记录。第一次成功运行后才会在这里出现结果。
           </p>
         ) : (
           <>
             <InfoRow label="上次备份" value={stamp(data.lastBackup.at)} />
-            <InfoRow label="结果" value={data.lastBackup.ok ? "成功（含恢复演练）" : "失败"} />
+            <InfoRow
+              label="结果"
+              value={
+                data.lastBackup.stale
+                  ? "未知（记录已过期）"
+                  : data.lastBackup.ok
+                    ? "成功（含恢复演练）"
+                    : "失败"
+              }
+            />
+            {data.lastBackup.stale ? (
+              <InfoRow
+                label="最后记录结果"
+                value={data.lastBackup.ok ? "成功（含恢复演练）" : "失败"}
+              />
+            ) : null}
+            {data.lastBackup.stale ? (
+              <p className="px-5 pb-4 text-helper-relaxed text-muted">
+                超过 36 小时没有新的备份记录，因此不再把最后一次结果当作当前状态。
+              </p>
+            ) : null}
             {data.lastBackup.note === null ? null : (
               <InfoRow label="备注" value={data.lastBackup.note} />
             )}

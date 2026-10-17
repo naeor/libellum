@@ -468,6 +468,46 @@ describe("4. reading: overview, admins, users, and what is never disclosed", () 
     expect(entries.find((entry) => entry.username === "ordinary")).toBeUndefined();
   });
 
+  it("distinguishes a fresh success, a fresh failure and a stale record", async () => {
+    const admin = await makeAdmin("the_admin");
+    const HOUR = 60 * 60 * 1000;
+    const now = Date.now();
+
+    /**
+     * ⚠️ **A stale "success" must not read as "the backups are fine today".** The API marks the
+     * newest row stale after 36 hours; the console renders "未知（记录已过期）" instead.
+     */
+    const stale = await prisma.backupLog.create({
+      data: { startedAt: new Date(now - 40 * HOUR), ok: true, note: "local+restore+encrypt+upload+remote-meta ok" },
+    });
+    let overview = await inject("GET", "/api/v1/admin/overview", admin.cookie);
+    expect(overview.json()).toMatchObject({
+      lastBackup: { at: stale.startedAt.toISOString(), ok: true, stale: true },
+    });
+
+    await prisma.backupLog.deleteMany();
+
+    /** A fresh success is current. */
+    const fresh = await prisma.backupLog.create({
+      data: { startedAt: new Date(now - HOUR), ok: true, note: "fresh" },
+    });
+    overview = await inject("GET", "/api/v1/admin/overview", admin.cookie);
+    expect(overview.json()).toMatchObject({
+      lastBackup: { at: fresh.startedAt.toISOString(), ok: true, stale: false },
+    });
+
+    await prisma.backupLog.deleteMany();
+
+    /** A fresh failure is a failure, and it is not stale. */
+    const failed = await prisma.backupLog.create({
+      data: { startedAt: new Date(now - HOUR), ok: false, note: "[upload] 上传 COS 失败" },
+    });
+    overview = await inject("GET", "/api/v1/admin/overview", admin.cookie);
+    expect(overview.json()).toMatchObject({
+      lastBackup: { at: failed.startedAt.toISOString(), ok: false, stale: false },
+    });
+  });
+
   it("shows a half-configured account as half, not as an administrator", async () => {
     const admin = await makeAdmin("the_admin");
     const half = await register("half");

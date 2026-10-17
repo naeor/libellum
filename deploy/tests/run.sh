@@ -53,8 +53,29 @@ exit 0
 SH
 chmod +x "$WORK/bin/curl"
 
+# ---------------------------------------------------------------------------
+# 假 docker：记录调用；MOCK_DOCKER_EXIT / MOCK_DOCKER_STDERR 用于模拟
+# "表不存在 / 数据库不可用"。**不执行任何真实容器命令。**
+# ---------------------------------------------------------------------------
+cat > "$WORK/bin/docker" <<'SH'
+#!/usr/bin/env bash
+{
+  echo "DOCKER: $*"
+  # backup-log.sh 通过 stdin 把 SQL 交给 psql（`-f -`）；记下来，
+  # 测试才能验证"真的发起了插入"，而不是只看它退出 0。
+  if [ ! -t 0 ]; then
+    echo "STDIN:"
+    cat
+  fi
+} >> "$DOCKER_LOG"
+[ -n "${MOCK_DOCKER_STDERR:-}" ] && printf '%s\n' "$MOCK_DOCKER_STDERR" >&2
+exit "${MOCK_DOCKER_EXIT:-0}"
+SH
+chmod +x "$WORK/bin/docker"
+
 export PATH="$WORK/bin:$PATH"
 export MOCK_LOG="$WORK/curl.log"
+export DOCKER_LOG="$WORK/docker.log"
 
 run_with_mocks() { : > "$MOCK_LOG"; }
 
@@ -206,6 +227,75 @@ if grep -q 'tableCounts' "$DEPLOY/backup.sh"; then
   ok "backup.sh 记录 tableCounts（异地演练的对照物）"
 else
   bad "backup.sh 没有记录 tableCounts"
+fi
+
+# ---------------------------------------------------------------------------
+echo
+echo "=== 7. backup_logs 写入：best-effort，绝不改变备份退出码 ==="
+LOG_DIR="$WORK/backuplog"
+mkdir -p "$LOG_DIR/backups"
+cp "$DEPLOY/backup-log.sh" "$LOG_DIR/"
+chmod +x "$LOG_DIR/backup-log.sh"
+cat > "$LOG_DIR/.env" <<'ENV'
+POSTGRES_USER=libevra
+POSTGRES_DB=libevra_prod
+POSTGRES_PASSWORD=super-secret-value
+ENV
+
+run_docker_mocks() { : > "$DOCKER_LOG"; }
+
+# 7a 成功路径：退出 0，确实调用了一次向 backup_logs 的插入
+run_docker_mocks
+OUT="$( (cd "$LOG_DIR" && ./backup-log.sh --ok --started-at 2026-10-17T19:00:00Z \
+  --file-ref libevra_prod-test.dump --note "local+restore+encrypt+upload+remote-meta ok") 2>&1 )"
+CODE=$?
+[ "$CODE" -eq 0 ] && ok "写入成功路径 → 退出 0" || bad "写入成功路径退出码 $CODE" "$OUT"
+grep -q 'insert into backup_logs' "$DOCKER_LOG" && ok "命令确实发起了 backup_logs 插入" || bad "没有发起插入" "$(cat "$DOCKER_LOG")"
+grep -q "libevra_prod-test.dump" "$DOCKER_LOG" && ok "file_ref 只写文件名" || bad "file_ref 未传给 psql"
+
+# 7b 表不存在（S13 迁移未部署）：退出 0，并给出可行动提示
+run_docker_mocks
+OUT="$( (cd "$LOG_DIR" && MOCK_DOCKER_EXIT=1 \
+  MOCK_DOCKER_STDERR='ERROR: relation "backup_logs" does not exist' \
+  ./backup-log.sh --ok --started-at 2026-10-17T19:00:00Z --note ok) 2>&1 )"
+CODE=$?
+[ "$CODE" -eq 0 ] && ok "表不存在 → 仍退出 0（不改变备份结论）" || bad "表不存在时退出码 $CODE"
+printf '%s' "$OUT" | grep -q 'S13 迁移未部署' && ok "表不存在 → 提示可行动原因" || bad "表不存在时没有提示" "$OUT"
+
+# 7c 数据库不可用：退出 0，且不打印任何凭据
+run_docker_mocks
+OUT="$( (cd "$LOG_DIR" && MOCK_DOCKER_EXIT=1 \
+  MOCK_DOCKER_STDERR='psql: error: connection to server failed' \
+  ./backup-log.sh --fail --stage upload --note "上传 COS 失败" --started-at 2026-10-17T19:00:00Z) 2>&1 )"
+CODE=$?
+[ "$CODE" -eq 0 ] && ok "数据库不可用 → 仍退出 0" || bad "数据库不可用时退出码 $CODE"
+printf '%s' "$OUT" | grep -q 'super-secret-value' && bad "输出泄露了口令" || ok "输出不含口令"
+
+# 7d 未配置数据库变量：安静跳过
+NOENV_DIR="$WORK/backuplog-noenv"
+mkdir -p "$NOENV_DIR"
+cp "$DEPLOY/backup-log.sh" "$NOENV_DIR/"
+chmod +x "$NOENV_DIR/backup-log.sh"
+run_docker_mocks
+OUT="$( (cd "$NOENV_DIR" && ./backup-log.sh --ok --note ok) 2>&1 )"
+CODE=$?
+[ "$CODE" -eq 0 ] && ok "未配置 .env → 退出 0（静默跳过）" || bad "未配置时退出码 $CODE"
+[ -s "$DOCKER_LOG" ] && bad "未配置时仍调用了 docker" || ok "未配置时没有调用 docker"
+
+# 7e backup-all.sh 的接线与顺序：成功状态必须在心跳**之前**写，
+#    且意外退出/失败路径也要写；helper 通过 bash 调用，不依赖可执行位。
+grep -q 'bash "$SCRIPT_DIR/backup-log.sh"' "$DEPLOY/backup-all.sh" \
+  && ok "backup-all.sh 通过 bash 调用 helper（不依赖 chmod +x）" || bad "helper 调用方式不对"
+grep -q 'log_backup_result --fail' "$DEPLOY/backup-all.sh" \
+  && ok "失败路径写失败状态" || bad "失败路径没有写状态"
+grep -q 'log_backup_result --ok' "$DEPLOY/backup-all.sh" \
+  && ok "成功路径写成功状态" || bad "成功路径没有写状态"
+OK_LINE="$(grep -n 'log_backup_result --ok' "$DEPLOY/backup-all.sh" | head -1 | cut -d: -f1)"
+HB_LINE="$(grep -n '^ping_heartbeat ok' "$DEPLOY/backup-all.sh" | tail -1 | cut -d: -f1)"
+if [ -n "$OK_LINE" ] && [ -n "$HB_LINE" ] && [ "$OK_LINE" -lt "$HB_LINE" ]; then
+  ok "成功状态写在心跳之前（两者不混同）"
+else
+  bad "成功状态与心跳的顺序不对" "ok_line=$OK_LINE heartbeat_line=$HB_LINE"
 fi
 
 # ---------------------------------------------------------------------------

@@ -71,14 +71,22 @@ export const adminOverviewResponseSchema = z.object({
    * ⚠️ **The last backup, or `null` when nothing has been recorded yet.**
    *
    * `null` is rendered as "还没有记录", never as "备份正常" — a screen that invents reassurance
-   * is worse than one that admits it does not know. The writer (`backup.sh`) is not connected
-   * yet; see `prisma/schema.prisma` → `BackupLog`.
+   * is worse than one that admits it does not know.
+   *
+   * `stale` is computed by the **server** (`now - at > 36h`): a months-old "success" must not read
+   * as "the backups are fine today". A stale row keeps its historical `ok`, but the console shows
+   * "未知（记录已过期）" instead of "成功/失败" — the honest answer is "we do not know".
+   *
+   * ⚠️ The writer is `deploy/backup-all.sh` (via `deploy/backup-log.sh`). **Only the full chain**
+   * (local export + restore drill + encrypt + COS upload + remote metadata check) writes success;
+   * heartbeat delivery is a separate fact and never flips `ok`.
    */
   lastBackup: z
     .object({
       at: z.string(),
       ok: z.boolean(),
       note: z.string().nullable(),
+      stale: z.boolean(),
     })
     .nullable(),
   recentActions: z.array(auditEntrySchema),

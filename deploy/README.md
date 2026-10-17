@@ -233,15 +233,24 @@ curl -s https://<域名>/ | grep -o '<title>[^<]*</title>'
 
 ### 定时备份（每日）
 
+**2026-10-17 起由 systemd timer 负责，不再使用 crontab：**
+
 ```bash
-crontab -e
-# 每天凌晨 3:17（避开整点，免得和别人的任务撞）
-17 3 * * * cd /srv/libevra/deploy && ./backup.sh >> backups/cron.log 2>&1
+systemctl list-timers libevra-backup.timer --no-pager
+sudo systemctl status libevra-backup.timer
+journalctl -u libevra-backup.service --since today --no-pager | tail -50
 ```
 
+单元在 `deploy/systemd/`：`OnCalendar=*-*-* 03:00:00 Asia/Hong_Kong`、`Persistent=true`、
+`flock` 防并发、`TimeoutStartSec=1h`。**首次无人值守运行仍待验收**（journal + 产物 + Healthchecks 心跳）。
+
 **⚠️ 本地备份不是备份策略。** 同一台机器上的备份和机器一起消失。
-异地那一份（计划 30 天）在 S12-B 里要落地——最省事的做法是
-`rclone` 把 `backups/` 同步到一个对象存储，或者定期 `scp` 回家里的机器。
+**异地备份由 `./backup-all.sh` 落地**（S12-C：GPG 加密 → COS daily/monthly → 远端元数据校验；
+失败发 Resend 邮件 + Healthchecks 失败/失联告警）。**⚠️ 不要用旧的 crontab 方案再跑一遍 `backup.sh`**——
+会和 timer 抢同一把 `.backup.lock`（`flock -n` 会让后到的一次直接退出，看起来像"备份没跑"）。
+
+**`backup_logs`（管理台"备份状态"）**：`1.13.03` 起 `backup-all.sh` 在全流程成功后 best-effort
+写入成功、失败写阶段；写库失败/表不存在**不改变备份退出码**。线上部署前管理台不会出现真实记录。
 
 ---
 
@@ -275,20 +284,21 @@ git push ──────────────────▶
 
 ---
 
-## 7. 这套配置里**还没有**的东西
+## 7. 这套配置里**还没有**的东西（2026-10-17 更新）
 
 如实列出，免得被当成已完成：
 
 | # | 缺什么 | 影响 |
 |---|---|---|
-| 1 | **没有在真机上跑过** | 首次部署时必然要现场调试 |
-| 2 | **Caddyfile 没被 Caddy 解析过** | §4.5 的 validate 是必须的 |
-| 3 | **没有异地备份** | 服务器丢 = 数据丢 |
-| 4 | **没有监控与告警** | 站点挂了要你自己发现 |
+| 1 | ~~没有在真机上跑过~~ → **已于 2026-10-16 首次部署；仍有真机浏览器流程未人工验收** | 见 `生产环境与运维手册.md` §13 |
+| 2 | ~~Caddyfile 没被 Caddy 解析过~~ → **已部署并实测** | 首次部署前 `validate` 的教训保留在 `部署记录-S12-B.md` |
+| 3 | ~~没有异地备份~~ → **已完成（S12-C，2026-10-17 实测）** | — |
+| 4 | ~~没有监控与告警~~ → **已完成（Resend + Healthchecks）** | — |
 | 5 | **没有自动部署** | 有意为之（见 §6） |
 | 6 | **没有零停机发布** | 单机单实例，`up -d` 期间有秒级中断 |
 | 7 | **公安联网备案没做** | 上线后 30 天内（`技术方案.md` §10.4） |
 | 8 | **页脚没有备案号位置** | `apps/web/src` 里没有相关代码（`开发计划.md` 已记） |
+| 9 | **S13 / `1.13.03` 未部署** | 管理台、`backup_logs`、审计表尚不存在 |
 
 ---
 
@@ -314,7 +324,8 @@ git push ──────────────────▶
 | 文件 | 作用 |
 |---|---|
 | `backup.sh` | 本地备份 + **隔离恢复演练** + 轮转 + 写 `backups/last-local.json` |
-| `backup-all.sh` | 编排：调 `backup.sh` → **AES-256 加密** → 上传 COS → **下载回来比对 SHA-256** → 写 `backups/last-run.json` → 失败告警 |
+| `backup-all.sh` | 编排：调 `backup.sh` → **AES-256 加密** → 上传 COS → **远端元数据校验（HeadObject：存在 + 大小一致，不下载内容）** → 写 `backup_logs` / `backups/last-run.json` → 失败告警 |
+| `backup-log.sh` | **best-effort 写 `backup_logs`**（管理台备份状态）；永远退出 0，表不存在/数据库不可用不影响备份退出码 |
 | `offsite-fetch.sh` | **灾难恢复用**：从 COS 取回并解密（只读，不碰数据库） |
 | `alert-mail.sh` | **邮件告警**（Resend HTTPS API，带去重与恢复通知） |
 | `heartbeat.sh` | **外部心跳**（Healthchecks.io；服务器彻底失效时由外部报警） |

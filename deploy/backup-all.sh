@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Libevra — **一次完整的备份**：
-#   本地备份与隔离恢复演练 → 加密 → 上传 COS → 远端元数据校验 → 写状态 → 心跳 → 失败告警
+#   本地备份与隔离恢复演练 → 加密 → 上传 COS → 远端元数据校验 → 写 backup_logs → 心跳 → 失败告警
 #
 # ⚠️ **五个结果分开记，绝不合并成一个"备份成功"。**
 #
@@ -12,6 +12,12 @@
 #   remoteMetaOk 远端确认：对象存在且**大小与本地加密文件一致**（HeadObject，不读内容）
 #   heartbeatOk 外部 Dead Man's Switch 收到成功信号
 #   notifyOk    失败告警是否被服务商接受
+#
+# ⚠️ **`backup_logs` 只由 `backup-all.sh` 写**（经由 `backup-log.sh`）：
+#   全流程成功写 `ok=true`，`fail_stage` 写 `ok=false` + 阶段，意外退出在 cleanup 里补一条。
+#   **写库是 best-effort：数据库不可用/表不存在时不改变备份的退出码。**
+#   `backup.sh` 单独跑只做本地备份，**不写成功**——那只是第一步。
+#   ⚠️ 备份成功与心跳送达是两件事：心跳失败不会让 `ok` 变 false，`ok=true` 也不代表监控收到了信号。
 #
 # ⚠️ **"异地内容验证"不在这里。** 上传身份**没有读取权限**（这是有意的），
 # 所以日常只能校验元数据。**内容级验证（下载→解密→隔离恢复）每月一次**，
@@ -83,6 +89,8 @@ OFFSITE_ERROR=""
 OFFSITE_REF=""
 REMOTE_SIZE=""
 LOCAL_ENC_SIZE=""
+# ⚠️ 同一个备份只写一行 backup_logs：cleanup 里靠它判断"意外退出"是否还需要补写。
+DB_LOG_ATTEMPTED=0
 
 # ---------------------------------------------------------------------------
 # 载入秘密（缺失不报错：可能还没配置）
@@ -172,11 +180,22 @@ ping_heartbeat() {
   fi
 }
 
+# ⚠️ **写 backup_logs 是 best-effort**：
+#   `backup-log.sh` 永远退出 0，数据库不可用/表不存在时只打一行警告；
+#   这里再用 `|| true` 兜一层，**任何情况下都不让它改变备份的退出码**。
+#   ⚠️ 只记"备份链路的结论"，不记心跳是否送达（两件事，见文首）。
+log_backup_result() {
+  DB_LOG_ATTEMPTED=1
+  bash "$SCRIPT_DIR/backup-log.sh" "$@" || true
+}
+
 # 任何一步失败：通知 + 失败心跳 + 写状态 + 非零退出
 fail_stage() {
   local stage="$1" message="$2"
   FINAL_ERROR="$message"
   echo "❌ [$stage] $message" >&2
+  log_backup_result --fail --stage "$stage" --note "$message" \
+    --started-at "$STARTED_AT" --file-ref "${DUMP:-}"
   notify_failure "$stage" "$message"
   ping_heartbeat fail "$message"
   exit 1
@@ -185,6 +204,12 @@ fail_stage() {
 cleanup() {
   local code=$?
   rm -f "$SCRIPT_DIR/.rclone.conf.tmp" 2>/dev/null || true
+  # ⚠️ `set -e` 直接在某个命令上炸掉时，fail_stage 不会被走到；
+  #   这里补一条失败记录（仍 best-effort）。已经写过任何一行就不再写第二条。
+  if [ "$code" -ne 0 ] && [ "$DB_LOG_ATTEMPTED" -eq 0 ]; then
+    log_backup_result --fail --stage "unexpected" \
+      --note "脚本意外退出（退出码 $code）" --started-at "$STARTED_AT" --file-ref "${DUMP:-}"
+  fi
   write_final_status
   exit "$code"
 }
@@ -224,6 +249,8 @@ fi
 if [ "$SKIP_OFFSITE" -eq 1 ]; then
   echo
   echo "→ 已按参数跳过异地（不加密、不上传）"
+  # ⚠️ 调试运行不是"完整备份"，不写 backup_logs；否则管理台会把一次本地调试
+  #   当成"备份成功（含异地）"。
   ping_heartbeat ok
   echo
   echo "🎉 本地备份成功（异地未参与）。"
@@ -235,6 +262,9 @@ if [ -z "${COS_UPLOAD_ID:-}" ] || [ -z "${COS_UPLOAD_KEY:-}" ] || [ -z "${COS_BU
   echo "⚠️ **异地未配置**（deploy/.backup.env 缺 COS_UPLOAD_ID/COS_UPLOAD_KEY/COS_BUCKET）"
   echo "   本地备份有效，但它会随这台服务器一起消失。"
   FINAL_ERROR="异地未配置"
+  # ⚠️ 整体不算成功：管理台要能看出"这次没有完成异地备份"。
+  log_backup_result --fail --stage "offsite" \
+    --note "异地未配置（本地备份与恢复演练通过）" --started-at "$STARTED_AT" --file-ref "${DUMP:-}"
   ping_heartbeat fail "异地未配置"
   exit 0
 fi
@@ -363,7 +393,15 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 6. 成功心跳（只有整条流程成功才发）
+# 6. 写 backup_logs（**只有完整链路成功才写 ok=true**；best-effort，不改退出码）
+# ---------------------------------------------------------------------------
+# ⚠️ 位置在"心跳"之前：**成功状态描述的是备份数据链路的结论，不是监控是否收到信号。**
+#   心跳发送失败时退出码仍然是 0、这里仍然是 true——这正是要分开记录的原因。
+log_backup_result --ok --started-at "$STARTED_AT" --file-ref "${DUMP:-}" \
+  --note "local+restore+encrypt+upload+remote-meta ok; monthly=${MONTHLY_MONTH:-not-done}"
+
+# ---------------------------------------------------------------------------
+# 7. 成功心跳（只有整条流程成功才发）
 # ---------------------------------------------------------------------------
 echo
 ping_heartbeat ok

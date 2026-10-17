@@ -1263,9 +1263,14 @@ model AdminAuditLog {
 /// number; a row written inside the transaction of the backup is visible, historical, and adds
 /// no new access.
 ///
-/// ⚠️ **The writer is not wired yet.** That is a deliberate hand-off: the owner said
-/// *"备份的话，我待会再跟你说怎么做"*. Until `backup.sh` inserts a row, the overview honestly
-/// says "还没有记录" rather than claiming a backup exists.
+/// ⚠️ **The writer is `deploy/backup-all.sh`, via `deploy/backup-log.sh`.** Only the full chain
+/// (local export + restore drill + encrypt + COS upload + remote metadata check) writes
+/// `ok=true`; `backup.sh` alone covers only the local part and deliberately does not write
+/// success. Writes are best-effort: if this table does not exist yet (S13 migration not
+/// deployed) or the database is unavailable, the backup's own exit code is unchanged.
+/// The console treats a row older than 36 hours as **stale** (unknown), not as current success.
+/// ⚠️ **Heartbeat delivery is not recorded here** — "backup succeeded" and "the monitor received
+/// a signal" are two different facts.
 model BackupLog {
   id String @id @default(uuid()) @db.Uuid
 

@@ -64,6 +64,15 @@ export interface AdminRouteOptions {
 const INVITES_PER_HOUR = 10;
 const HOUR_MS = 60 * 60 * 1000;
 
+/**
+ * How old a backup record may be before the console stops calling it "current".
+ *
+ * ⚠️ **36 hours = daily 03:00 + a full day of grace.** A three-month-old row saying `ok=true`
+ * is a true statement about three months ago and a misleading one about today; the API marks it
+ * `stale` so the console can say "未知（记录已过期）" instead of "成功" (S13-D §5.5).
+ */
+const BACKUP_STALE_AFTER_MS = 36 * 60 * 60 * 1000;
+
 /** The actor, or a refusal. The guard ran first, so a missing actor means the two disagreed. */
 function actorOf(request: FastifyRequest): AdminActor {
   const actor = request.adminActor;
@@ -189,8 +198,12 @@ export function registerAdminRoutes(app: FastifyInstance, options: AdminRouteOpt
       },
       /**
        * ⚠️ `null` renders as "还没有记录". **It must never render as "正常"** — a screen that
-       * invents reassurance is worse than one that admits it does not know. The writer
-       * (`backup.sh`) is not connected yet.
+       * invents reassurance is worse than one that admits it does not know.
+       *
+       * ⚠️ A row older than 36 hours is reported as `stale`, not as "成功/失败": the newest row
+       * is a historical fact, and letting it speak for today is the same "invented reassurance"
+       * in slower motion. The writer is `deploy/backup-all.sh` (via `backup-log.sh`); heartbeat
+       * delivery never changes `ok`.
        */
       lastBackup:
         lastBackup === null
@@ -199,6 +212,7 @@ export function registerAdminRoutes(app: FastifyInstance, options: AdminRouteOpt
               at: lastBackup.startedAt.toISOString(),
               ok: lastBackup.ok,
               note: lastBackup.note,
+              stale: now.getTime() - lastBackup.startedAt.getTime() > BACKUP_STALE_AFTER_MS,
             },
       recentActions: recent.map(toAuditEntry),
     });
