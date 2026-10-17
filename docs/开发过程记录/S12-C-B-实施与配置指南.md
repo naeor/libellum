@@ -32,7 +32,11 @@
 
 ## 1. COS（腾讯云对象存储）
 
-### 1.1 ⚠️ 先确认对象锁定资格（这一步我没法替你查）
+'> **⚠️ 一次只做一个平台。** 顺序：**COS → 邮件 → 心跳**。
+> 每个平台做完告诉我，我验证完再给下一个的教程。不要三个一起弄 ——
+> 同时改三个地方，出问题时无法判断是哪一处。
+
+### 1.1 ⚠️ 先确认对象锁定资格（这一步我没法替你查）'
 
 腾讯云 COS 的**对象锁定（WORM / 合规保留）**通常**需要申请白名单**才能在控制台开启。
 **我无法确认你的账号是否有资格** —— 请在控制台或问客服确认：
@@ -84,7 +88,8 @@
         "cos:ListParts"
       ],
       "resource": [
-        "qcs::cos:ap-hongkong:uid/<APPID>:libevra-backup-<APPID>/daily/*"
+        "qcs::cos:ap-hongkong:uid/<APPID>:libevra-backup-<APPID>/daily/*",
+        "qcs::cos:ap-hongkong:uid/<APPID>:libevra-backup-<APPID>/baseline/*"
       ]
     }
   ]
@@ -119,6 +124,7 @@ HEAD  /bucket/daily/…/x.dump.gpg     ← 需要 HeadObject（校验大小）
       "action": ["cos:GetObject", "cos:HeadObject", "cos:GetBucket"],
       "resource": [
         "qcs::cos:ap-hongkong:uid/<APPID>:libevra-backup-<APPID>/daily/*",
+        "qcs::cos:ap-hongkong:uid/<APPID>:libevra-backup-<APPID>/baseline/*",
         "qcs::cos:ap-hongkong:uid/<APPID>:libevra-backup-<APPID>/"
       ]
     }
@@ -141,6 +147,28 @@ HEAD  /bucket/daily/…/x.dump.gpg     ← 需要 HeadObject（校验大小）
 | 对象过期删除 | **35 天**（保留目标 ≥30 天，留 5 天缓冲） |
 | **删除非当前版本** | **30 天**（配合版本控制） |
 | 未完成分片上传清理 | **3 天**（rclone 中断会留下分片，不清理会悄悄产生存储费） |
+
+**再加一条规则**（前缀 `baseline/`）：
+
+| 项 | 值 |
+|---|---|
+| 对象过期删除 | **400 天**（约 13 个月） |
+| 未完成分片上传清理 | **3 天** |
+
+### 1.4.1 ⚠️ 为什需要 `baseline/`：连续失败 35 天会让 `daily/` 全部消失
+
+`daily/` 的生命周期是**按对象创建时间**算的，与"备份是否成功"无关。
+如果连续 35 天备份都失败，`daily/` 会被**全部清空**，而那 35 天里没有任何新备份可以替换它们 ——
+结果就是**异地一份都没有了**。
+
+**基准备份（简单可靠）**：
+
+* 每个自然月（**香港时间**）**第一次成功备份**时，额外上传一份到 `baseline/YYYY-MM/`；
+* 名称带时间戳 + 随机后缀，**绝不覆盖**；上传后立刻 `HeadObject` 校验大小；
+* `baseline/` 生命周期 **400 天** —— 即使 `daily/` 全空，也**永远有一年内的基线**；
+* 基准备份失败**不让整次备份失败**（daily 已成功），但会记录 `baselineMonth`/`baselineRef` 为空，
+  **不谎称有基线**；
+* 成本：约 40 KB × 12 ≈ **0.5 MB/年**，可忽略。
 
 **⚠️ 已核实的版本控制/删除标记/生命周期关系**：
 
@@ -180,6 +208,10 @@ HEAD  /bucket/daily/…/x.dump.gpg     ← 需要 HeadObject（校验大小）
 
 这样即使哪天忘了关、数据量涨了、或有人恶意上传，**你会先收到预算提醒**，而不是收到一张大账单。
 
+**⚠️ 必须说清楚：预算提醒只是"费用通知"，不是"硬性费用上限"。**
+腾讯云不会因为你设了 ¥5 预算就自动停止计费或封停服务 —— 提醒响了，钱还是照扣。
+真正能兜住成本的是：正确的生命周期规则、不被盗用的子账号、以及你看到提醒后的处理。
+
 **⚠️ 三个容易忽略的费用点**：① 未完成分片上传会持续计费（生命周期 3 天清理）；
 ② 历史版本也占存储；③ 外网**下载**流量收费（上传免费），所以别频繁下载大备份。
 
@@ -187,15 +219,21 @@ HEAD  /bucket/daily/…/x.dump.gpg     ← 需要 HeadObject（校验大小）
 
 ## 2. 邮件告警（Resend 免费套餐）
 
-**为什么选它**：HTTPS API（不用自建 SMTP）、免费 3,000 封/月（我们一个月最多几封）、
+'**为什么选它**：HTTPS API（不用自建 SMTP）、免费 3,000 封/月（我们一个月最多几封）、
 域名级 DKIM/SPF、API 一行 curl 可发、将来做邮箱验证码可复用同一套域名与 API。
+
+**⚠️ 用独立子域名 `send.libevra.com`，不要用主域名 `libevra.com`。** 理由：
+① 发信相关的 MX/SPF 记录只落在子域，**不影响主站的邮件配置与其他邮件服务**；
+② 将来换服务商或同时用两家（告警 + 验证码），只需换子域，主域不动；
+③ 发信声誉风险（万一被判垃圾邮件）被隔离在子域里，不牵连主域。
+教程里 Resend 显示的记录会以 `send` 为主机前缀，加到 Namecheap 即可。'
 
 ### 2.1 开通步骤（零基础）
 
 1. 打开 <https://resend.com> → **Sign Up**（用你日常收信的邮箱）
 2. 登录后 **API Keys → Create API Key**：名字 `libevra-backup`，权限选 **Sending access**（只发信）
 3. **复制 key（`re_` 开头）** —— 只显示一次
-4. **Domains → Add Domain**：填 `libevra.com`
+4. **Domains → Add Domain**：填 **`send.libevra.com`**（独立发送子域名，见下）
 5. Resend 会给出几条 **DNS 记录**（在 Namecheap 添加，见 2.2）
 6. 等状态变成 **Verified**
 
@@ -290,7 +328,12 @@ HEARTBEAT_URL=https://hc-ping.com/<uuid>
 4. 你去收件箱确认收到，并**把邮件原文（去掉个人信息）**留档。
 5. 恢复：手动跑一次完整备份发成功心跳 → 面板回到 "Up"。
 
-**⚠️ 这个测试会花 2 小时等待时间**，所以放在检查点 C 的一个整块时间里做。
+'**✅ 不用等两小时**：检查点 C 会用**一个临时短周期 Check** 来测：
+在 Healthchecks.io 里另建一个 `Libevra 失联测试`（Period **5 分钟**、Grace **1 分钟**、
+邮件通知同一个邮箱），把服务器的 `HEARTBEAT_URL` **临时**指向它，
+然后跑一次**不发心跳**的备份（`--skip-heartbeat`），等约 **7 分钟** → 外部服务发邮件。
+确认收到后，把 `HEARTBEAT_URL` 换回正式 check，并删除临时 check。
+**这仍然是"外部服务因为我们没发成功心跳而发信"的真实链路测试**，不是伪造。'
 
 ---
 
@@ -378,7 +421,29 @@ sudo systemctl start libevra-backup.timer    # 恢复
 
 ---
 
-## 8. 仍然存在的风险（诚实清单）
+'## 8. ⚠️ mock 测试 ≠ 真实云端验收
+
+`deploy/tests/run.sh` 用假 curl 和本地 mock S3，验证的是**脚本的决策逻辑**
+（该发邮件时发、不该发时不刷屏、URL 对不对、危险操作会不会被拒绝）。
+**它不能证明腾讯云上的权限真的按预期生效。** 检查点 C 必须在**真实桶**里逐条验：
+
+| # | 真实验收项 | 怎么做 | 期望 |
+|---|---|---|---|
+| 1 | 上传成功 | 完整跑一次 `backup-all.sh` | `uploadOk=true`，桶里出现 `daily/…` |
+| 2 | HeadObject 可用 | 同上（脚本已调用） | `remoteMetaOk=true`，大小一致 |
+| 3 | **上传身份读不了内容** | 用上传凭据跑 `rclone copyto cos:… /tmp/x` | **失败**（AccessDenied） |
+| 4 | **上传身份删不掉** | 用上传凭据跑 `rclone deletefile cos:…` | **失败**（AccessDenied） |
+| 5 | **上传身份列不了目录** | 用上传凭据跑 `rclone lsf cos:bucket/daily/` | **失败**（AccessDenied） |
+| 6 | 上传身份改不了桶配置 | 尝试 `PutBucketVersioning` 等（用 rclone 无法直接做，以 CAM 策略为准） | 无权限 |
+| 7 | **恢复身份能读** | 用恢复凭据 `lsf` + `copyto` 下载 | 成功 |
+| 8 | **恢复身份不能写** | 用恢复凭据 `copyto` 上传一个小文件 | **失败**（AccessDenied） |
+| 9 | **恢复身份不能删** | 用恢复凭据 `deletefile` | **失败** |
+| 10 | 基准备份 | 看桶里 `baseline/YYYY-MM/` 是否存在且大小一致 | 存在其一 |
+| 11 | 生命周期不会提前删 | 控制台核对规则：daily 35 天 / baseline 400 天 / 分片 3 天 | 与文档一致 |
+
+**任何一项不符合，先报告，不自行扩大权限。**
+
+## 9. 仍然存在的风险（诚实清单）'
 
 | # | 风险 | 现状 |
 |---|---|---|
