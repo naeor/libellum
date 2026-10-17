@@ -296,6 +296,27 @@ function AppRoutes(): React.JSX.Element {
       <Route path="/legal/privacy" element={<RequireAuth><LegalPage kind="privacy" /></RequireAuth>} />
       <Route path="/legal/terms" element={<RequireAuth><LegalPage kind="terms" /></RequireAuth>} />
 
+      {/**
+        * ⚠️ **系统管理的五个地址（S13-B/C）—— 在此之前它们一条路由都没有。**
+        *
+        * 页面组件（`pages/AdminPages.tsx`）与 `lib/admin.ts` 早已写好、`App` 顶部也早已
+        * import 了它们，但路由表里一条 `/admin*` 都没有，通配路由于是把这些地址送回首页：
+        * **控制台建好了却没有任何一条路能走到**，非管理员更是连"无权"都看不到。
+        *
+        * ⚠️ **这里只做登录检查，权限由页面自己的 `useAdminGate` 向服务器问一次。**
+        * 在浏览器里藏一个入口从来不能让端点变安全，反过来说，路由也不该自己复制一份
+        * 授权规则——第二个判断点正是这个项目记在案上的"洞是怎么出现的"。
+        * 拒绝时的行为：`useAdminGate` 把 `allowed` 置为 `false` 并 `replace` 到 `/me`，
+        * 期间 `Shell` 渲染骨架屏——**所以非管理员直达不会白屏，也不会闪一下管理界面**。
+        *
+        * ⚠️ **必须排在下面的通配路由之前**，否则它们会继续被通配吃掉。
+        */}
+      <Route path="/admin" element={<RequireAuth><AdminOverviewPage /></RequireAuth>} />
+      <Route path="/admin/invites" element={<RequireAuth><AdminInvitesPage /></RequireAuth>} />
+      <Route path="/admin/admins" element={<RequireAuth><AdminAdminsPage /></RequireAuth>} />
+      <Route path="/admin/users" element={<RequireAuth><AdminUsersPage /></RequireAuth>} />
+      <Route path="/admin/audit" element={<RequireAuth><AdminAuditPage /></RequireAuth>} />
+
       {ChartLabPage === null ? null : (
         <Route
           path="/lab/charts"

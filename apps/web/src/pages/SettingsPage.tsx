@@ -64,6 +64,18 @@ export function SettingsPage(): React.JSX.Element {
 
   const current: Currency = user?.defaultCurrency ?? "CNY";
 
+  /**
+   * **「系统管理」分组的显示条件（S13-C）。**
+   *
+   * ⚠️ **`useAdminEntry` 是两层里便宜的那一层，不是权限。** 它先看账号编号是否在首批号段
+   * （10000000–10000099）——不在就**一个请求都不发**、直接返回 `false`，普通账号因此
+   * 连这个分组的存在都看不到；在首批号段也只是**再问一次服务器**，问到 `false` 仍然不渲染。
+   * 真正的授权永远是服务端 `requireAdmin`，入口显示与否不参与任何判断。
+   *
+   * ⚠️ **默认 `false`（未知时不显示）**，否则每个普通用户都会先看到一行管理入口再看着它消失。
+   */
+  const isAdmin = useAdminEntry(user?.accountNumber);
+
   return (
     <InnerPage title="设置" backTo="/me">
       <section className="flex flex-col gap-2">
@@ -155,6 +167,32 @@ export function SettingsPage(): React.JSX.Element {
           onNavigate={go}
         />
       </section>
+
+      {/**
+        * ⚠️ **「系统管理」只在 `useAdminEntry` 说是的时候渲染（S13-C）。**
+        *
+        * 所有者 2026-10-17：*"如果不是管理员用户的话，直接隐藏管理入口就行，或者说压根不渲染."*
+        * 所以这里没有"灰着的入口"、没有"无权访问"的占位——**普通账号看到的就是没有这一组**。
+        * 五个链接各自对应一条 `/admin` 路由，页面打开时自己再向服务器确认一次。
+        *
+        * ⚠️ **放在「账号安全」之后、「关于」之前**：它是关于**整个系统**的一组，既不属于
+        * 记账偏好，也不属于某一个人的账号安全，而「关于」按惯例留在最后。
+        */}
+      {isAdmin ? (
+        <section className="flex flex-col gap-2">
+          <h2 className="px-1 text-helper text-muted">系统管理</h2>
+          <RowList
+            rows={[
+              { label: "概览", hint: "账号、账本、邀请码与备份的总体情况", to: "/admin" },
+              { label: "邀请码管理", hint: "创建、查看与作废注册邀请码", to: "/admin/invites" },
+              { label: "管理员", hint: "谁在管理、谁只满足一半（只读）", to: "/admin/admins" },
+              { label: "查找账号", hint: "按完整编号或用户名停用、恢复账号", to: "/admin/users" },
+              { label: "操作记录", hint: "管理操作的永久记录", to: "/admin/audit" },
+            ]}
+            onNavigate={go}
+          />
+        </section>
+      ) : null}
 
       <section className="flex flex-col gap-2">
         <h2 className="px-1 text-helper text-muted">关于</h2>
