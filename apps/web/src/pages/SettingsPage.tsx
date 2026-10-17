@@ -8,7 +8,7 @@ import { useAuth } from "../auth/AuthProvider.js";
 import { errorMessage } from "../lib/api.js";
 import { currencyName } from "../lib/format.js";
 import { useUpdatePreferences } from "../lib/queries.js";
-import { useAdminSelf } from "../lib/admin.js";
+import { useAdminEntry } from "../lib/admin.js";
 
 interface Row {
   readonly label: string;

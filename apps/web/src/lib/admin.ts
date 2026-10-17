@@ -15,6 +15,8 @@ import type {
 
 import { useEffect, useState } from "react";
 
+import { isFirstBatchAccountNumber } from "@libellum/shared";
+
 import { apiFetch, ApiRequestError } from "./api.js";
 
 /**
@@ -97,6 +99,66 @@ export function restoreAdminUser(
 export function fetchAdminAudit(): Promise<AdminAuditListResponse> {
   return apiFetch<AdminAuditListResponse>("/admin/audit");
 }
+/**
+ * **The browser-side gate** — a cheap check first, the server's answer second.
+ *
+ * The owner's instruction (2026-10-17):
+ *
+ * > *"管理入口是服务器要判断，客户端再进行一次判断……利用客户本地端可以看到的信息，
+ * > 判断这个用户是不是管理员用户。如果不是管理员用户的话，直接隐藏管理入口就行，或者说压根不渲染。
+ * > 例如，可以通过账号编号是不是前 100 来判断之类的。"*
+ *
+ * ⚠️ **Two layers, and the second one is the only real one.** The account number says whether
+ * the account **may** hold administration (a qualification, not a grant); the server says
+ * whether it **does**. The number check exists so an ordinary account **never even asks** —
+ * no request, no flash of admin UI, nothing to discover by watching the network.
+ *
+ * ⚠️ **Nothing here replaces the server's check and nothing here may ever be trusted by it.**
+ * `isFirstBatchAccountNumber` is the same rule the guard applies as one of its five checks; the
+ * server keeps its own copy of the range on purpose (see `apps/api/test/adminRangeParity.test.ts`).
+ */
+export function mayHoldAdministration(accountNumber: string | undefined): boolean {
+  return accountNumber !== undefined && isFirstBatchAccountNumber(accountNumber);
+}
+
+/**
+ * **Whether to render the console entry** — client check, then one server confirmation.
+ *
+ * ⚠️ **Ordinary accounts cause zero requests**: the number is not in the first batch, so the
+ * hook returns `false` before it would call `/admin/self`. That is the "压根不渲染" half of the
+ * owner's requirement.
+ *
+ * ⚠️ **A first-batch account that is not an administrator is asked about once**, and the entry
+ * stays hidden until the server says yes. "In the first batch" is not "is an administrator".
+ */
+export function useAdminEntry(accountNumber: string | undefined): boolean {
+  const eligible = mayHoldAdministration(accountNumber);
+  const [confirmed, setConfirmed] = useState(false);
+
+  useEffect(() => {
+    if (!eligible) {
+      setConfirmed(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    void fetchAdminSelf()
+      .then((self) => {
+        if (!cancelled) setConfirmed(self !== null);
+      })
+      .catch(() => {
+        if (!cancelled) setConfirmed(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [eligible, accountNumber]);
+
+  return eligible && confirmed;
+}
+
 /**
  * **Whether to offer the console at all** — asked once per screen that needs it.
  *

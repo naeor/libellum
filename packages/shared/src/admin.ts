@@ -255,3 +255,36 @@ export const adminAuditListResponseSchema = z.object({
 });
 
 export type AdminAuditListResponse = z.infer<typeof adminAuditListResponseSchema>;
+/**
+ * **The first-batch range — the one definition, shared by the server and the browser.**
+ *
+ * ⚠️ **Why it is here and not only in the API.** The owner's instruction (2026-10-17):
+ * *"在客户本地端也在一条判断吧：利用客户本地端可以看到的信息……判断这个用户是不是管理员用户。
+ * 如果不是管理员用户的话，直接隐藏管理入口就行，或者说压根不渲染……例如，可以通过账号编号是不是
+ * 前 100 来判断之类的。"*
+ *
+ * The browser already holds the account number (`SessionUser.accountNumber`), so this check
+ * costs a string comparison and **no request at all** — an ordinary account never even asks the
+ * server whether it may see the console.
+ *
+ * ⚠️ **This is a UI hint and it must never grow into a permission.** The range is a
+ * *qualification*, not a grant: being inside it means the account **may** hold administration,
+ * not that it does. Every admin endpoint re-runs the full five-check guard on the server, and
+ * nothing in this file is trusted there.
+ *
+ * ⚠️ **String comparison, deliberately** — numbers are zero-padded to eight digits, so
+ * lexicographic and numeric order agree; a malformed value is "no", because a gate facing
+ * something it does not understand should refuse.
+ */
+export const FIRST_BATCH_ACCOUNT_FIRST = "10000000";
+export const FIRST_BATCH_ACCOUNT_LAST = "10000099";
+
+/** How many accounts the range covers. Named so the number appears in exactly one place. */
+export const FIRST_BATCH_SIZE = 100;
+
+/** Whether an account number is inside the first batch. */
+export function isFirstBatchAccountNumber(accountNumber: string): boolean {
+  if (!/^\d{8}$/.test(accountNumber)) return false;
+
+  return accountNumber >= FIRST_BATCH_ACCOUNT_FIRST && accountNumber <= FIRST_BATCH_ACCOUNT_LAST;
+}
