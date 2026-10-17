@@ -64,3 +64,9 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+      # ⚠️ 备份/告警是"出错时才会用"的代码，普通的类型检查与单测覆盖不到它。
+      # 这组 bash 测试用假 curl 验证：该发邮件时发、不该发时不刷屏、心跳 URL 正确、
+      # 危险操作会被拒绝。见 deploy/tests/run.sh。
+      - name: Backup script self-tests
+        run: bash deploy/tests/run.sh

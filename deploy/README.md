@@ -316,7 +316,10 @@ git push ──────────────────▶
 | `backup.sh` | 本地备份 + **隔离恢复演练** + 轮转 + 写 `backups/last-local.json` |
 | `backup-all.sh` | 编排：调 `backup.sh` → **AES-256 加密** → 上传 COS → **下载回来比对 SHA-256** → 写 `backups/last-run.json` → 失败告警 |
 | `offsite-fetch.sh` | **灾难恢复用**：从 COS 取回并解密（只读，不碰数据库） |
-| `notify-test.sh` | 测告警渠道（不碰备份） |
+| `alert-mail.sh` | **邮件告警**（Resend HTTPS API，带去重与恢复通知） |
+| `heartbeat.sh` | **外部心跳**（Healthchecks.io；服务器彻底失效时由外部报警） |
+| `verify-dump.sh` | 把任意 dump 恢复到**隔离临时库**并与记录的行数对照 |
+| `monthly-offsite-drill.sh` | **月度异地演练**：取回→解密→隔离恢复→对照（在你自己的机器上跑） |
 | `systemd/` | `libevra-backup.service` / `.timer`（**仓库副本，安装见下**） |
 
 ### 三个秘密文件（**不进仓库**，权限 `600`）
@@ -324,10 +327,12 @@ git push ──────────────────▶
 | 文件 | 内容 |
 |---|---|
 | `deploy/.backup.key` | 加密口令（`openssl rand -base64 32`）。**丢了 = 异地备份全废**，必须有服务器之外的副本 |
-| `deploy/.backup.env` | `COS_SECRET_ID` / `COS_SECRET_KEY` / `COS_BUCKET` / `COS_REGION` / `COS_ENDPOINT` |
-| `deploy/.backup-notify.env` | `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID`（可选） |
+| `deploy/.backup.env` | **上传身份**：`COS_UPLOAD_ID` / `COS_UPLOAD_KEY` / `COS_BUCKET` / `COS_REGION` / `COS_ENDPOINT` |
+| `deploy/.backup-mail.env` | `MAIL_API_KEY` / `MAIL_TO` / `MAIL_FROM`（Resend） |
+| `deploy/.backup-heartbeat.env` | `HEARTBEAT_URL`（Healthchecks.io） |
+| `deploy/.backup-restore.env` | **恢复身份**（`COS_RESTORE_*`）——**不放在生产服务器** |
 
-**⚠️ 子账号只给 `PutObject` / `GetObject` / `ListBucket`，绝不给 `DeleteObject`。**
+**⚠️ 上传身份只给"写 + HeadObject"；恢复身份（只读）不放在服务器上。权限清单与实测依据见 `docs/开发过程记录/S12-C-B-实施与配置指南.md` §1。**
 30 天过期由**桶的生命周期规则**在服务端执行 —— 即使服务器被入侵，历史备份也删不掉。
 
 ### 安装定时任务（**先手动跑通，再 `enable`**）

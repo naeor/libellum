@@ -1,34 +1,34 @@
 #!/usr/bin/env bash
 #
-# Libevra — **一次完整的备份**：本地备份与恢复演练 → 加密 → 上传异地 → 下载回来校验 → 写状态 → 失败告警。
+# Libevra — **一次完整的备份**：
+#   本地备份与隔离恢复演练 → 加密 → 上传 COS → 远端元数据校验 → 写状态 → 心跳 → 失败告警
 #
-# ⚠️ **为什么这是单独一层，而不是塞进 `backup.sh`。**
+# ⚠️ **五个结果分开记，绝不合并成一个"备份成功"。**
 #
-# `backup.sh` 回答的是"本地这份能不能恢复"；这个脚本回答的是"它到别处去了吗"。
-# 两件事失败的原因完全不同（磁盘满 vs 网络/密钥错），**混在一个脚本里会让失败原因变模糊**，
-# 而这个项目对"一个报错说不清是哪一步"的代价记得很清楚。
+#   localOk     本地导出成功（文件存在、大小合理、归档可解析）
+#   restoreOk   隔离恢复演练通过（逐表行数一致）
+#   encryptOk   AES-256 加密成功
+#   uploadOk    上传 COS 成功
+#   remoteMetaOk 远端确认：对象存在且**大小与本地加密文件一致**（HeadObject，不读内容）
+#   heartbeatOk 外部 Dead Man's Switch 收到成功信号
+#   notifyOk    失败告警是否被服务商接受
 #
-# 状态分三项，**绝不合并成一个"备份正常"**：
-#
-#   localOk    本地导出成功（文件存在、大小合理、归档可解析）
-#   restoreOk  隔离恢复演练通过（逐表行数一致）
-#   offsiteOk  异地：上传成功 **且** 下载回来比对 SHA-256 一致
+# ⚠️ **"异地内容验证"不在这里。** 上传身份**没有读取权限**（这是有意的），
+# 所以日常只能校验元数据。**内容级验证（下载→解密→隔离恢复）每月一次**，
+# 用恢复身份在你自己的机器上跑：`monthly-offsite-drill.sh`。
 #
 # 用法：
+#   ./backup-all.sh                      # 完整流程（定时任务跑这个）
+#   ./backup-all.sh --skip-offsite       # 只做本地（异地未配置时）
+#   ./backup-all.sh --skip-heartbeat     # 不发送心跳（本地调试用）
+#   ./backup-all.sh --skip-notify        # 不发告警（本地调试用）
 #
-#   ./deploy/backup-all.sh                    # 完整流程（定时任务跑这个）
-#   ./deploy/backup-all.sh --skip-offsite     # 只做本地（异地未配置时也能跑）
-#   ./deploy/backup-all.sh --keep 14
-#
-# ⚠️ **需要三个秘密文件，全部在 deploy/ 下、权限 600、不进仓库：**
-#
-#   .backup.key          加密口令（openssl rand -base64 32）
-#   .backup.env          COS_SECRET_ID / COS_SECRET_KEY / COS_BUCKET / COS_REGION / COS_ENDPOINT
-#   .backup-notify.env   TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID（可选）
-#
-# ⚠️ **异地的删除权限根本不在这个脚本里。** 上传用的子账号没有 `DeleteObject`，
-# 30 天过期由**桶的生命周期规则**在服务端完成 —— 即使服务器被入侵、密钥被读走，
-# 历史备份也删不掉。这是设计，不是疏忽。
+# ⚠️ 秘密文件（全部 600、全部在 .gitignore 里）：
+#   .backup.key        加密口令（**已存在，不得轮换/覆盖**）
+#   .backup.env        上传身份：COS_UPLOAD_ID / COS_UPLOAD_KEY / COS_BUCKET / COS_REGION / COS_ENDPOINT
+#   .backup-mail.env   邮件告警：MAIL_API_KEY / MAIL_TO / MAIL_FROM
+#   .backup-heartbeat.env  外部心跳：HEARTBEAT_URL
+#   ⚠️ **恢复身份不在这里**：`COS_RESTORE_*` 只在你自己的机器上，服务器不常驻。
 
 set -euo pipefail
 
@@ -43,22 +43,22 @@ LOCAL_STATUS="$BACKUP_DIR/last-local.json"
 LOCK_FILE="$SCRIPT_DIR/.backup.lock"
 
 SKIP_OFFSITE=0
-KEEP_ARGS=()
+SKIP_HEARTBEAT=0
+SKIP_NOTIFY=0
+PASSTHROUGH=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --skip-offsite) SKIP_OFFSITE=1 ;;
-    --keep) KEEP_ARGS=(--keep "${2:?--keep needs a number}"); shift ;;
-    --no-restore-drill) KEEP_ARGS+=(--no-restore-drill) ;;
+    --skip-heartbeat) SKIP_HEARTBEAT=1 ;;
+    --skip-notify) SKIP_NOTIFY=1 ;;
+    --keep) PASSTHROUGH+=(--keep "${2:?--keep needs a number}"); shift ;;
+    --no-restore-drill) PASSTHROUGH+=(--no-restore-drill) ;;
     *) echo "未知参数：$1" >&2; exit 2 ;;
   esac
   shift
 done
 
-# ---------------------------------------------------------------------------
-# 并发保护：同一时刻只允许一次
-# ---------------------------------------------------------------------------
-# ⚠️ systemd 同一个 service 本来就不会并发启动，但**手动跑一次**是很常见的动作，
-# 而两次同时跑会各自占一份磁盘和连接。`flock` 让第二次直接退出而不是排队。
+# ⚠️ 并发保护：systemd 不让同一 unit 并发，但**手动执行**很常见。
 exec 9> "$LOCK_FILE"
 if ! flock -n 9; then
   echo "❌ 已经有一次备份在运行（$LOCK_FILE 被占用）。本次退出。" >&2
@@ -67,52 +67,74 @@ fi
 
 STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 FINAL_ERROR=""
-OFFSITE_CONFIGURED=false
-OFFSITE_OK=false
-OFFSITE_REF=""
-NOTIFY_ENABLED=false
-NOTIFY_SENT=false
+
 LOCAL_OK=false
 RESTORE_OK=false
+ENCRYPT_OK=false
+UPLOAD_OK=false
+REMOTE_META_OK=false
+HEARTBEAT_OK=false
+HEARTBEAT_CONFIGURED=false
+NOTIFY_OK=false
+NOTIFY_CONFIGURED=false
+
+OFFSITE_CONFIGURED=false
+OFFSITE_ERROR=""
+OFFSITE_REF=""
+REMOTE_SIZE=""
+LOCAL_ENC_SIZE=""
 
 # ---------------------------------------------------------------------------
-# 载入秘密（缺失不报错：它们可能还没配置）
+# 载入秘密（缺失不报错：可能还没配置）
 # ---------------------------------------------------------------------------
 if [ -f .backup.env ]; then
   # shellcheck disable=SC1091
   set -a; . ./.backup.env; set +a
 fi
-if [ -f .backup-notify.env ]; then
+if [ -f .backup-mail.env ]; then
   # shellcheck disable=SC1091
-  set -a; . ./.backup-notify.env; set +a
+  set -a; . ./.backup-mail.env; set +a
+fi
+if [ -f .backup-heartbeat.env ]; then
+  # shellcheck disable=SC1091
+  set -a; . ./.backup-heartbeat.env; set +a
 fi
 
-PASSPHRASE_FILE="$SCRIPT_DIR/.backup.key"
+[ -n "${HEARTBEAT_URL:-}" ] && HEARTBEAT_CONFIGURED=true
+if [ -f .backup-mail.env ] && [ -n "${MAIL_API_KEY:-}" ] && [ -n "${MAIL_TO:-}" ] && [ -n "${MAIL_FROM:-}" ]; then
+  NOTIFY_CONFIGURED=true
+fi
 
 write_final_status() {
-  local finished_at
+  local finished_at local_json="{}"
   finished_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-
-  # 本地那一半从 backup.sh 的状态文件里取（它才是当事人）。
-  local local_json="{}"
-  if [ -f "$LOCAL_STATUS" ]; then
-    local_json="$(cat "$LOCAL_STATUS")"
-  fi
+  [ -f "$LOCAL_STATUS" ] && local_json="$(cat "$LOCAL_STATUS")"
 
   cat > "$STATUS_FILE.tmp" <<JSON
 {
   "kind": "full",
+  "schemaVersion": 2,
   "startedAt": "$STARTED_AT",
   "finishedAt": "$finished_at",
   "local": $local_json,
+  "encryptOk": $ENCRYPT_OK,
   "offsite": {
     "configured": $OFFSITE_CONFIGURED,
-    "ok": $OFFSITE_OK,
-    "ref": "$OFFSITE_REF"
+    "uploadOk": $UPLOAD_OK,
+    "remoteMetaOk": $REMOTE_META_OK,
+    "ref": "$OFFSITE_REF",
+    "localEncryptedSize": ${LOCAL_ENC_SIZE:-0},
+    "remoteSize": ${REMOTE_SIZE:-0},
+    "contentVerified": false,
+    "contentVerifiedNote": "内容级验证由 monthly-offsite-drill.sh 用恢复身份执行"
+  },
+  "heartbeat": {
+    "configured": $HEARTBEAT_CONFIGURED,
+    "ok": $HEARTBEAT_OK
   },
   "notify": {
-    "enabled": $NOTIFY_ENABLED,
-    "sent": $NOTIFY_SENT
+    "configured": $NOTIFY_CONFIGURED,
+    "ok": $NOTIFY_OK
   },
   "error": $(if [ -n "$FINAL_ERROR" ]; then printf '"%s"' "$(printf '%s' "$FINAL_ERROR" | tr -d '"' | tr '\n' ' ')"; else printf 'null'; fi)
 }
@@ -120,27 +142,41 @@ JSON
   mv "$STATUS_FILE.tmp" "$STATUS_FILE"
 }
 
-# ---------------------------------------------------------------------------
-# 告警（Telegram）—— **没配置就是没配置，不会假装成功**
-# ---------------------------------------------------------------------------
-notify() {
-  local outcome="$1" message="$2"
-
-  if [ -n "${TELEGRAM_BOT_TOKEN:-}" ] && [ -n "${TELEGRAM_CHAT_ID:-}" ]; then
-    NOTIFY_ENABLED=true
-    if curl -sS --max-time 20 -o /dev/null \
-      "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-      --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
-      --data-urlencode "text=${message}" \
-      --data "" >/dev/null 2>&1; then
-      NOTIFY_SENT=true
-      echo "（已发送 Telegram 告警：$outcome）"
-    else
-      echo "⚠️ 告警发送失败（Telegram 请求失败）" >&2
-    fi
-  else
-    echo "⚠️ 通知未启用：deploy/.backup-notify.env 里没有 TELEGRAM_BOT_TOKEN/CHAT_ID"
+last_success_at() {
+  if [ -f "$STATUS_FILE" ]; then
+    grep -o '"finishedAt": *"[^"]*"' "$STATUS_FILE" | head -1 | sed 's/.*"finishedAt": *"//; s/"$//'
   fi
+}
+
+# ⚠️ 告警与心跳**都不能影响退出码本身**：备份失败就是失败，通知是尽力而为。
+notify_failure() {
+  local stage="$1" message="$2"
+  if [ "$SKIP_NOTIFY" -eq 1 ]; then return 0; fi
+  local prev
+  prev="$(last_success_at)"
+  if ./alert-mail.sh --stage "$stage" --error "$message" --last-success "${prev:-未知}"; then
+    NOTIFY_OK=true
+  fi
+}
+
+ping_heartbeat() {
+  local mode="$1" reason="${2:-}"
+  if [ "$SKIP_HEARTBEAT" -eq 1 ]; then return 0; fi
+  if [ "$mode" = "ok" ]; then
+    if ./heartbeat.sh --ok; then HEARTBEAT_OK=true; fi
+  else
+    ./heartbeat.sh --fail "$reason" || true
+  fi
+}
+
+# 任何一步失败：通知 + 失败心跳 + 写状态 + 非零退出
+fail_stage() {
+  local stage="$1" message="$2"
+  FINAL_ERROR="$message"
+  echo "❌ [$stage] $message" >&2
+  notify_failure "$stage" "$message"
+  ping_heartbeat fail "$message"
+  exit 1
 }
 
 cleanup() {
@@ -155,10 +191,10 @@ echo "=== Libevra 完整备份 $(date '+%Y-%m-%d %H:%M:%S %Z') ==="
 echo
 
 # ---------------------------------------------------------------------------
-# 第一步：本地备份 + 恢复演练
+# 1. 本地备份 + 隔离恢复演练
 # ---------------------------------------------------------------------------
 set +e
-./backup.sh "${KEEP_ARGS[@]+"${KEEP_ARGS[@]}"}"
+./backup.sh "${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}"
 LOCAL_EXIT=$?
 set -e
 
@@ -168,154 +204,126 @@ if [ -f "$LOCAL_STATUS" ]; then
 fi
 
 if [ "$LOCAL_EXIT" -ne 0 ] || [ "$LOCAL_OK" != "true" ]; then
-  FINAL_ERROR="本地备份失败（backup.sh 退出码 $LOCAL_EXIT）"
-  echo "❌ $FINAL_ERROR" >&2
-  notify "失败" "Libevra 备份失败：本地备份没通过。详见服务器 journalctl -u libevra-backup。"
-  exit 1
+  fail_stage "local" "本地备份失败（backup.sh 退出码 $LOCAL_EXIT）"
 fi
 
 echo
 echo "✅ 本地备份通过（localOk=true，restoreOk=$RESTORE_OK）"
 
+DUMP="$(grep -o '"dump": *"[^"]*"' "$LOCAL_STATUS" | sed 's/.*"dump": *"//; s/"$//')"
+if [ -z "$DUMP" ] || [ ! -f "$BACKUP_DIR/$DUMP" ]; then
+  fail_stage "local" "找不到刚生成的 dump（$DUMP）"
+fi
+
 # ---------------------------------------------------------------------------
-# 第二步：加密 + 上传 + 下载回来校验
+# 2. 加密
 # ---------------------------------------------------------------------------
 if [ "$SKIP_OFFSITE" -eq 1 ]; then
   echo
-  echo "→ 已按参数跳过异地（--skip-offsite）"
-elif [ -z "${COS_SECRET_ID:-}" ] || [ -z "${COS_SECRET_KEY:-}" ] || [ -z "${COS_BUCKET:-}" ]; then
+  echo "→ 已按参数跳过异地（不加密、不上传）"
+  ping_heartbeat ok
   echo
-  echo "⚠️ **异地未配置**（deploy/.backup.env 缺少 COS_* 或 .backup.key）"
-  echo "   这不是失败：本地备份仍然有效，但**这台服务器上的这一份会随服务器一起消失**。"
+  echo "🎉 本地备份成功（异地未参与）。"
+  exit 0
+fi
+
+if [ -z "${COS_UPLOAD_ID:-}" ] || [ -z "${COS_UPLOAD_KEY:-}" ] || [ -z "${COS_BUCKET:-}" ]; then
+  echo
+  echo "⚠️ **异地未配置**（deploy/.backup.env 缺 COS_UPLOAD_ID/COS_UPLOAD_KEY/COS_BUCKET）"
+  echo "   本地备份有效，但它会随这台服务器一起消失。"
   FINAL_ERROR="异地未配置"
-elif [ ! -f "$PASSPHRASE_FILE" ]; then
-  FINAL_ERROR="缺少加密口令文件 deploy/.backup.key"
-  echo "❌ $FINAL_ERROR" >&2
-  notify "失败" "Libevra 备份失败：缺少加密口令，异地备份没有做。"
-  exit 1
-else
-  OFFSITE_CONFIGURED=true
+  ping_heartbeat fail "异地未配置"
+  exit 0
+fi
+OFFSITE_CONFIGURED=true
 
-  DUMP="$(grep -o '"dump": *"[^"]*"' "$LOCAL_STATUS" | sed 's/.*"dump": *"//; s/"$//')"
-  SHA_LOCAL="$(grep -o '"sha256": *"[^"]*"' "$LOCAL_STATUS" | sed 's/.*"sha256": *"//; s/"$//')"
+if [ ! -f .backup.key ]; then
+  fail_stage "encrypt" "缺少加密口令文件 deploy/.backup.key"
+fi
 
-  if [ -z "$DUMP" ] || [ ! -f "$BACKUP_DIR/$DUMP" ]; then
-    FINAL_ERROR="找不到刚生成的 dump（$DUMP）"
-    echo "❌ $FINAL_ERROR" >&2
-    exit 1
-  fi
+# ⚠️ **对象名唯一**：时间戳 + 6 位随机。
+# 时间戳到秒会撞（同一秒重跑），而 CAM 无法表达"禁止覆盖同名对象"——
+# 唯一命名 + 版本控制是唯一可靠的两道保险。
+RAND="$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-6)"
+YEAR_MONTH="$(date -u +%Y/%m)"
+BASE_NAME="${DUMP%.dump}-${RAND}"
+ENCRYPTED="$BACKUP_DIR/${BASE_NAME}.dump.gpg"
+REF="daily/${YEAR_MONTH}/${BASE_NAME}.dump.gpg"
+OFFSITE_REF="$REF"
 
-  ENCRYPTED="$BACKUP_DIR/${DUMP%.dump}.dump.gpg"
-  REF="daily/${DUMP%.dump}.dump.gpg"
-  OFFSITE_REF="$REF"
-
-  echo
-  echo "→ 加密（AES-256，口令来自 .backup.key）…"
-  rm -f "$ENCRYPTED"
-  gpg --batch --yes --quiet --pinentry-mode loopback \
-      --passphrase-file "$PASSPHRASE_FILE" \
+echo
+echo "→ 加密（AES-256 + MDC 完整性校验，口令来自 .backup.key）…"
+rm -f "$ENCRYPTED"
+if ! gpg --batch --yes --quiet --pinentry-mode loopback \
+      --passphrase-file .backup.key \
       --symmetric --cipher-algo AES256 \
-      --output "$ENCRYPTED" "$BACKUP_DIR/$DUMP"
+      --output "$ENCRYPTED" "$BACKUP_DIR/$DUMP"; then
+  fail_stage "encrypt" "gpg 加密失败"
+fi
 
-  SHA_ENC="$(sha256sum "$ENCRYPTED" | cut -d' ' -f1)"
-  echo "✅ 已加密：$(du -h "$ENCRYPTED" | cut -f1)（sha256 ${SHA_ENC:0:16}…）"
+LOCAL_ENC_SIZE="$(stat -c%s "$ENCRYPTED" 2>/dev/null || echo 0)"
+if [ "$LOCAL_ENC_SIZE" -lt 1024 ]; then
+  fail_stage "encrypt" "加密文件只有 ${LOCAL_ENC_SIZE} 字节，异常"
+fi
+ENCRYPT_OK=true
+echo "✅ 已加密：$(du -h "$ENCRYPTED" | cut -f1)"
 
-  # rclone 配置写在临时文件里，用完即删 —— **不新建第四个秘密文件**。
-  # 它的内容来自 .backup.env，600 权限，脚本退出时删除。
-  RCLONE_CONF="$SCRIPT_DIR/.rclone.conf.tmp"
-  umask 077
-  cat > "$RCLONE_CONF" <<RCLONE
+# ---------------------------------------------------------------------------
+# 3. 上传（上传身份：只有写权限）
+# ---------------------------------------------------------------------------
+RCLONE_CONF="$SCRIPT_DIR/.rclone.conf.tmp"
+umask 077
+cat > "$RCLONE_CONF" <<RCLONE
 [cos]
 type = s3
 provider = Other
-access_key_id = ${COS_SECRET_ID}
-secret_access_key = ${COS_SECRET_KEY}
+access_key_id = ${COS_UPLOAD_ID}
+secret_access_key = ${COS_UPLOAD_KEY}
 endpoint = ${COS_ENDPOINT:-cos.ap-hongkong.myqcloud.com}
 region = ${COS_REGION:-ap-hongkong}
 acl = private
 no_check_bucket = true
 RCLONE
-  chmod 600 "$RCLONE_CONF"
+chmod 600 "$RCLONE_CONF"
 
-  echo "→ 上传到 COS…"
-  if ! rclone --config "$RCLONE_CONF" copyto --s3-no-check-bucket \
+echo
+echo "→ 上传到 COS：${REF}"
+if ! rclone --config "$RCLONE_CONF" copyto --s3-no-check-bucket --retries 2 \
       "$ENCRYPTED" "cos:${COS_BUCKET}/${REF}" 2>&1; then
-    FINAL_ERROR="上传 COS 失败"
-    echo "❌ $FINAL_ERROR" >&2
-    rm -f "$RCLONE_CONF"
-    notify "失败" "Libevra 备份失败：本地成功，但**上传异地失败**。本地那份仍然可用。"
-    exit 1
-  fi
-  echo "✅ 已上传：cos:${COS_BUCKET}/${REF}"
-
-  echo "→ 从 COS 下载回来校验（证明异地那份真的能取回、且内容一致）…"
-  VERIFY_DL="$(mktemp)"
-  if ! rclone --config "$RCLONE_CONF" copyto "cos:${COS_BUCKET}/${REF}" "$VERIFY_DL" 2>&1; then
-    FINAL_ERROR="从 COS 下载校验失败"
-    echo "❌ $FINAL_ERROR" >&2
-    rm -f "$RCLONE_CONF" "$VERIFY_DL"
-    notify "失败" "Libevra 备份失败：上传显示成功，但**下载回来失败**。异地那份不可信。"
-    exit 1
-  fi
-
-  SHA_REMOTE="$(sha256sum "$VERIFY_DL" | cut -d' ' -f1)"
-  rm -f "$VERIFY_DL" "$RCLONE_CONF"
-
-  if [ "$SHA_REMOTE" != "$SHA_ENC" ]; then
-    FINAL_ERROR="异地校验不一致（本地 $SHA_ENC / 异地 $SHA_REMOTE）"
-    echo "❌ $FINAL_ERROR" >&2
-    notify "失败" "Libevra 备份失败：异地文件与本地不一致，异地那份不可信。"
-    exit 1
-  fi
-
-  OFFSITE_OK=true
-  echo "✅ 异地校验通过（SHA-256 一致）"
-  echo "   本地明文 sha256 = $SHA_LOCAL"
-  # 加密副本只是上传的中转，本地留明文 dump 即可（省一半空间）。
-  rm -f "$ENCRYPTED"
+  OFFSITE_ERROR="上传 COS 失败"
+  rm -f "$RCLONE_CONF"
+  fail_stage "upload" "$OFFSITE_ERROR"
 fi
+UPLOAD_OK=true
+echo "✅ 已上传"
 
 # ---------------------------------------------------------------------------
-# 第三步：写数据库（表存在才写；不存在就等 S13 迁移）
+# 4. 远端元数据校验（HeadObject；**不下载内容**，因为上传身份没有读权限）
 # ---------------------------------------------------------------------------
-if [ -f .env ]; then
-  # shellcheck disable=SC1091
-  set -a; . ./.env; set +a
-  HAS_TABLE="$(docker compose -f docker-compose.prod.yml exec -T db \
-    env PGPASSWORD="${POSTGRES_PASSWORD:-}" \
-    psql -U "${POSTGRES_USER:-}" -d "${POSTGRES_DB:-}" -tAc \
-    "select to_regclass('public.backup_logs') is not null" 2>/dev/null | tr -d ' ' || echo "f")"
+echo "→ 远端校验（对象存在 + 大小一致）…"
+REMOTE_JSON="$(rclone --config "$RCLONE_CONF" lsjson --stat "cos:${COS_BUCKET}/${REF}" 2>/dev/null || true)"
+REMOTE_SIZE="$(printf '%s' "$REMOTE_JSON" | python3 -c 'import json,sys
+try: print(json.load(sys.stdin).get("Size", 0))
+except Exception: print(0)' 2>/dev/null || echo 0)"
+rm -f "$RCLONE_CONF"
 
-  if [ "$HAS_TABLE" = "t" ]; then
-    # 用 json 拼一条 INSERT，避免把 json 引号写进 SQL 字符串。
-    docker compose -f docker-compose.prod.yml exec -T db \
-      env PGPASSWORD="${POSTGRES_PASSWORD:-}" \
-      psql -U "${POSTGRES_USER:-}" -d "${POSTGRES_DB:-}" -q -c \
-      "insert into backup_logs (started_at, finished_at, ok, local_ok, restore_ok, offsite_ok, file_ref, note)
-       values ('$STARTED_AT', now(), $([ "$LOCAL_OK" = true ] && [ "$OFFSITE_OK" = true ] && echo true || echo false),
-               $LOCAL_OK, $RESTORE_OK, $OFFSITE_OK,
-               nullif('${OFFSITE_REF}',''), nullif('${FINAL_ERROR}',''))" 2>/dev/null \
-      && echo "→ 已写入 backup_logs（管理后台概览会显示）" \
-      || echo "⚠️ 写入 backup_logs 失败（不影响备份本身）"
-  else
-    echo "→ 跳过写 database（backup_logs 表还不存在 —— 等 S13 迁移部署后再启用）"
-  fi
+if [ "${REMOTE_SIZE:-0}" != "$LOCAL_ENC_SIZE" ]; then
+  OFFSITE_ERROR="远端大小不一致（本地 ${LOCAL_ENC_SIZE} / 远端 ${REMOTE_SIZE:-0}）"
+  fail_stage "remote-meta" "$OFFSITE_ERROR"
 fi
+REMOTE_META_OK=true
+echo "✅ 远端一致（${REMOTE_SIZE} 字节）"
 
 # ---------------------------------------------------------------------------
-# 第四步：告警策略
+# 5. 成功心跳（只有整条流程成功才发）
 # ---------------------------------------------------------------------------
-# ⚠️ **只在失败时发**：每天一条"备份成功"的消息，两周后就会被无视 ——
-# 而告警被无视时，真正的失败也就没人看了。
-if [ "$LOCAL_OK" = true ] && [ "$OFFSITE_OK" = true ]; then
-  echo
-  echo "🎉 完整备份成功：本地 ✅ 恢复演练 $([ "$RESTORE_OK" = true ] && echo ✅ || echo '⚠️ 跳过') 异地 ✅"
-fi
+echo
+ping_heartbeat ok
 
-if [ "$OFFSITE_CONFIGURED" = false ]; then
-  echo
-  echo "⚠️ **异地备份尚未配置** —— 本次只完成了本地备份。"
-  echo "   配置后这个脚本会自动开始上传；在此之前，管理后台概览里异地状态会显示为未配置。"
-fi
-
+echo
+echo "🎉 完整备份成功："
+echo "   本地 ✅  恢复演练 $([ "$RESTORE_OK" = true ] && echo ✅ || echo '⚠️跳过')  加密 ✅  上传 ✅  远端校验 ✅"
+[ "$HEARTBEAT_CONFIGURED" = true ] && echo "   心跳：$([ "$HEARTBEAT_OK" = true ] && echo ✅ || echo '⚠️ 发送失败')" || echo "   心跳：⚠️ 未配置"
+echo "   ⚠️ 异地**内容**验证未做 —— 每月由 monthly-offsite-drill.sh 用恢复身份执行。"
+echo "   对象：cos:${COS_BUCKET}/${REF}"
 exit 0

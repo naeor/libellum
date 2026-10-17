@@ -84,6 +84,9 @@ ERROR_MSG=""
 SIZE_BYTES=0
 SHA256=""
 TABLES_COMPARED=0
+# ⚠️ **每张表的行数也记下来。** 这不是"多写点数据"——它是**异地恢复演练唯一的对照物**：
+# 当服务器整机丢失、生产库不存在时，只有这里记下的数字能回答"从 COS 取回的那份，行数对不对"。
+TABLE_COUNTS=""
 
 # ⚠️ **任何退出路径都要留下状态**，包括 `set -e` 直接炸掉的那种。
 # 否则"上一次到底成没成"就成了空白 —— 而空白会被读成"应该没事"。
@@ -104,6 +107,7 @@ write_status() {
   "sizeBytes": $SIZE_BYTES,
   "sha256": "$SHA256",
   "tablesCompared": $TABLES_COMPARED,
+  "tableCounts": {${TABLE_COUNTS%,}},
   "error": $(if [ -n "$ERROR_MSG" ]; then printf '"%s"' "$(printf '%s' "$ERROR_MSG" | tr -d '"' | tr '\n' ' ')"; else printf 'null'; fi),
   "host": "$(hostname)",
   "db": "$POSTGRES_DB"
@@ -220,6 +224,10 @@ else
     if [ "$SRC" != "$DST" ]; then
       echo "  ❌ $T：源 $SRC / 备份 $DST"
       MISMATCH=1
+    fi
+    # 记下源库每张表的行数，供**异地恢复演练**在没有生产库时对照。
+    if printf '%s' "$SRC" | grep -qE '^[0-9]+$'; then
+      TABLE_COUNTS="${TABLE_COUNTS}\"${T}\": ${SRC},"
     fi
   done
 
