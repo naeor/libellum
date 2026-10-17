@@ -77,12 +77,12 @@ RCLONE
 
 if [ "$MODE" = "list" ]; then
   echo "=== 云端备份（新到旧） ==="
-  rclone --config "$RCLONE_CONF" lsf --files-only "cos:${COS_BUCKET}/daily/" | grep '\.dump\.gpg$' | sort -r | sed 's/^/  /'
+  rclone --config "$RCLONE_CONF" lsf -R --files-only "cos:${COS_BUCKET}/daily/" | grep '\.dump\.gpg$' | sort -r | sed 's/^/  /'
   exit 0
 fi
 
 if [ "$MODE" = "latest" ] || [ -z "$REF" ]; then
-  REF="$(rclone --config "$RCLONE_CONF" lsf --files-only "cos:${COS_BUCKET}/daily/" | grep '\.dump\.gpg$' | sort -r | head -1)"
+  REF="daily/$(rclone --config "$RCLONE_CONF" lsf -R --files-only "cos:${COS_BUCKET}/daily/" 2>/dev/null | grep '\.dump\.gpg$' | sort -r | head -1 || true)"
   if [ -z "$REF" ]; then
     echo "❌ 云端没有备份。" >&2
     exit 1

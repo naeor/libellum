@@ -101,7 +101,9 @@ if [ -n "$EXPECT" ]; then
       echo "  ❌ $T：期望 $WANT / 实际 $GOT"
       FAILED=1
     fi
-  done < <(grep -o '"[A-Za-z_][A-Za-z0-9_]*"[[:space:]]*:[[:space:]]*[0-9][0-9]*' "$EXPECT" \
+  done < <(sed -n '/"tableCounts"/,/}/p' "$EXPECT" \
+             | sed '1s/.*tableCounts":[[:space:]]*{//' \
+             | grep -o '"[a-z_][a-z0-9_]*"[[:space:]]*:[[:space:]]*[0-9][0-9]*' \
              | sed 's/"\([^"]*\)"[[:space:]]*:[[:space:]]*\([0-9]*\)/\1=\2/')
 fi
 
